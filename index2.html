@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="動作分析Pro">
+<title>動作分析 Pro</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+    html, body {
+        width: 100%; height: 100dvh;
+        background: #000; color: #fff;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        display: flex; flex-direction: column; overflow: hidden;
+    }
+    
+    /* ヘッダー */
+    #header {
+        background: #1c1c1e; padding: 6px 10px;
+        display: flex; flex-direction: column; gap: 4px;
+        border-bottom: 1px solid #333; z-index: 10; flex-shrink: 0;
+    }
+    .header-top-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .btn-group-header { display: flex; gap: 5px; }
+    .hdr-btn {
+        background: #007aff; color: white; border: none;
+        padding: 5px 10px; border-radius: 6px; font-weight: bold; font-size: 11px;
+        cursor: pointer;
+    }
+    .hdr-btn.secondary { background: #3a3a3c; }
+    .hdr-btn.accent { background: #ff9500; color: #000; }
+    .hdr-btn.compare-active { background: #af52de; color: #fff; }
+    #scale-info-text { font-size: 11px; color: #ff9500; font-weight: 600; text-align: right; }
+    
+    /* 計測データ表示ボックス */
+    #result-box {
+        background: #262629; border-radius: 6px; padding: 5px 8px; border: 1px solid #3a3a3c;
+    }
+    #main-result { color: #00ffcc; font-size: 13px; font-weight: bold; line-height: 1.2; }
+    #sub-result { color: #aaa; font-size: 11px; margin-top: 2px; font-weight: 500; line-height: 1.2; }
+    .highlight-acc { color: #ff375f; font-weight: bold; }
+    .highlight-speed { color: #ffcc00; font-weight: bold; }
+
+    /* 映像・描画ステージ */
+    #stage {
+        position: relative; flex: 1; min-height: 0;
+        display: flex; background: #000; overflow: hidden;
+    }
+    .video-pane {
+        position: relative; flex: 1; height: 100%;
+        display: flex; align-items: center; justify-content: center;
+        overflow: hidden; background: #000;
+    }
+    #pane2 { display: none; border-left: 2px solid #555; }
+    video { width: 100%; height: 100%; object-fit: contain; }
+    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; }
+
+    /* 操作パネル */
+    #controls {
+        background: #1c1c1e;
+        padding: 6px 10px calc(6px + env(safe-area-inset-bottom)) 10px;
+        display: flex; flex-direction: column; gap: 5px;
+        border-top: 1px solid #333; flex-shrink: 0;
+    }
+    .slider-box { display: flex; align-items: center; gap: 8px; }
+    input[type=range] { flex: 1; height: 18px; accent-color: #007aff; }
+
+    .mode-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    button.ctrl-btn {
+        padding: 6px 0; background: #2c2c2e; color: white; border: none;
+        border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer;
+    }
+    button.ctrl-btn:active { background: #444; }
+    button.mode-active { background: #30d158; color: black; }
+    #btn-mode-acc.mode-active { background: #ff375f; color: white; }
+    #btn-mode-scale.mode-active { background: #ff9500; color: black; }
+    
+    .playback-row { display: grid; grid-template-columns: 0.8fr 1.2fr 0.8fr 0.8fr 1fr; gap: 4px; }
+    #btn-play { background: #34c759; color: #000; font-weight: bold; }
+    #btn-clear { background: #ff3b30; }
+
+    /* モーダル共通スタイル */
+    .modal-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.75); display: none; justify-content: center; align-items: center;
+        z-index: 1000; backdrop-filter: blur(4px);
+    }
+    .modal-card {
+        background: #2c2c2e; border: 1px solid #444; border-radius: 12px; width: 90%; max-width: 340px;
+        padding: 16px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    }
+    .modal-card h3 { font-size: 15px; margin-bottom: 6px; color: #ff9500; }
+    .modal-card p { font-size: 12px; color: #ccc; margin-bottom: 12px; }
+    .modal-input-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 14px; }
+    .modal-input-row input {
+        width: 100px; font-size: 16px; padding: 6px; text-align: center;
+        border-radius: 6px; border: 1px solid #555; background: #1c1c1e; color: #fff;
+        user-select: auto; -webkit-user-select: auto;
+    }
+    .modal-btn-row { display: flex; gap: 8px; }
+    .modal-btn-row button { flex: 1; padding: 8px 0; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; }
+    
+    /* グラフモーダル */
+    #graph-canvas { width: 100%; height: 180px; background: #1a1a1c; border-radius: 6px; border: 1px solid #444; margin-bottom: 10px; }
+    
+    /* スクショプレビューモーダル */
+    #snapshot-img { max-width: 100%; max-height: 50vh; border-radius: 6px; border: 1px solid #555; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<div id="header">
+    <div class="header-top-row">
+        <div class="btn-group-header">
+            <button class="hdr-btn" onclick="triggerPickVideo(1)">動画①</button>
+            <button class="hdr-btn secondary" id="btn-pick2" style="display:none;" onclick="triggerPickVideo(2)">動画②</button>
+            <button class="hdr-btn secondary" id="btn-toggle-compare" onclick="toggleCompareMode()">2画面比較</button>
+            <button class="hdr-btn accent" onclick="openGraphModal()">📊 グラフ</button>
+            <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 保存</button>
+        </div>
+        <span id="scale-info-text">物差し: 未設定</span>
+        <input type="file" id="file-input-1" accept="video/*" style="display:none">
+        <input type="file" id="file-input-2" accept="video/*" style="display:none">
+    </div>
+    <div id="result-box">
+        <div id="main-result">動画①を選択してください</div>
+        <div id="sub-result"></div>
+    </div>
+</div>
+
+<div id="stage">
+    <div class="video-pane" id="pane1">
+        <video id="video1" playsinline webkit-playsinline></video>
+        <canvas id="canvas1"></canvas>
+    </div>
+    <div class="video-pane" id="pane2">
+        <video id="video2" playsinline webkit-playsinline></video>
+        <canvas id="canvas2"></canvas>
+    </div>
+</div>
+
+<div id="controls">
+    <div class="slider-box">
+        <input type="range" id="seekbar" min="0" max="100" value="0" step="0.001">
+    </div>
+    <div class="mode-grid">
+        <button class="ctrl-btn mode-active" id="btn-mode-angle" onclick="setMode('angle')">角度 (3点)</button>
+        <button class="ctrl-btn" id="btn-mode-dist" onclick="setMode('distance')">速度 (2点)</button>
+        <button class="ctrl-btn" id="btn-mode-acc" onclick="setMode('accel')">加速度 (3点)</button>
+        <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">物差し</button>
+    </div>
+    <div class="playback-row">
+        <button class="ctrl-btn" onclick="stepFrame(-1)">◀ -1コマ</button>
+        <button class="ctrl-btn" id="btn-play" onclick="togglePlay()">▶ 再生</button>
+        <button class="ctrl-btn" onclick="stepFrame(1)">+1コマ ▶</button>
+        <button class="ctrl-btn" id="btn-speed" onclick="togglePlaybackRate()">1.0x</button>
+        <button class="ctrl-btn" id="btn-clear" onclick="clearCurrentPoints()">クリア</button>
+    </div>
+</div>
+
+<!-- 物差し設定モーダル -->
+<div id="scale-modal-overlay" class="modal-overlay">
+    <div class="modal-card">
+        <h3>基準物の長さ設定</h3>
+        <p>指定した2点間の実際の長さを入力</p>
+        <div class="modal-input-row">
+            <input type="number" id="scale-input-value" inputmode="decimal" placeholder="100" value="100">
+            <span style="font-weight:bold; font-size:15px;">cm</span>
+        </div>
+        <div class="modal-btn-row">
+            <button style="background:#444; color:#fff;" onclick="cancelScaleModal()">キャンセル</button>
+            <button style="background:#ff9500; color:#000;" onclick="submitScaleModal()">確定</button>
+        </div>
+    </div>
+</div>
+
+<!-- グラフ表示モーダル -->
+<div id="graph-modal-overlay" class="modal-overlay">
+    <div class="modal-card" style="max-width:360px;">
+        <h3 style="color:#00ffcc;">📊 計測推移グラフ</h3>
+        <canvas id="graph-canvas"></canvas>
+        <div class="modal-btn-row">
+            <button style="background:#444; color:#fff;" onclick="closeGraphModal()">閉じる</button>
+        </div>
+    </div>
+</div>
+
+<!-- スクショ保存モーダル -->
+<div id="snapshot-modal-overlay" class="modal-overlay">
+    <div class="modal-card" style="max-width:360px;">
+        <h3 style="color:#5856d6;">📸 スクリーンショット</h3>
+        <p style="font-size:11px; color:#aaa;">画像を長押しして「写真に追加」で保存できます</p>
+        <img id="snapshot-img" src="" alt="Screenshot">
+        <div class="modal-btn-row">
+            <button style="background:#444; color:#fff;" onclick="closeSnapshotModal()">閉じる</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const video1 = document.getElementById('video1');
+    const canvas1 = document.getElementById('canvas1');
+    const ctx1 = canvas1.getContext('2d');
+
+    const video2 = document.getElementById('video2');
+    const canvas2 = document.getElementById('canvas2');
+    const ctx2 = canvas2.getContext('2d');
+
+    const pane2 = document.getElementById('pane2');
+    const btnPick2 = document.getElementById('btn-pick2');
+    const btnToggleCompare = document.getElementById('btn-toggle-compare');
+    const seekbar = document.getElementById('seekbar');
+    const mainResult = document.getElementById('main-result');
+    const subResult = document.getElementById('sub-result');
+    const scaleInfoText = document.getElementById('scale-info-text');
+    const btnPlay = document.getElementById('btn-play');
+    const btnSpeed = document.getElementById('btn-speed');
+
+    const fileInput1 = document.getElementById('file-input-1');
+    const fileInput2 = document.getElementById('file-input-2');
+
+    const btnModeAngle = document.getElementById('btn-mode-angle');
+    const btnModeDist = document.getElementById('btn-mode-dist');
+    const btnModeAcc = document.getElementById('btn-mode-acc');
+    const btnModeScale = document.getElementById('btn-mode-scale');
+    const scaleModalOverlay = document.getElementById('scale-modal-overlay');
+    const scaleInputValue = document.getElementById('scale-input-value');
+
+    let isCompareMode = false;
+    let currentMode = 'angle';
+    let points = [];
+    let scalePoints = [];
+    let pxPerCm = null;
+    let tempDistPx = 0;
+    const FPS = 30.0;
+    let isPlaying = false;
+    let playbackRates = [1.0, 0.5, 0.25];
+    let currentRateIdx = 0;
+
+    // グラフ用履歴データ
+    let historyData = []; // { time, speedKMH, accelG }
+
+    function fitCanvases() {
+        [ {c: canvas1, v: video1}, {c: canvas2, v: video2} ].forEach(item => {
+            item.c.width = item.c.clientWidth;
+            item.c.height = item.c.clientHeight;
+        });
+        redraw();
+    }
+    window.addEventListener('resize', fitCanvases);
+
+    function triggerPickVideo(idx) {
+        if (idx === 1) fileInput1.click();
+        else fileInput2.click();
+    }
+
+    fileInput1.addEventListener('change', e => loadVideoFile(e.target.files[0], video1));
+    fileInput2.addEventListener('change', e => loadVideoFile(e.target.files[0], video2));
+
+    function loadVideoFile(file, vidElem) {
+        if (file) {
+            vidElem.src = URL.createObjectURL(file);
+            vidElem.load();
+        }
+    }
+
+    video1.addEventListener('loadedmetadata', () => {
+        fitCanvases();
+        seekbar.max = video1.duration;
+        seekbar.value = 0;
+        setMode(currentMode);
+    });
+
+    video1.addEventListener('timeupdate', () => {
+        if (!seeking) seekbar.value = video1.currentTime;
+    });
+
+    function toggleCompareMode() {
+        isCompareMode = !isCompareMode;
+        if (isCompareMode) {
+            pane2.style.display = 'flex';
+            btnPick2.style.display = 'inline-block';
+            btnToggleCompare.classList.add('compare-active');
+            btnToggleCompare.innerText = '1画面に戻す';
+        } else {
+            pane2.style.display = 'none';
+            btnPick2.style.display = 'none';
+            btnToggleCompare.classList.remove('compare-active');
+            btnToggleCompare.innerText = '2画面比較';
+        }
+        setTimeout(fitCanvases, 50);
+    }
+
+    // 再生・一時停止同期
+    function togglePlay() {
+        if (!video1.duration) return;
+        isPlaying = !isPlaying;
+        if (isPlaying) {
+            video1.play();
+            if (isCompareMode) video2.play();
+            btnPlay.innerText = '⏸ 停止';
+            btnPlay.style.background = '#ff9500';
+        } else {
+            video1.pause();
+            if (isCompareMode) video2.pause();
+            btnPlay.innerText = '▶ 再生';
+            btnPlay.style.background = '#34c759';
+        }
+    }
+
+    function togglePlaybackRate() {
+        currentRateIdx = (currentRateIdx + 1) % playbackRates.length;
+        const rate = playbackRates[currentRateIdx];
+        video1.playbackRate = rate;
+        video2.playbackRate = rate;
+        btnSpeed.innerText = `${rate}x`;
+    }
+
+    let seeking = false;
+    seekbar.addEventListener('input', () => {
+        seeking = true;
+        video1.currentTime = seekbar.value;
+        if (isCompareMode && video2.duration) video2.currentTime = seekbar.value;
+    });
+    seekbar.addEventListener('change', () => { seeking = false; });
+
+    function stepFrame(dir) {
+        if (video1.duration) {
+            video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + (dir / FPS)));
+            if (isCompareMode && video2.duration) {
+                video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + (dir / FPS)));
+            }
+        }
+    }
+
+    function setMode(mode) {
+        currentMode = mode;
+        points = [];
+        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale].forEach(b => b.classList.remove('mode-active'));
+
+        if (mode === 'angle') {
+            btnModeAngle.classList.add('mode-active');
+            mainResult.innerText = "角度モード: 3点をタップ";
+            subResult.innerHTML = "頂点(2点目)を中心とした角度を測定";
+        } else if (mode === 'distance') {
+            btnModeDist.classList.add('mode-active');
+            mainResult.innerText = "速度モード: 始点→終点をタップ";
+            subResult.innerHTML = "1点目タップ後、コマ送りして2点目をタップ";
+        } else if (mode === 'accel') {
+            btnModeAcc.classList.add('mode-active');
+            mainResult.innerText = "加速度モード: 連続3点をタップ";
+            subResult.innerHTML = "コマ送りしながら 始点 → 中間 → 終点 をタップ";
+        } else if (mode === 'scale') {
+            btnModeScale.classList.add('mode-active');
+            scalePoints = [];
+            mainResult.innerText = "物差し設定: 基準物の両端（2点）をタップ";
+            subResult.innerHTML = "既知の長さ(バットや身長など)の端を2箇所タップ";
+        }
+        redraw();
+    }
+
+    function clearCurrentPoints() {
+        points = [];
+        setMode(currentMode);
+    }
+
+    function formatDistance(px) {
+        if (!pxPerCm) return `${px.toFixed(1)} px`;
+        const cm = px / pxPerCm;
+        if (cm >= 100) return `${(cm / 100).toFixed(2)} m (${cm.toFixed(1)} cm)`;
+        return `${cm.toFixed(1)} cm`;
+    }
+
+    function formatDelta(px) {
+        if (!pxPerCm) return `${px > 0 ? '+' : ''}${px.toFixed(1)}px`;
+        const cm = px / pxPerCm;
+        return `${cm > 0 ? '+' : ''}${cm.toFixed(1)} cm`;
+    }
+
+    canvas1.addEventListener('pointerdown', (e) => handleCanvasTap(e, canvas1, video1));
+    canvas2.addEventListener('pointerdown', (e) => handleCanvasTap(e, canvas2, video2));
+
+    function handleCanvasTap(e, cvs, vid) {
+        const rect = cvs.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const currentTime = vid.currentTime;
+
+        if (currentMode === 'scale') {
+            scalePoints.push({x, y});
+            if (scalePoints.length === 2) {
+                const p1 = scalePoints[0], p2 = scalePoints[1];
+                tempDistPx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                scaleModalOverlay.style.display = 'flex';
+                scaleInputValue.focus();
+                scaleInputValue.select();
+            }
+            redraw();
+            return;
+        }
+
+        const maxPoints = currentMode === 'distance' ? 2 : 3;
+        if (points.length >= maxPoints) points = [];
+        points.push({x, y, time: currentTime});
+
+        if (currentMode === 'angle' && points.length === 3) {
+            const p1 = points[0], p2 = points[1], p3 = points[2];
+            const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
+            const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
+            const dot = v1.x * v2.x + v1.y * v2.y;
+            const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
+
+            if (mag1 * mag2 !== 0) {
+                let cosVal = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
+                let angle = Math.acos(cosVal) * (180 / Math.PI);
+                mainResult.innerText = `関節角度: ${angle.toFixed(1)}°`;
+                subResult.innerHTML = `頂点(2点目)を中心とした角度`;
+            }
+        } else if (currentMode === 'distance' && points.length === 2) {
+            const p1 = points[0], p2 = points[1];
+            const dx = p2.x - p1.x, dy = -(p2.y - p1.y);
+            const dist = Math.hypot(dx, dy);
+            const dt = Math.abs(p2.time - p1.time);
+
+            mainResult.innerText = `移動距離: ${formatDistance(dist)}`;
+            let speedKMH = 0;
+            if (dt > 0 && pxPerCm) {
+                const distM = (dist / pxPerCm) / 100;
+                const speedMS = distM / dt;
+                speedKMH = speedMS * 3.6;
+                subResult.innerHTML = `水平(dX): ${formatDelta(dx)} | 垂直(dY): ${formatDelta(dy)}<br>時間差: ${dt.toFixed(3)}s | <span class="highlight-speed">速度: ${speedMS.toFixed(2)} m/s (${speedKMH.toFixed(1)} km/h)</span>`;
+                historyData.push({ time: p2.time, speedKMH, accelG: null });
+            } else {
+                subResult.innerHTML = `水平(dX): ${formatDelta(dx)} | 垂直(dY): ${formatDelta(dy)}<br>時間差: ${dt.toFixed(3)}s`;
+            }
+        } else if (currentMode === 'accel' && points.length === 3) {
+            const p1 = points[0], p2 = points[1], p3 = points[2];
+            const dt1 = Math.abs(p2.time - p1.time), dt2 = Math.abs(p3.time - p2.time);
+            const dist1 = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+            const dist2 = Math.hypot(p3.x - p2.x, p3.y - p2.y);
+
+            if (dt1 > 0 && dt2 > 0 && pxPerCm) {
+                const dist1M = (dist1 / pxPerCm) / 100, dist2M = (dist2 / pxPerCm) / 100;
+                const v1 = dist1M / dt1, v2 = dist2M / dt2;
+                const dv = v2 - v1;
+                const avgDt = (dt1 + dt2) / 2;
+                const accel = dv / avgDt;
+                const gForce = accel / 9.80665;
+
+                mainResult.innerHTML = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)} m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)} G)</span>`;
+                subResult.innerHTML = `区間①: ${(v1 * 3.6).toFixed(1)} km/h → 区間②: ${(v2 * 3.6).toFixed(1)} km/h<br>速度差: ${(dv * 3.6 > 0 ? '+' : '')}${(dv * 3.6).toFixed(1)} km/h`;
+                historyData.push({ time: p3.time, speedKMH: v2 * 3.6, accelG: gForce });
+            }
+        }
+        redraw();
+    }
+
+    function submitScaleModal() {
+        const realCm = parseFloat(scaleInputValue.value);
+        if (realCm && realCm > 0) {
+            pxPerCm = tempDistPx / realCm;
+            scaleInfoText.innerText = `物差し: ${realCm}cm (${pxPerCm.toFixed(1)}px/cm)`;
+            scaleModalOverlay.style.display = 'none';
+            setMode('distance');
+        } else {
+            alert("有効な数値を入力してください");
+        }
+    }
+    function cancelScaleModal() {
+        scalePoints = [];
+        scaleModalOverlay.style.display = 'none';
+        setMode('scale');
+    }
+
+    function redraw() {
+        [ {c: canvas1, ctx: ctx1}, {c: canvas2, ctx: ctx2} ].forEach(item => {
+            item.ctx.clearRect(0, 0, item.c.width, item.c.height);
+            if (scalePoints.length === 2 && currentMode !== 'scale') {
+                item.ctx.save();
+                item.ctx.strokeStyle = 'rgba(255, 149, 0, 0.4)';
+                item.ctx.lineWidth = 2; item.ctx.setLineDash([4, 4]);
+                item.ctx.beginPath();
+                item.ctx.moveTo(scalePoints[0].x, scalePoints[0].y);
+                item.ctx.lineTo(scalePoints[1].x, scalePoints[1].y);
+                item.ctx.stroke();
+                item.ctx.restore();
+            }
+
+            if (currentMode === 'scale') {
+                item.ctx.strokeStyle = '#ff9500'; item.ctx.fillStyle = '#ff9500'; item.ctx.lineWidth = 3;
+                drawPointList(item.ctx, scalePoints, "基準");
+                return;
+            }
+
+            if (points.length === 0) return;
+            if (currentMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
+            else if (currentMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
+            else if (currentMode === 'accel') item.ctx.strokeStyle = item.ctx.fillStyle = '#ff375f';
+            item.ctx.lineWidth = 3;
+
+            let labels = currentMode === 'distance' ? ["始点", "終点"] : (currentMode === 'accel' ? ["点1", "点2", "点3"] : null);
+            drawPointList(item.ctx, points, labels);
+        });
+    }
+
+    function drawPointList(cContext, ptList, labels) {
+        if (ptList.length === 0) return;
+        cContext.beginPath();
+        for (let i = 0; i < ptList.length; i++) {
+            if (i === 0) cContext.moveTo(ptList[i].x, ptList[i].y);
+            else cContext.lineTo(ptList[i].x, ptList[i].y);
+        }
+        cContext.stroke();
+
+        for (let i = 0; i < ptList.length; i++) {
+            cContext.beginPath();
+            cContext.arc(ptList[i].x, ptList[i].y, 5, 0, Math.PI * 2);
+            cContext.fill();
+            if (labels) {
+                const text = Array.isArray(labels) ? labels[i] : `${labels}${i + 1}`;
+                if (text) {
+                    cContext.fillStyle = '#fff'; cContext.font = 'bold 10px sans-serif';
+                    cContext.fillText(text, ptList[i].x + 7, ptList[i].y - 5);
+                    cContext.fillStyle = cContext.strokeStyle;
+                }
+            }
+        }
+    }
+
+    /* 📸 スクリーンショット合成保存 */
+    function captureSnapshot() {
+        if (!video1.videoWidth) {
+            alert("動画が読み込まれていません");
+            return;
+        }
+        const snapCanvas = document.createElement('canvas');
+        const snapCtx = snapCanvas.getContext('2d');
+        
+        const w = isCompareMode ? canvas1.width * 2 : canvas1.width;
+        const h = canvas1.height;
+        snapCanvas.width = w;
+        snapCanvas.height = h + 60; // 下部に計測データ枠を追加
+
+        // 背景
+        snapCtx.fillStyle = '#000';
+        snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
+
+        // 動画① + 描画
+        snapCtx.drawImage(video1, 0, 0, canvas1.width, h);
+        snapCtx.drawImage(canvas1, 0, 0);
+
+        // 2画面の場合、動画②も合成
+        if (isCompareMode && video2.videoWidth) {
+            snapCtx.drawImage(video2, canvas1.width, 0, canvas1.width, h);
+            snapCtx.drawImage(canvas2, canvas1.width, 0);
+        }
+
+        // 下部データバナー描画
+        snapCtx.fillStyle = '#1c1c1e';
+        snapCtx.fillRect(0, h, snapCanvas.width, 60);
+        snapCtx.fillStyle = '#00ffcc';
+        snapCtx.font = 'bold 15px -apple-system, sans-serif';
+        snapCtx.fillText(mainResult.innerText, 15, h + 24);
+
+        snapCtx.fillStyle = '#ccc';
+        snapCtx.font = '12px -apple-system, sans-serif';
+        const cleanSubText = subResult.innerText.replace(/<[^>]*>?/gm, '');
+        snapCtx.fillText(cleanSubText, 15, h + 46);
+
+        document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png');
+        document.getElementById('snapshot-modal-overlay').style.display = 'flex';
+    }
+    function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
+
+    /* 📊 グラフ描画モーダル */
+    function openGraphModal() {
+        const gCanvas = document.getElementById('graph-canvas');
+        const gCtx = gCanvas.getContext('2d');
+        gCanvas.width = gCanvas.clientWidth;
+        gCanvas.height = gCanvas.clientHeight;
+        gCtx.clearRect(0, 0, gCanvas.width, gCanvas.height);
+
+        if (historyData.length === 0) {
+            gCtx.fillStyle = '#888';
+            gCtx.font = '13px sans-serif';
+            gCtx.textAlign = 'center';
+            gCtx.fillText("測定履歴データがありません", gCanvas.width / 2, gCanvas.height / 2);
+        } else {
+            // 速度推移グラフ描画
+            gCtx.strokeStyle = '#ffcc00';
+            gCtx.lineWidth = 2;
+            gCtx.beginPath();
+            const maxSpeed = Math.max(...historyData.map(d => d.speedKMH || 0), 10);
+            historyData.forEach((d, idx) => {
+                const gx = (idx / Math.max(1, historyData.length - 1)) * (gCanvas.width - 40) + 20;
+                const gy = gCanvas.height - 30 - ((d.speedKMH || 0) / maxSpeed) * (gCanvas.height - 60);
+                if (idx === 0) gCtx.moveTo(gx, gy);
+                else gCtx.lineTo(gx, gy);
+            });
+            gCtx.stroke();
+
+            // データ点プロット
+            historyData.forEach((d, idx) => {
+                const gx = (idx / Math.max(1, historyData.length - 1)) * (gCanvas.width - 40) + 20;
+                const gy = gCanvas.height - 30 - ((d.speedKMH || 0) / maxSpeed) * (gCanvas.height - 60);
+                gCtx.fillStyle = '#ffcc00';
+                gCtx.beginPath();
+                gCtx.arc(gx, gy, 4, 0, Math.PI * 2);
+                gCtx.fill();
+                gCtx.fillStyle = '#fff';
+                gCtx.font = '9px sans-serif';
+                gCtx.fillText(`${(d.speedKMH || 0).toFixed(1)}k`, gx - 10, gy - 8);
+            });
+        }
+
+        document.getElementById('graph-modal-overlay').style.display = 'flex';
+    }
+    function closeGraphModal() { document.getElementById('graph-modal-overlay').style.display = 'none'; }
+</script>
+</body>
+</html>
