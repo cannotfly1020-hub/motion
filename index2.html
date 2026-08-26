@@ -7,9 +7,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="動作分析Pro">
 <title>動作分析 Pro</title>
-<!-- Google MediaPipe (Pose) ライブラリの読み込み -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 <style>
     * {
         box-sizing: border-box;
@@ -144,7 +141,7 @@
     .mode-grid {
         width: 100%;
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(3, 1fr);
         gap: 4px;
     }
     button.ctrl-btn {
@@ -156,7 +153,7 @@
         color: white;
         border: none;
         border-radius: 6px;
-        font-size: 10px;
+        font-size: 11px;
         font-weight: 600;
         cursor: pointer;
         text-align: center;
@@ -167,7 +164,6 @@
     #btn-mode-scale.mode-active { background: #ff9500; color: black; font-weight: bold; }
     #btn-mode-zoom.mode-active { background: #007aff; color: white; font-weight: bold; }
     #btn-mode-perp.mode-active { background: #ff2d55; color: white; font-weight: bold; }
-    #btn-mode-ai.mode-active { background: #bf5af2; color: white; font-weight: bold; }
     
     .playback-row {
         width: 100%;
@@ -255,11 +251,9 @@
         <button class="ctrl-btn mode-active" id="btn-mode-angle" onclick="setMode('angle')">角度(3点)</button>
         <button class="ctrl-btn" id="btn-mode-dist" onclick="setMode('distance')">速度(2点)</button>
         <button class="ctrl-btn" id="btn-mode-acc" onclick="setMode('accel')">加速(3点)</button>
-        <button class="ctrl-btn" id="btn-mode-perp" onclick="setMode('perp')">垂直線</button>
-        <button class="ctrl-btn" id="btn-mode-ai" onclick="setMode('ai')">🤖 AI骨格</button>
+        <button class="ctrl-btn" id="btn-mode-perp" onclick="setMode('perp')">垂直線(2点)</button>
         <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">基準</button>
         <button class="ctrl-btn" id="btn-mode-zoom" onclick="setMode('zoom')">🔍移動</button>
-        <button class="ctrl-btn" id="btn-clear" style="background:#ff3b30;" onclick="clearCurrentPoints()">クリア</button>
     </div>
     
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
@@ -273,11 +267,12 @@
         <input type="range" id="perp-slider" min="0" max="100" step="0.5" value="50">
     </div>
 
-    <div class="playback-row" style="grid-template-columns: 1fr 1.5fr 1fr 1fr;">
-        <button class="ctrl-btn" onclick="stepFrame(-1)">◀ -1コマ</button>
+    <div class="playback-row">
+        <button class="ctrl-btn" onclick="stepFrame(-1)">◀ -1</button>
         <button class="ctrl-btn" id="btn-play" onclick="togglePlay()">▶ 再生</button>
-        <button class="ctrl-btn" onclick="stepFrame(1)">+1コマ ▶</button>
+        <button class="ctrl-btn" onclick="stepFrame(1)">+1 ▶</button>
         <button class="ctrl-btn" id="btn-speed" onclick="togglePlaybackRate()">1.0x</button>
+        <button class="ctrl-btn" id="btn-clear" onclick="clearCurrentPoints()">クリア</button>
     </div>
 </div>
 
@@ -338,7 +333,6 @@
     const btnModeScale = document.getElementById('btn-mode-scale');
     const btnModeZoom = document.getElementById('btn-mode-zoom');
     const btnModePerp = document.getElementById('btn-mode-perp');
-    const btnModeAi = document.getElementById('btn-mode-ai');
     const perpSlider = document.getElementById('perp-slider');
     
     const scaleModalOverlay = document.getElementById('scale-modal-overlay');
@@ -357,6 +351,7 @@
         fpsIdx = (fpsIdx + 1) % fpsList.length;
         currentFPS = fpsList[fpsIdx];
         btnFps.innerText = `${currentFPS}fps`;
+        
         [1, 2].forEach(idx => {
             const s = state[idx];
             if (s.points.length > 0) {
@@ -372,8 +367,8 @@
     let currentRateIdx = 0;
 
     const state = {
-        1: { points: [], scalePoints: [], perpPoints: [], aiLandmarks: null, pxPerCm: null, resultMain: "", resultSub: "" },
-        2: { points: [], scalePoints: [], perpPoints: [], aiLandmarks: null, pxPerCm: null, resultMain: "", resultSub: "" }
+        1: { points: [], scalePoints: [], perpPoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
+        2: { points: [], scalePoints: [], perpPoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
     };
     
     const viewState = {
@@ -386,39 +381,7 @@
     let tempDistPx = 0;
     let historyData = []; 
 
-    // MediaPipe Pose AI の初期化
-    let pose1 = null;
-    let isAILoaded = false;
-
-    function initMediaPipe() {
-        if (typeof Pose === 'undefined') return;
-        pose1 = new Pose({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-        });
-        pose1.setOptions({
-            modelComplexity: 1,
-            smoothLandmarks: true,
-            enableSegmentation: false,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
-        pose1.onResults((results) => {
-            if (results.poseLandmarks) {
-                state[1].aiLandmarks = results.poseLandmarks;
-                redraw();
-            }
-        });
-        isAILoaded = true;
-    }
-    // 少し遅延させて読み込み
-    window.addEventListener('load', () => { setTimeout(initMediaPipe, 1000); });
-
     function calcResults(s, mode, isNewPoint = false, targetIdx = 1) {
-        if (mode === 'ai') {
-            s.resultMain = "🤖 AI骨格トラッキング作動中";
-            s.resultSub = "動画の人物の関節を自動検知して表示します";
-            return;
-        }
         if (mode === 'angle') {
             if (s.points.length === 3) {
                 const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
@@ -446,6 +409,7 @@
                 if (dt > 0 && s.pxPerCm) {
                     const speedKMH = ((dist / s.pxPerCm) / 100) / dt * 3.6;
                     s.resultSub = `速度: <span class="highlight-speed">${speedKMH.toFixed(1)}km/h</span> (${currentFPS}fps)`;
+                    if (isNewPoint) historyData.push({ target: targetIdx, time: p2.time, speedKMH, accelG: null });
                 }
             } else {
                 s.resultMain = s.points.length === 0 ? "速度モード: 始点→終点をタップ" : "始点を記録";
@@ -464,6 +428,7 @@
                     const gForce = accel / 9.80665;
                     s.resultMain = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)}m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)}G)</span>`;
                     s.resultSub = `①:${(v1 * 3.6).toFixed(1)}k → ②:${(v2 * 3.6).toFixed(1)}k (${currentFPS}fps)`;
+                    if (isNewPoint) historyData.push({ target: targetIdx, time: p3.time, speedKMH: v2 * 3.6, accelG: gForce });
                 }
             } else {
                 s.resultMain = s.points.length === 0 ? "加速度モード: 連続3点をタップ" : `点 ${s.points.length}/3`;
@@ -531,25 +496,7 @@
         seekbar2.value = 0;
     });
 
-    // AIへ動画のフレームを送り込むループ
-    async function sendFrameToAI() {
-        if (currentMode === 'ai' && isAILoaded && pose1 && !video1.paused && !video1.ended) {
-            try {
-                await pose1.send({image: video1});
-            } catch (err) {}
-        }
-        if (isPlaying) {
-            requestAnimationFrame(sendFrameToAI);
-        }
-    }
-
-    video1.addEventListener('timeupdate', () => { 
-        if (!seeking1) seekbar1.value = video1.currentTime;
-        if (currentMode === 'ai' && isAILoaded && pose1 && video1.paused) {
-            pose1.send({image: video1}).catch(()=>{});
-        }
-    });
-
+    video1.addEventListener('timeupdate', () => { if (!seeking1) seekbar1.value = video1.currentTime; });
     video2.addEventListener('timeupdate', () => { if (!seeking2) seekbar2.value = video2.currentTime; });
 
     function toggleCompareMode() {
@@ -607,7 +554,6 @@
                 if (video1.duration) playPromises.push(video1.play());
                 if (compareMode > 0 && video2.duration) playPromises.push(video2.play());
                 await Promise.all(playPromises);
-                if (currentMode === 'ai') sendFrameToAI();
             } catch (err) {}
             btnPlay.innerText = '⏸ 停止';
             btnPlay.style.background = '#ff9500';
@@ -639,15 +585,12 @@
         const stepSec = dir / currentFPS;
         if (video1.duration) video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
         if (compareMode > 0 && video2.duration) video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
-        if (currentMode === 'ai' && isAILoaded && pose1) {
-            setTimeout(() => pose1.send({image: video1}).catch(()=>{}), 50);
-        }
     }
 
     function updateDisplayResult() {
         if (currentMode === 'zoom') return; 
         if (compareMode === 0) {
-            mainResult.innerHTML = state[1].resultMain || "動画を選択して測定・AI分析を開始";
+            mainResult.innerHTML = state[1].resultMain || "測定したい点をタップしてください";
             subResult.innerHTML = state[1].resultSub || "";
         } else {
             const r1 = state[1].resultMain ? `① ${state[1].resultMain}` : "① 未測定";
@@ -679,7 +622,7 @@
             currentMode = mode; 
         }
         
-        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModeZoom, btnModePerp, btnModeAi].forEach(b => b.classList.remove('mode-active'));
+        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModeZoom, btnModePerp].forEach(b => b.classList.remove('mode-active'));
 
         document.getElementById('zoom-controls').style.display = (mode === 'zoom') ? 'flex' : 'none';
         const showPerp = (mode === 'perp' || state[1].perpPoints.length === 2 || state[2].perpPoints.length === 2);
@@ -695,10 +638,6 @@
             else if (mode === 'accel') btnModeAcc.classList.add('mode-active');
             else if (mode === 'scale') btnModeScale.classList.add('mode-active');
             else if (mode === 'perp') btnModePerp.classList.add('mode-active');
-            else if (mode === 'ai') {
-                btnModeAi.classList.add('mode-active');
-                if (isAILoaded && pose1) pose1.send({image: video1}).catch(()=>{});
-            }
         }
         
         if (mode === 'scale') {
@@ -707,6 +646,8 @@
             updateScaleInfoText();
             state[1].resultMain = "物差し設定: 基準物の両端（2点）をタップ";
             state[1].resultSub = "長さを設定したい画面で2箇所タップ";
+            state[2].resultMain = "";
+            state[2].resultSub = "";
         } else if (mode !== 'zoom') {
             [1, 2].forEach(idx => calcResults(state[idx], mode, false, idx));
         }
@@ -721,8 +662,6 @@
             state[2].perpPoints = [];
             perpSlider.value = 50;
             document.getElementById('perp-controls').style.display = 'none';
-        } else if (currentMode === 'ai') {
-            state[1].aiLandmarks = null;
         } else {
             state[1].points = [];
             state[2].points = [];
@@ -737,11 +676,6 @@
         const cm = px / pxPerCm;
         if (cm >= 100) return `${(cm / 100).toFixed(2)} m (${cm.toFixed(1)} cm)`;
         return `${cm.toFixed(1)} cm`;
-    }
-    function formatDelta(px, pxPerCm) {
-        if (!pxPerCm) return `${px > 0 ? '+' : ''}${px.toFixed(1)}px`;
-        const cm = px / pxPerCm;
-        return `${cm > 0 ? '+' : ''}${cm.toFixed(1)} cm`;
     }
 
     let isTouchPanning = false;
@@ -839,8 +773,6 @@
             return;
         }
 
-        if (currentMode === 'ai') return; // AIモード時はタップ不要
-
         const maxPoints = (currentMode === 'distance') ? 2 : 3;
         if (s.points.length >= maxPoints) s.points = [];
         s.points.push({x, y, time: currentTime, frame: currentFrame});
@@ -867,19 +799,11 @@
         setMode('scale');
     }
 
-    // AI骨格の骨の接続定義（MediaPipe Pose用）
-    const POSE_CONNECTIONS = [
-        [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], // 腕
-        [11, 23], [12, 24], [23, 24], // 胴体
-        [23, 25], [25, 27], [24, 26], [26, 28] // 脚
-    ];
-
     function redraw() {
         [ {idx: 1, c: canvas1, ctx: ctx1}, {idx: 2, c: canvas2, ctx: ctx2} ].forEach(item => {
             const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
-            // 1. 物差し
             if (s.scalePoints.length === 2 && currentMode !== 'scale') {
                 item.ctx.save();
                 item.ctx.strokeStyle = 'rgba(255, 149, 0, 0.4)';
@@ -897,37 +821,6 @@
                 return;
             }
 
-            // 2. AI骨格トラッキングの描画
-            if (currentMode === 'ai' && s.aiLandmarks) {
-                const lm = s.aiLandmarks;
-                const w = item.c.width;
-                const h = item.c.height;
-
-                // 骨（ライン）の描画
-                item.ctx.strokeStyle = '#30d158'; // ネオン緑
-                item.ctx.lineWidth = 3;
-                POSE_CONNECTIONS.forEach(([i, j]) => {
-                    const p1 = lm[i], p2 = lm[j];
-                    if (p1 && p2 && p1.visibility > 0.5 && p2.visibility > 0.5) {
-                        item.ctx.beginPath();
-                        item.ctx.moveTo(p1.x * w, p1.y * h);
-                        item.ctx.lineTo(p2.x * w, p2.y * h);
-                        item.ctx.stroke();
-                    }
-                });
-
-                // 関節（丸ポチ）の描画
-                item.ctx.fillStyle = '#00ffcc';
-                lm.forEach(p => {
-                    if (p && p.visibility > 0.5) {
-                        item.ctx.beginPath();
-                        item.ctx.arc(p.x * w, p.y * h, 4, 0, Math.PI * 2);
-                        item.ctx.fill();
-                    }
-                });
-            }
-
-            // 3. 垂直線の描画
             if (s.perpPoints.length > 0) {
                 if (s.perpPoints.length === 1) {
                     item.ctx.fillStyle = '#ff2d55';
@@ -951,6 +844,7 @@
                     const t = perpSlider.value / 100;
                     const pmX = p1.x + (p2.x - p1.x) * t;
                     const pmY = p1.y + (p2.y - p1.y) * t;
+                    
                     const dx = p2.x - p1.x;
                     const dy = p2.y - p1.y;
                     const len = Math.hypot(dx, dy);
@@ -959,6 +853,7 @@
                         const nx = -dy / len;
                         const ny = dx / len;
                         const perpLen = 2000;
+                        
                         item.ctx.strokeStyle = '#ff2d55';
                         item.ctx.lineWidth = 2;
                         item.ctx.setLineDash([4, 4]);
@@ -971,12 +866,12 @@
                 }
             }
 
-            // 4. 通常の測定ポイント
             if (s.points.length > 0) {
                 if (lastMeasureMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
                 else if (lastMeasureMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
                 else if (lastMeasureMode === 'accel') item.ctx.strokeStyle = item.ctx.fillStyle = '#ff375f';
                 item.ctx.lineWidth = 3;
+
                 let labels = lastMeasureMode === 'distance' ? ["始点", "終点"] : (lastMeasureMode === 'accel' ? ["点1", "点2", "点3"] : null);
                 drawPointList(item.ctx, s.points, labels);
             }
@@ -1052,7 +947,7 @@
         document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png');
         document.getElementById('snapshot-modal-overlay').style.display = 'flex';
     }
-    function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay'].style.display = 'none'; }
+    function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
 </script>
 </body>
 </html>
