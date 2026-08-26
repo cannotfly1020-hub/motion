@@ -86,6 +86,7 @@
     .highlight-acc { color: #ff375f; font-weight: bold; }
     .highlight-speed { color: #ffcc00; font-weight: bold; }
     .highlight-sim { color: #30d158; font-weight: bold; }
+    .highlight-cog { color: #5e5ce6; font-weight: bold; }
 
     #stage {
         width: 100%;
@@ -167,6 +168,7 @@
     #btn-mode-zoom.mode-active { background: #007aff; color: white; font-weight: bold; }
     #btn-mode-perp.mode-active { background: #ff2d55; color: white; font-weight: bold; }
     #btn-mode-sim.mode-active { background: #30d158; color: black; font-weight: bold; }
+    #btn-mode-cog.mode-active { background: #5e5ce6; color: white; font-weight: bold; }
     
     .playback-row {
         width: 100%;
@@ -256,9 +258,9 @@
         <button class="ctrl-btn" id="btn-mode-acc" onclick="setMode('accel')">加速(3点)</button>
         <button class="ctrl-btn" id="btn-mode-perp" onclick="setMode('perp')">垂直線</button>
         <button class="ctrl-btn" id="btn-mode-sim" onclick="setMode('sim')">🎯 予測(+10°)</button>
+        <button class="ctrl-btn" id="btn-mode-cog" onclick="setMode('cog')">📍 重心移動</button>
         <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">基準</button>
         <button class="ctrl-btn" id="btn-mode-zoom" onclick="setMode('zoom')">🔍移動</button>
-        <button class="ctrl-btn" id="btn-clear" onclick="clearCurrentPoints()">クリア</button>
     </div>
     
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
@@ -282,6 +284,7 @@
         <button class="ctrl-btn" id="btn-play" onclick="togglePlay()">▶ 再生</button>
         <button class="ctrl-btn" onclick="stepFrame(1)">+1 ▶</button>
         <button class="ctrl-btn" id="btn-speed" onclick="togglePlaybackRate()">1.0x</button>
+        <button class="ctrl-btn" id="btn-clear" onclick="clearCurrentPoints()">クリア</button>
     </div>
 </div>
 
@@ -343,6 +346,7 @@
     const btnModeZoom = document.getElementById('btn-mode-zoom');
     const btnModePerp = document.getElementById('btn-mode-perp');
     const btnModeSim = document.getElementById('btn-mode-sim');
+    const btnModeCog = document.getElementById('btn-mode-cog');
     const perpSlider = document.getElementById('perp-slider');
     const simSlider = document.getElementById('sim-slider');
     const simDegVal = document.getElementById('sim-deg-val');
@@ -379,8 +383,8 @@
     let currentRateIdx = 0;
 
     const state = {
-        1: { points: [], scalePoints: [], perpPoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
-        2: { points: [], scalePoints: [], perpPoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
+        1: { points: [], scalePoints: [], perpPoints: [], cogBase: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
+        2: { points: [], scalePoints: [], perpPoints: [], cogBase: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
     };
     
     const viewState = {
@@ -393,7 +397,6 @@
     let tempDistPx = 0;
     let historyData = []; 
 
-    // 順運動学（FK）による関節回転計算
     function simulateJointAngle(p2, p3, deltaDeg) {
         const rad = deltaDeg * (Math.PI / 180);
         const dx = p3.x - p2.x;
@@ -446,6 +449,47 @@
             } else {
                 s.resultMain = s.points.length === 0 ? "予測モード: 根元→関節中心→先端をタップ" : `点 ${s.points.length}/3`;
                 s.resultSub = "3点打つと、下のスライダーで角度改善シミュレーションが動きます";
+            }
+        } else if (mode === 'cog') {
+            if (s.cogBase.length < 2) {
+                s.resultMain = s.cogBase.length === 0 ? "📍 基準線設定: 基準となる2点をタップ" : "基準線の2点目をタップ";
+                s.resultSub = "地面や足元など、測定の基準となる直線（2点）を指定してください";
+            } else if (s.cogPoints.length === 0) {
+                s.resultMain = "基準線設定完了: 重心・頭の点をタップ";
+                s.resultSub = "コマ送りしながら、追跡したい重心の点を何個でもタップできます";
+            } else {
+                const b1 = s.cogBase[0], b2 = s.cogBase[1];
+                const lastPt = s.cogPoints[s.cogPoints.length - 1];
+                
+                // 基準線ベクトルと直交ベクトルによる分解
+                const bx = b2.x - b1.x, by = b2.y - b1.y;
+                const bLen = Math.hypot(bx, by);
+                const ux = bx / bLen, uy = by / bLen;
+                const nx = -uy, ny = ux; // 基準線に対する垂直上向き方向
+
+                const px = lastPt.x - b1.x, py = lastPt.y - b1.y;
+                const parallelDist = px * ux + py * uy; // 基準線に沿った方向（左右）
+                const perpDist = -(px * nx + py * ny); // 基準線に対する垂直方向（上下・画面上向きを正とする）
+
+                // 全重心点の最大移動幅（レンジ）の計算
+                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                s.cogPoints.forEach(p => {
+                    const vx = p.x - b1.x, vy = p.y - b1.y;
+                    const par = vx * ux + vy * uy;
+                    const per = -(vx * nx + vy * ny);
+                    if (par < minX) minX = par; if (par > maxX) maxX = par;
+                    if (per < minY) minY = per; if (per > maxY) maxY = per;
+                });
+                const rangeX = maxX - minX;
+                const rangeY = maxY - minY;
+
+                const curXStr = formatDelta(parallelDist, s.pxPerCm);
+                const curYStr = formatDelta(perpDist, s.pxPerCm);
+                const spanXStr = formatDistance(rangeX, s.pxPerCm);
+                const spanYStr = formatDistance(rangeY, s.pxPerCm);
+
+                s.resultMain = `<span class="highlight-cog">重心変位 [点${s.cogPoints.length}]: 左右 ${curXStr} ｜ 上下 ${curYStr}</span>`;
+                s.resultSub = `最大移動幅: 左右ブレ ${spanXStr} ｜ 上下ブレ ${spanYStr}`;
             }
         } else if (mode === 'distance') {
             if (s.points.length === 2) {
@@ -665,7 +709,7 @@
     }
 
     function setMode(mode) {
-        const mainModes = ['angle', 'distance', 'accel', 'sim'];
+        const mainModes = ['angle', 'distance', 'accel', 'sim', 'cog'];
         if (mainModes.includes(mode) && mode !== lastMeasureMode) {
             state[1].points = [];
             state[2].points = [];
@@ -678,7 +722,7 @@
             currentMode = mode; 
         }
         
-        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModeZoom, btnModePerp, btnModeSim].forEach(b => b.classList.remove('mode-active'));
+        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModeZoom, btnModePerp, btnModeSim, btnModeCog].forEach(b => b.classList.remove('mode-active'));
 
         document.getElementById('zoom-controls').style.display = (mode === 'zoom') ? 'flex' : 'none';
         const showPerp = (mode === 'perp' || state[1].perpPoints.length === 2 || state[2].perpPoints.length === 2);
@@ -698,6 +742,7 @@
             else if (mode === 'scale') btnModeScale.classList.add('mode-active');
             else if (mode === 'perp') btnModePerp.classList.add('mode-active');
             else if (mode === 'sim') btnModeSim.classList.add('mode-active');
+            else if (mode === 'cog') btnModeCog.classList.add('mode-active');
         }
         
         if (mode === 'scale') {
@@ -722,6 +767,11 @@
             state[2].perpPoints = [];
             perpSlider.value = 50;
             document.getElementById('perp-controls').style.display = 'none';
+        } else if (currentMode === 'cog') {
+            state[1].cogBase = [];
+            state[1].cogPoints = [];
+            state[2].cogBase = [];
+            state[2].cogPoints = [];
         } else {
             state[1].points = [];
             state[2].points = [];
@@ -736,6 +786,11 @@
         const cm = px / pxPerCm;
         if (cm >= 100) return `${(cm / 100).toFixed(2)} m (${cm.toFixed(1)} cm)`;
         return `${cm.toFixed(1)} cm`;
+    }
+    function formatDelta(px, pxPerCm) {
+        if (!pxPerCm) return `${px > 0 ? '+' : ''}${px.toFixed(1)}px`;
+        const cm = px / pxPerCm;
+        return `${cm > 0 ? '+' : ''}${cm.toFixed(1)} cm`;
     }
 
     let isTouchPanning = false;
@@ -833,6 +888,19 @@
             return;
         }
 
+        if (currentMode === 'cog') {
+            if (s.cogBase.length < 2) {
+                s.cogBase.push({x, y});
+            } else {
+                // 重心の点は何個でも追加可能
+                s.cogPoints.push({x, y, time: currentTime, frame: currentFrame});
+            }
+            calcResults(s, currentMode, true, targetIdx);
+            updateDisplayResult();
+            redraw();
+            return;
+        }
+
         const maxPoints = (currentMode === 'distance') ? 2 : 3;
         if (s.points.length >= maxPoints) s.points = [];
         s.points.push({x, y, time: currentTime, frame: currentFrame});
@@ -864,7 +932,7 @@
             const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
-            // 物差し描画
+            // 1. 物差し
             if (s.scalePoints.length === 2 && currentMode !== 'scale') {
                 item.ctx.save();
                 item.ctx.strokeStyle = 'rgba(255, 149, 0, 0.4)';
@@ -882,7 +950,7 @@
                 return;
             }
 
-            // 垂直線描画
+            // 2. 垂直線
             if (s.perpPoints.length > 0) {
                 if (s.perpPoints.length === 1) {
                     item.ctx.fillStyle = '#ff2d55';
@@ -926,8 +994,70 @@
                 }
             }
 
-            // 通常の測定ポイント / 予測シミュレーションの描画
-            if (s.points.length > 0) {
+            // 3. 📍 重心移動（基準線 + 重心点トレイル）
+            if (lastMeasureMode === 'cog') {
+                if (s.cogBase.length > 0) {
+                    item.ctx.save();
+                    item.ctx.strokeStyle = '#5e5ce6';
+                    item.ctx.fillStyle = '#5e5ce6';
+                    item.ctx.lineWidth = 3;
+
+                    // 基準線の描画
+                    if (s.cogBase.length === 1) {
+                        item.ctx.beginPath();
+                        item.ctx.arc(s.cogBase[0].x, s.cogBase[0].y, 6, 0, Math.PI * 2);
+                        item.ctx.fill();
+                    } else if (s.cogBase.length === 2) {
+                        const b1 = s.cogBase[0], b2 = s.cogBase[1];
+                        item.ctx.beginPath();
+                        item.ctx.moveTo(b1.x, b1.y);
+                        item.ctx.lineTo(b2.x, b2.y);
+                        item.ctx.stroke();
+
+                        // 基準線の両端点
+                        item.ctx.beginPath();
+                        item.ctx.arc(b1.x, b1.y, 6, 0, Math.PI * 2);
+                        item.ctx.arc(b2.x, b2.y, 6, 0, Math.PI * 2);
+                        item.ctx.fill();
+
+                        item.ctx.fillStyle = '#fff';
+                        item.ctx.font = 'bold 10px sans-serif';
+                        item.ctx.fillText("基準始点", b1.x + 8, b1.y - 4);
+                        item.ctx.fillText("基準終点", b2.x + 8, b2.y - 4);
+                    }
+                    item.ctx.restore();
+                }
+
+                // 重心点の描画（軌跡・グラデーション風）
+                if (s.cogPoints.length > 0) {
+                    item.ctx.save();
+                    item.ctx.strokeStyle = 'rgba(255, 204, 0, 0.6)';
+                    item.ctx.lineWidth = 2;
+                    item.ctx.beginPath();
+                    for (let i = 0; i < s.cogPoints.length; i++) {
+                        if (i === 0) item.ctx.moveTo(s.cogPoints[i].x, s.cogPoints[i].y);
+                        else item.ctx.lineTo(s.cogPoints[i].x, s.cogPoints[i].y);
+                    }
+                    item.ctx.stroke();
+
+                    // 各ポイントの丸ポチとラベル
+                    s.cogPoints.forEach((pt, i) => {
+                        const isLatest = (i === s.cogPoints.length - 1);
+                        item.ctx.fillStyle = isLatest ? '#ff375f' : '#ffcc00';
+                        item.ctx.beginPath();
+                        item.ctx.arc(pt.x, pt.y, isLatest ? 6 : 4, 0, Math.PI * 2);
+                        item.ctx.fill();
+
+                        item.ctx.fillStyle = '#fff';
+                        item.ctx.font = isLatest ? 'bold 11px sans-serif' : '9px sans-serif';
+                        item.ctx.fillText(`${i + 1}`, pt.x + 6, pt.y - 4);
+                    });
+                    item.ctx.restore();
+                }
+            }
+
+            // 4. 通常の測定ポイント / 予測シミュレーション
+            if (s.points.length > 0 && lastMeasureMode !== 'cog') {
                 if (lastMeasureMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
                 else if (lastMeasureMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
                 else if (lastMeasureMode === 'accel') item.ctx.strokeStyle = item.ctx.fillStyle = '#ff375f';
@@ -937,7 +1067,7 @@
                 let labels = lastMeasureMode === 'distance' ? ["始点", "終点"] : (lastMeasureMode === 'accel' ? ["点1", "点2", "点3"] : (lastMeasureMode === 'sim' ? ["根元", "関節", "先端"] : null));
                 drawPointList(item.ctx, s.points, labels);
 
-                // 🎯 予測モード時のシミュレーション線（緑破線）
+                // 🎯 予測モード時のシミュレーション線
                 if (lastMeasureMode === 'sim' && s.points.length === 3) {
                     const p2 = s.points[1];
                     const p3 = s.points[2];
@@ -950,19 +1080,16 @@
                     item.ctx.lineWidth = 3;
                     item.ctx.setLineDash([5, 4]);
 
-                    // シミュレーション骨格線
                     item.ctx.beginPath();
                     item.ctx.moveTo(p2.x, p2.y);
                     item.ctx.lineTo(simP3.x, simP3.y);
                     item.ctx.stroke();
                     item.ctx.setLineDash([]);
 
-                    // シミュレーション先端点
                     item.ctx.beginPath();
                     item.ctx.arc(simP3.x, simP3.y, 6, 0, Math.PI * 2);
                     item.ctx.fill();
 
-                    // ラベル表示
                     item.ctx.fillStyle = '#30d158';
                     item.ctx.font = 'bold 11px sans-serif';
                     item.ctx.fillText(`予測(${deltaDeg > 0 ? '+' : ''}${deltaDeg}°)`, simP3.x + 8, simP3.y - 4);
