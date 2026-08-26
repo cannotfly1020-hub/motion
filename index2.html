@@ -149,7 +149,7 @@
         font-size: 10px;
         font-weight: bold;
         color: #007aff;
-        width: 22px;
+        width: 16px;
         flex-shrink: 0;
     }
     .seek-label.v2 { color: #af52de; }
@@ -298,7 +298,7 @@
 <!-- 物差し設定モーダル -->
 <div id="scale-modal-overlay" class="modal-overlay">
     <div class="modal-card">
-        <h3>基準物の長さ設定</h3>
+        <h3 id="scale-modal-title">基準物の長さ設定 (動画①)</h3>
         <p>指定した2点間の実際の長さを入力</p>
         <div class="modal-input-row">
             <input type="number" id="scale-input-value" inputmode="decimal" placeholder="100" value="100">
@@ -363,23 +363,25 @@
     const btnModeAcc = document.getElementById('btn-mode-acc');
     const btnModeScale = document.getElementById('btn-mode-scale');
     const scaleModalOverlay = document.getElementById('scale-modal-overlay');
+    const scaleModalTitle = document.getElementById('scale-modal-title');
     const scaleInputValue = document.getElementById('scale-input-value');
 
     let isCompareMode = false;
     let currentMode = 'angle';
-    let points = [];
-    let scalePoints = [];
-    let pxPerCm = null;
-    let tempDistPx = 0;
     const FPS = 30.0;
     let isPlaying = false;
     let playbackRates = [1.0, 0.5, 0.25];
     let currentRateIdx = 0;
 
-    let historyData = [];
+    // ①と②の独立した状態管理
+    const state = {
+        1: { points: [], scalePoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
+        2: { points: [], scalePoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
+    };
 
-    // 2動画の再生同期用（時間差）
-    let timeOffset = 0; 
+    let historyData = [];
+    let scaleTarget = 1;
+    let tempDistPx = 0;
 
     function fitCanvases() {
         [ {c: canvas1, v: video1}, {c: canvas2, v: video2} ].forEach(item => {
@@ -443,10 +445,11 @@
             btnToggleCompare.innerText = '2画面';
             if (video2) video2.pause();
         }
+        updateScaleInfoText();
+        updateDisplayResult();
         setTimeout(fitCanvases, 50);
     }
 
-    // 同時再生・一時停止（iOS対応 & オフセット維持）
     async function togglePlay() {
         if (!video1.duration && !video2.duration) return;
         
@@ -454,8 +457,6 @@
         if (isPlaying) {
             video1.muted = true;
             video2.muted = true;
-            timeOffset = video2.currentTime - video1.currentTime; // 現在のズレ幅を記録
-            
             try {
                 const playPromises = [];
                 if (video1.duration) playPromises.push(video1.play());
@@ -482,7 +483,6 @@
         btnSpeed.innerText = `${rate}x`;
     }
 
-    // シークバー①（個別調整）
     let seeking1 = false;
     seekbar1.addEventListener('input', () => {
         seeking1 = true;
@@ -490,7 +490,6 @@
     });
     seekbar1.addEventListener('change', () => { seeking1 = false; });
 
-    // シークバー②（個別調整）
     let seeking2 = false;
     seekbar2.addEventListener('input', () => {
         seeking2 = true;
@@ -498,7 +497,6 @@
     });
     seekbar2.addEventListener('change', () => { seeking2 = false; });
 
-    // 同期コマ送り（現在のタイミング差を保ったまま1コマずつ送る）
     function stepFrame(dir) {
         const stepSec = dir / FPS;
         if (video1.duration) {
@@ -509,64 +507,107 @@
         }
     }
 
+    function updateDisplayResult() {
+        if (!isCompareMode) {
+            mainResult.innerHTML = state[1].resultMain || "動画①を選択してください";
+            subResult.innerHTML = state[1].resultSub || "";
+        } else {
+            const r1 = state[1].resultMain ? `① ${state[1].resultMain}` : "① 未測定";
+            const r2 = state[2].resultMain ? `② ${state[2].resultMain}` : "② 未測定";
+            mainResult.innerHTML = `${r1} ｜ ${r2}`;
+            
+            const sub1 = state[1].resultSub ? `①: ${state[1].resultSub}` : "";
+            const sub2 = state[2].resultSub ? `②: ${state[2].resultSub}` : "";
+            subResult.innerHTML = [sub1, sub2].filter(Boolean).join("<br>");
+        }
+    }
+
+    function updateScaleInfoText() {
+        const s1 = state[1].pxPerCm ? `①${(state[1].pxPerCm).toFixed(1)}px/cm` : "①未設定";
+        const s2 = state[2].pxPerCm ? `②${(state[2].pxPerCm).toFixed(1)}px/cm` : "②未設定";
+        scaleInfoText.innerText = isCompareMode ? `物差し: ${s1} | ${s2}` : `物差し: ${s1}`;
+    }
+
     function setMode(mode) {
         currentMode = mode;
-        points = [];
+        state[1].points = [];
+        state[2].points = [];
+        state[1].resultMain = "";
+        state[2].resultMain = "";
+        state[1].resultSub = "";
+        state[2].resultSub = "";
+        
+        if (mode === 'scale') {
+            state[1].scalePoints = [];
+            state[2].scalePoints = [];
+            updateScaleInfoText();
+        }
+
         [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale].forEach(b => b.classList.remove('mode-active'));
 
         if (mode === 'angle') {
             btnModeAngle.classList.add('mode-active');
-            mainResult.innerText = "角度モード: 3点をタップ";
-            subResult.innerHTML = "頂点(2点目)を中心とした角度を測定";
+            state[1].resultMain = "角度モード: 3点をタップ";
+            state[1].resultSub = "頂点(2点目)を中心とした角度を測定";
         } else if (mode === 'distance') {
             btnModeDist.classList.add('mode-active');
-            mainResult.innerText = "速度モード: 始点→終点をタップ";
-            subResult.innerHTML = "1点目タップ後、コマ送りして2点目をタップ";
+            state[1].resultMain = "速度モード: 始点→終点をタップ";
+            state[1].resultSub = "1点目タップ後、コマ送りして2点目をタップ";
         } else if (mode === 'accel') {
             btnModeAcc.classList.add('mode-active');
-            mainResult.innerText = "加速度モード: 連続3点をタップ";
-            subResult.innerHTML = "コマ送りしながら 始点 → 中間 → 終点 をタップ";
+            state[1].resultMain = "加速度モード: 連続3点をタップ";
+            state[1].resultSub = "コマ送りしながら 始点 → 中間 → 終点 をタップ";
         } else if (mode === 'scale') {
             btnModeScale.classList.add('mode-active');
-            scalePoints = [];
-            mainResult.innerText = "物差し設定: 基準物の両端（2点）をタップ";
-            subResult.innerHTML = "既知の長さ(バットや身長など)の端を2箇所タップ";
+            state[1].resultMain = "物差し設定: 基準物の両端（2点）をタップ";
+            state[1].resultSub = "長さを設定したい画面で2箇所タップ";
         }
+        
+        updateDisplayResult();
         redraw();
     }
 
     function clearCurrentPoints() {
-        points = [];
-        setMode(currentMode);
+        state[1].points = [];
+        state[2].points = [];
+        state[1].resultMain = "";
+        state[2].resultMain = "";
+        state[1].resultSub = "";
+        state[2].resultSub = "";
+        updateDisplayResult();
+        redraw();
     }
 
-    function formatDistance(px) {
+    function formatDistance(px, pxPerCm) {
         if (!pxPerCm) return `${px.toFixed(1)} px`;
         const cm = px / pxPerCm;
         if (cm >= 100) return `${(cm / 100).toFixed(2)} m (${cm.toFixed(1)} cm)`;
         return `${cm.toFixed(1)} cm`;
     }
 
-    function formatDelta(px) {
+    function formatDelta(px, pxPerCm) {
         if (!pxPerCm) return `${px > 0 ? '+' : ''}${px.toFixed(1)}px`;
         const cm = px / pxPerCm;
         return `${cm > 0 ? '+' : ''}${cm.toFixed(1)} cm`;
     }
 
-    canvas1.addEventListener('pointerdown', (e) => handleCanvasTap(e, canvas1, video1));
-    canvas2.addEventListener('pointerdown', (e) => handleCanvasTap(e, canvas2, video2));
+    canvas1.addEventListener('pointerdown', (e) => handleCanvasTap(e, canvas1, video1, 1));
+    canvas2.addEventListener('pointerdown', (e) => handleCanvasTap(e, canvas2, video2, 2));
 
-    function handleCanvasTap(e, cvs, vid) {
+    function handleCanvasTap(e, cvs, vid, targetIdx) {
+        const s = state[targetIdx];
         const rect = cvs.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         const currentTime = vid.currentTime;
 
         if (currentMode === 'scale') {
-            scalePoints.push({x, y});
-            if (scalePoints.length === 2) {
-                const p1 = scalePoints[0], p2 = scalePoints[1];
+            s.scalePoints.push({x, y});
+            if (s.scalePoints.length === 2) {
+                const p1 = s.scalePoints[0], p2 = s.scalePoints[1];
                 tempDistPx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                scaleTarget = targetIdx;
+                scaleModalTitle.innerText = `基準物の長さ設定 (動画${targetIdx === 1 ? '①' : '②'})`;
                 scaleModalOverlay.style.display = 'flex';
                 scaleInputValue.focus();
                 scaleInputValue.select();
@@ -576,66 +617,85 @@
         }
 
         const maxPoints = currentMode === 'distance' ? 2 : 3;
-        if (points.length >= maxPoints) points = [];
-        points.push({x, y, time: currentTime});
+        if (s.points.length >= maxPoints) s.points = [];
+        s.points.push({x, y, time: currentTime});
 
-        if (currentMode === 'angle' && points.length === 3) {
-            const p1 = points[0], p2 = points[1], p3 = points[2];
-            const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
-            const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
-            const dot = v1.x * v2.x + v1.y * v2.y;
-            const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
+        if (currentMode === 'angle') {
+            if (s.points.length === 3) {
+                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
+                const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
+                const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
+                const dot = v1.x * v2.x + v1.y * v2.y;
+                const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
 
-            if (mag1 * mag2 !== 0) {
-                let cosVal = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
-                let angle = Math.acos(cosVal) * (180 / Math.PI);
-                mainResult.innerText = `関節角度: ${angle.toFixed(1)}°`;
-                subResult.innerHTML = `頂点(2点目)を中心とした角度`;
-            }
-        } else if (currentMode === 'distance' && points.length === 2) {
-            const p1 = points[0], p2 = points[1];
-            const dx = p2.x - p1.x, dy = -(p2.y - p1.y);
-            const dist = Math.hypot(dx, dy);
-            const dt = Math.abs(p2.time - p1.time);
-
-            mainResult.innerText = `移動距離: ${formatDistance(dist)}`;
-            let speedKMH = 0;
-            if (dt > 0 && pxPerCm) {
-                const distM = (dist / pxPerCm) / 100;
-                const speedMS = distM / dt;
-                speedKMH = speedMS * 3.6;
-                subResult.innerHTML = `水平(dX): ${formatDelta(dx)} | 垂直(dY): ${formatDelta(dy)}<br>時間差: ${dt.toFixed(3)}s | <span class="highlight-speed">速度: ${speedMS.toFixed(2)} m/s (${speedKMH.toFixed(1)} km/h)</span>`;
-                historyData.push({ time: p2.time, speedKMH, accelG: null });
+                if (mag1 * mag2 !== 0) {
+                    let cosVal = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
+                    let angle = Math.acos(cosVal) * (180 / Math.PI);
+                    s.resultMain = `関節角度: ${angle.toFixed(1)}°`;
+                    s.resultSub = `頂点(2点目)を中心とした角度`;
+                }
             } else {
-                subResult.innerHTML = `水平(dX): ${formatDelta(dx)} | 垂直(dY): ${formatDelta(dy)}<br>時間差: ${dt.toFixed(3)}s`;
+                s.resultMain = `点 ${s.points.length}/3`;
+                s.resultSub = s.points.length === 1 ? "2点目(頂点)をタップ" : "3点目をタップ";
             }
-        } else if (currentMode === 'accel' && points.length === 3) {
-            const p1 = points[0], p2 = points[1], p3 = points[2];
-            const dt1 = Math.abs(p2.time - p1.time), dt2 = Math.abs(p3.time - p2.time);
-            const dist1 = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-            const dist2 = Math.hypot(p3.x - p2.x, p3.y - p2.y);
+        } else if (currentMode === 'distance') {
+            if (s.points.length === 2) {
+                const p1 = s.points[0], p2 = s.points[1];
+                const dx = p2.x - p1.x, dy = -(p2.y - p1.y);
+                const dist = Math.hypot(dx, dy);
+                const dt = Math.abs(p2.time - p1.time);
 
-            if (dt1 > 0 && dt2 > 0 && pxPerCm) {
-                const dist1M = (dist1 / pxPerCm) / 100, dist2M = (dist2 / pxPerCm) / 100;
-                const v1 = dist1M / dt1, v2 = dist2M / dt2;
-                const dv = v2 - v1;
-                const avgDt = (dt1 + dt2) / 2;
-                const accel = dv / avgDt;
-                const gForce = accel / 9.80665;
+                s.resultMain = `距離: ${formatDistance(dist, s.pxPerCm)}`;
+                let speedKMH = 0;
+                if (dt > 0 && s.pxPerCm) {
+                    const distM = (dist / s.pxPerCm) / 100;
+                    const speedMS = distM / dt;
+                    speedKMH = speedMS * 3.6;
+                    s.resultSub = `速度: <span class="highlight-speed">${speedMS.toFixed(2)}m/s (${speedKMH.toFixed(1)}km/h)</span> | dX:${formatDelta(dx, s.pxPerCm)}`;
+                    historyData.push({ target: targetIdx, time: p2.time, speedKMH, accelG: null });
+                } else {
+                    s.resultSub = `dX:${formatDelta(dx, s.pxPerCm)}, dY:${formatDelta(dy, s.pxPerCm)} (時間差:${dt.toFixed(3)}s)`;
+                }
+            } else {
+                s.resultMain = "始点を記録";
+                s.resultSub = "コマ送りして終点をタップ";
+            }
+        } else if (currentMode === 'accel') {
+            if (s.points.length === 3) {
+                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
+                const dt1 = Math.abs(p2.time - p1.time), dt2 = Math.abs(p3.time - p2.time);
+                const dist1 = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                const dist2 = Math.hypot(p3.x - p2.x, p3.y - p2.y);
 
-                mainResult.innerHTML = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)} m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)} G)</span>`;
-                subResult.innerHTML = `区間①: ${(v1 * 3.6).toFixed(1)} km/h → 区間②: ${(v2 * 3.6).toFixed(1)} km/h<br>速度差: ${(dv * 3.6 > 0 ? '+' : '')}${(dv * 3.6).toFixed(1)} km/h`;
-                historyData.push({ time: p3.time, speedKMH: v2 * 3.6, accelG: gForce });
+                if (dt1 > 0 && dt2 > 0 && s.pxPerCm) {
+                    const dist1M = (dist1 / s.pxPerCm) / 100, dist2M = (dist2 / s.pxPerCm) / 100;
+                    const v1 = dist1M / dt1, v2 = dist2M / dt2;
+                    const dv = v2 - v1;
+                    const avgDt = (dt1 + dt2) / 2;
+                    const accel = dv / avgDt;
+                    const gForce = accel / 9.80665;
+
+                    s.resultMain = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)}m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)}G)</span>`;
+                    s.resultSub = `①:${(v1 * 3.6).toFixed(1)}k → ②:${(v2 * 3.6).toFixed(1)}k (差:${(dv * 3.6 > 0 ? '+' : '')}${(dv * 3.6).toFixed(1)}k)`;
+                    historyData.push({ target: targetIdx, time: p3.time, speedKMH: v2 * 3.6, accelG: gForce });
+                } else if (!s.pxPerCm) {
+                    s.resultMain = "物差し未設定";
+                    s.resultSub = "加速度の算出には物差しの設定が必要です";
+                }
+            } else {
+                s.resultMain = `点 ${s.points.length}/3`;
+                s.resultSub = "コマ送りしながら次の点をタップ";
             }
         }
+        updateDisplayResult();
         redraw();
     }
 
     function submitScaleModal() {
         const realCm = parseFloat(scaleInputValue.value);
         if (realCm && realCm > 0) {
-            pxPerCm = tempDistPx / realCm;
-            scaleInfoText.innerText = `物差し: ${realCm}cm (${pxPerCm.toFixed(1)}px/cm)`;
+            state[scaleTarget].pxPerCm = tempDistPx / realCm;
+            updateScaleInfoText();
             scaleModalOverlay.style.display = 'none';
             setMode('distance');
         } else {
@@ -643,39 +703,42 @@
         }
     }
     function cancelScaleModal() {
-        scalePoints = [];
+        state[scaleTarget].scalePoints = [];
         scaleModalOverlay.style.display = 'none';
         setMode('scale');
     }
 
     function redraw() {
-        [ {c: canvas1, ctx: ctx1}, {c: canvas2, ctx: ctx2} ].forEach(item => {
+        [ {idx: 1, c: canvas1, ctx: ctx1}, {idx: 2, c: canvas2, ctx: ctx2} ].forEach(item => {
+            const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
-            if (scalePoints.length === 2 && currentMode !== 'scale') {
+
+            // 物差し線の描画
+            if (s.scalePoints.length === 2 && currentMode !== 'scale') {
                 item.ctx.save();
                 item.ctx.strokeStyle = 'rgba(255, 149, 0, 0.4)';
                 item.ctx.lineWidth = 2; item.ctx.setLineDash([4, 4]);
                 item.ctx.beginPath();
-                item.ctx.moveTo(scalePoints[0].x, scalePoints[0].y);
-                item.ctx.lineTo(scalePoints[1].x, scalePoints[1].y);
+                item.ctx.moveTo(s.scalePoints[0].x, s.scalePoints[0].y);
+                item.ctx.lineTo(s.scalePoints[1].x, s.scalePoints[1].y);
                 item.ctx.stroke();
                 item.ctx.restore();
             }
 
             if (currentMode === 'scale') {
                 item.ctx.strokeStyle = '#ff9500'; item.ctx.fillStyle = '#ff9500'; item.ctx.lineWidth = 3;
-                drawPointList(item.ctx, scalePoints, "基準");
+                drawPointList(item.ctx, s.scalePoints, "基準");
                 return;
             }
 
-            if (points.length === 0) return;
+            if (s.points.length === 0) return;
             if (currentMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
             else if (currentMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
             else if (currentMode === 'accel') item.ctx.strokeStyle = item.ctx.fillStyle = '#ff375f';
             item.ctx.lineWidth = 3;
 
             let labels = currentMode === 'distance' ? ["始点", "終点"] : (currentMode === 'accel' ? ["点1", "点2", "点3"] : null);
-            drawPointList(item.ctx, points, labels);
+            drawPointList(item.ctx, s.points, labels);
         });
     }
 
@@ -737,7 +800,7 @@
 
         snapCtx.fillStyle = '#ccc';
         snapCtx.font = '12px -apple-system, sans-serif';
-        const cleanSubText = subResult.innerText.replace(/<[^>]*>?/gm, '');
+        const cleanSubText = subResult.innerText.replace(/<[^>]*>?/gm, ' ');
         snapCtx.fillText(cleanSubText, 15, h + 46);
 
         document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png');
@@ -773,13 +836,13 @@
             historyData.forEach((d, idx) => {
                 const gx = (idx / Math.max(1, historyData.length - 1)) * (gCanvas.width - 40) + 20;
                 const gy = gCanvas.height - 30 - ((d.speedKMH || 0) / maxSpeed) * (gCanvas.height - 60);
-                gCtx.fillStyle = '#ffcc00';
+                gCtx.fillStyle = d.target === 1 ? '#007aff' : '#af52de';
                 gCtx.beginPath();
                 gCtx.arc(gx, gy, 4, 0, Math.PI * 2);
                 gCtx.fill();
                 gCtx.fillStyle = '#fff';
                 gCtx.font = '9px sans-serif';
-                gCtx.fillText(`${(d.speedKMH || 0).toFixed(1)}k`, gx - 10, gy - 8);
+                gCtx.fillText(`${d.target === 1 ? '①' : '②'}${(d.speedKMH || 0).toFixed(0)}k`, gx - 10, gy - 8);
             });
         }
 
