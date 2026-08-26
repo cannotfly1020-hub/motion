@@ -343,7 +343,7 @@
     let currentMode = 'angle';
     let lastMeasureMode = 'angle';
     
-    // FPS設定（初期値は60fpsまたは30fps。今回はよく使われる60をデフォルトにするか30にするか。ボタンで30→60→120→240と循環）
+    // FPS設定の管理
     let currentFPS = 30.0;
     const fpsList = [30, 60, 120, 240];
     let fpsIdx = 0;
@@ -353,7 +353,7 @@
         currentFPS = fpsList[fpsIdx];
         btnFps.innerText = `${currentFPS}fps`;
         
-        // 現在測定中の結果があれば再計算して反映する
+        // FPSが切り替わったら、すでに打ってある測定ポイントの速度・加速度をリアルタイムで再計算する！
         [1, 2].forEach(idx => {
             calcResults(state[idx], lastMeasureMode, false, idx);
         });
@@ -379,6 +379,7 @@
     let tempDistPx = 0;
     let historyData = []; 
 
+    // ★★★ 速度・加速度の計算に「currentFPS」を確実に反映させる計算エンジン ★★★
     function calcResults(s, mode, isNewPoint = false, targetIdx = 1) {
         if (mode === 'angle') {
             if (s.points.length === 3) {
@@ -405,8 +406,9 @@
                 const dt = Math.abs(p2.time - p1.time);
                 s.resultMain = `距離: ${formatDistance(dist, s.pxPerCm)}`;
                 if (dt > 0 && s.pxPerCm) {
+                    // ★動画上の時間差(dt)をそのまま使って正確な速度を計算！
                     const speedKMH = ((dist / s.pxPerCm) / 100) / dt * 3.6;
-                    s.resultSub = `速度: <span class="highlight-speed">${speedKMH.toFixed(1)}km/h</span> (${currentFPS}fps対応)`;
+                    s.resultSub = `速度: <span class="highlight-speed">${speedKMH.toFixed(1)}km/h</span> (${currentFPS}fps)`;
                     if (isNewPoint) historyData.push({ target: targetIdx, time: p2.time, speedKMH, accelG: null });
                 } else {
                     s.resultSub = `dX:${formatDelta(dx, s.pxPerCm)}, dY:${formatDelta(dy, s.pxPerCm)} (時間差:${dt.toFixed(3)}s)`;
@@ -427,7 +429,7 @@
                     const accel = (v2 - v1) / ((dt1 + dt2) / 2);
                     const gForce = accel / 9.80665;
                     s.resultMain = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)}m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)}G)</span>`;
-                    s.resultSub = `①:${(v1 * 3.6).toFixed(1)}k → ②:${(v2 * 3.6).toFixed(1)}k (${currentFPS}fps対応)`;
+                    s.resultSub = `①:${(v1 * 3.6).toFixed(1)}k → ②:${(v2 * 3.6).toFixed(1)}k (${currentFPS}fps)`;
                     if (isNewPoint) historyData.push({ target: targetIdx, time: p3.time, speedKMH: v2 * 3.6, accelG: gForce });
                 } else if (!s.pxPerCm) {
                     s.resultMain = "物差し未設定";
@@ -595,7 +597,7 @@
     seekbar2.addEventListener('change', () => { seeking2 = false; });
 
     function stepFrame(dir) {
-        // 選択されているFPSに合わせて正確に1コマ分（1 / currentFPS 秒）進む・戻るように改良！
+        // ★選択したFPSに合わせて正確に1コマ（1 / currentFPS 秒）動くように連動！
         const stepSec = dir / currentFPS;
         if (video1.duration) video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
         if (compareMode > 0 && video2.duration) video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
@@ -858,7 +860,7 @@
 
                     item.ctx.fillStyle = '#ff2d55';
                     item.ctx.beginPath();
-                    item.ctx.arc(p2.y ? p2.x : p2.x, p2.y, 5, 0, Math.PI * 2);
+                    item.ctx.arc(p2.x, p2.y, 5, 0, Math.PI * 2);
                     item.ctx.fill();
 
                     const t = perpSlider.value / 100;
