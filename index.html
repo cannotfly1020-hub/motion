@@ -27,7 +27,6 @@
         overflow: hidden;
     }
     
-    /* ヘッダー */
     #header {
         width: 100%;
         background: #1c1c1e;
@@ -52,7 +51,7 @@
     .btn-group-header {
         display: flex;
         align-items: center;
-        gap: 5px;
+        gap: 4px;
         flex-wrap: nowrap;
     }
     .hdr-btn {
@@ -61,7 +60,7 @@
         background: #007aff;
         color: white;
         border: none;
-        padding: 6px 9px;
+        padding: 6px 8px;
         border-radius: 6px;
         font-weight: bold;
         font-size: 11px;
@@ -69,20 +68,12 @@
         white-space: nowrap;
     }
     .hdr-btn.secondary { background: #3a3a3c; }
+    .hdr-btn.compare-parallel { background: #af52de; color: #fff; }
+    .hdr-btn.compare-overlay { background: #ff2d55; color: #fff; }
+    .hdr-btn.fps-badge { background: #30d158; color: #000; font-size: 10px; }
     
-    /* 比較モードボタンの色 */
-    .hdr-btn.compare-parallel { background: #af52de; color: #fff; } /* 並列: 紫 */
-    .hdr-btn.compare-overlay { background: #ff2d55; color: #fff; } /* 重ね: 赤 */
-
-    #scale-info-text {
-        font-size: 11px;
-        color: #ff9500;
-        font-weight: 600;
-        text-align: right;
-        white-space: nowrap;
-    }
+    #scale-info-text { font-size: 10px; color: #ff9500; font-weight: 600; text-align: right; white-space: nowrap; }
     
-    /* 計測データ表示ボックス */
     #result-box {
         width: 100%;
         background: #262629;
@@ -94,8 +85,8 @@
     #sub-result { color: #aaa; font-size: 11px; margin-top: 2px; font-weight: 500; line-height: 1.2; }
     .highlight-acc { color: #ff375f; font-weight: bold; }
     .highlight-speed { color: #ffcc00; font-weight: bold; }
+    .highlight-sim { color: #30d158; font-weight: bold; }
 
-    /* 映像ステージ */
     #stage {
         width: 100%;
         position: relative;
@@ -116,11 +107,16 @@
         overflow: hidden;
         background: #000;
     }
+    .zoom-target {
+        width: 100%;
+        height: 100%;
+        position: relative;
+        transform-origin: center center;
+    }
     #pane2 { display: none; border-left: 2px solid #555; }
-    video { width: 100%; height: 100%; object-fit: contain; }
-    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; }
+    video { width: 100%; height: 100%; object-fit: contain; display: block; }
+    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; pointer-events: auto; }
 
-    /* 操作パネル */
     #controls {
         width: 100%;
         background: #1c1c1e;
@@ -135,39 +131,20 @@
         flex-shrink: 0;
     }
     
-    /* シークバーエリア */
-    .seek-container {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        width: 100%;
-    }
-    .seek-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        width: 100%;
-    }
-    .seek-label {
-        font-size: 10px;
-        font-weight: bold;
-        color: #007aff;
-        width: 16px;
-        flex-shrink: 0;
-    }
+    .seek-container { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+    .seek-row { display: flex; align-items: center; gap: 6px; width: 100%; }
+    .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 16px; flex-shrink: 0; }
     .seek-label.v2 { color: #af52de; }
-    input[type=range] {
-        flex: 1;
-        height: 20px;
-        accent-color: #007aff;
-    }
+    input[type=range] { flex: 1; height: 20px; accent-color: #007aff; }
     #seekbar2 { accent-color: #af52de; }
+    #perp-slider { accent-color: #ff2d55; }
+    #sim-slider { accent-color: #30d158; }
 
     .mode-grid {
         width: 100%;
         display: grid;
         grid-template-columns: repeat(4, 1fr);
-        gap: 5px;
+        gap: 4px;
     }
     button.ctrl-btn {
         -webkit-appearance: none;
@@ -187,6 +164,9 @@
     button.mode-active { background: #30d158; color: black; font-weight: bold; }
     #btn-mode-acc.mode-active { background: #ff375f; color: white; font-weight: bold; }
     #btn-mode-scale.mode-active { background: #ff9500; color: black; font-weight: bold; }
+    #btn-mode-zoom.mode-active { background: #007aff; color: white; font-weight: bold; }
+    #btn-mode-perp.mode-active { background: #ff2d55; color: white; font-weight: bold; }
+    #btn-mode-sim.mode-active { background: #30d158; color: black; font-weight: bold; }
     
     .playback-row {
         width: 100%;
@@ -197,29 +177,14 @@
     #btn-play { background: #34c759; color: #000; font-weight: bold; }
     #btn-clear { background: #ff3b30; }
 
-    /* モーダル */
     .modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.75);
-        display: none;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-        backdrop-filter: blur(4px);
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.75); display: none; justify-content: center; align-items: center;
+        z-index: 1000; backdrop-filter: blur(4px);
     }
     .modal-card {
-        background: #2c2c2e;
-        border: 1px solid #444;
-        border-radius: 12px;
-        width: 90%;
-        max-width: 340px;
-        padding: 16px;
-        text-align: center;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        background: #2c2c2e; border: 1px solid #444; border-radius: 12px; width: 90%; max-width: 340px;
+        padding: 16px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
     }
     .modal-card h3 { font-size: 15px; margin-bottom: 6px; color: #ff9500; }
     .modal-card p { font-size: 12px; color: #ccc; margin-bottom: 12px; }
@@ -231,11 +196,9 @@
     }
     .modal-btn-row { display: flex; gap: 8px; }
     .modal-btn-row button {
-        -webkit-appearance: none;
-        appearance: none;
+        -webkit-appearance: none; appearance: none;
         flex: 1; padding: 8px 0; border: none; border-radius: 6px; font-size: 13px; font-weight: bold;
     }
-    
     #snapshot-img { max-width: 100%; max-height: 50vh; border-radius: 6px; border: 1px solid #555; margin-bottom: 10px; }
 </style>
 </head>
@@ -247,6 +210,7 @@
             <button class="hdr-btn" onclick="triggerPickVideo(1)">動画①</button>
             <button class="hdr-btn secondary" id="btn-pick2" style="display:none;" onclick="triggerPickVideo(2)">動画②</button>
             <button class="hdr-btn secondary" id="btn-toggle-compare" onclick="toggleCompareMode()">1画面のみ</button>
+            <button class="hdr-btn fps-badge" id="btn-fps" onclick="toggleFPS()">30fps</button>
             <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 保存</button>
         </div>
         <span id="scale-info-text">物差し: 未設定</span>
@@ -261,12 +225,16 @@
 
 <div id="stage">
     <div class="video-pane" id="pane1">
-        <video id="video1" playsinline webkit-playsinline muted></video>
-        <canvas id="canvas1"></canvas>
+        <div class="zoom-target" id="zoom-target-1">
+            <video id="video1" playsinline webkit-playsinline muted></video>
+            <canvas id="canvas1"></canvas>
+        </div>
     </div>
     <div class="video-pane" id="pane2">
-        <video id="video2" playsinline webkit-playsinline muted></video>
-        <canvas id="canvas2"></canvas>
+        <div class="zoom-target" id="zoom-target-2">
+            <video id="video2" playsinline webkit-playsinline muted></video>
+            <canvas id="canvas2"></canvas>
+        </div>
     </div>
 </div>
 
@@ -281,22 +249,42 @@
             <input type="range" id="seekbar2" min="0" max="100" value="0" step="0.001">
         </div>
     </div>
+    
     <div class="mode-grid">
-        <button class="ctrl-btn mode-active" id="btn-mode-angle" onclick="setMode('angle')">角度 (3点)</button>
-        <button class="ctrl-btn" id="btn-mode-dist" onclick="setMode('distance')">速度 (2点)</button>
-        <button class="ctrl-btn" id="btn-mode-acc" onclick="setMode('accel')">加速度 (3点)</button>
-        <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">物差し</button>
+        <button class="ctrl-btn mode-active" id="btn-mode-angle" onclick="setMode('angle')">角度(3点)</button>
+        <button class="ctrl-btn" id="btn-mode-dist" onclick="setMode('distance')">速度(2点)</button>
+        <button class="ctrl-btn" id="btn-mode-acc" onclick="setMode('accel')">加速(3点)</button>
+        <button class="ctrl-btn" id="btn-mode-perp" onclick="setMode('perp')">垂直線</button>
+        <button class="ctrl-btn" id="btn-mode-sim" onclick="setMode('sim')">🎯 予測(+10°)</button>
+        <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">基準</button>
+        <button class="ctrl-btn" id="btn-mode-zoom" onclick="setMode('zoom')">🔍移動</button>
+        <button class="ctrl-btn" id="btn-clear" onclick="clearCurrentPoints()">クリア</button>
     </div>
+    
+    <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
+        <span style="font-size:11px; font-weight:bold; color:#007aff;">倍率(画面<span id="zoom-target-label">①</span>)</span>
+        <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1">
+        <button class="ctrl-btn" style="width:auto; padding:5px 12px; background:#444;" onclick="resetZoom()">リセット</button>
+    </div>
+
+    <div id="perp-controls" style="display:none; width:100%; align-items:center; gap:8px;">
+        <span style="font-size:11px; font-weight:bold; color:#ff2d55;">垂直線移動</span>
+        <input type="range" id="perp-slider" min="0" max="100" step="0.5" value="50">
+    </div>
+
+    <div id="sim-controls" style="display:none; width:100%; align-items:center; gap:8px;">
+        <span style="font-size:11px; font-weight:bold; color:#30d158; white-space:nowrap;">角度調整: <span id="sim-deg-val">+10°</span></span>
+        <input type="range" id="sim-slider" min="-30" max="30" step="1" value="10">
+    </div>
+
     <div class="playback-row">
         <button class="ctrl-btn" onclick="stepFrame(-1)">◀ -1</button>
         <button class="ctrl-btn" id="btn-play" onclick="togglePlay()">▶ 再生</button>
         <button class="ctrl-btn" onclick="stepFrame(1)">+1 ▶</button>
         <button class="ctrl-btn" id="btn-speed" onclick="togglePlaybackRate()">1.0x</button>
-        <button class="ctrl-btn" id="btn-clear" onclick="clearCurrentPoints()">クリア</button>
     </div>
 </div>
 
-<!-- 物差し設定モーダル -->
 <div id="scale-modal-overlay" class="modal-overlay">
     <div class="modal-card">
         <h3 id="scale-modal-title">基準物の長さ設定 (動画①)</h3>
@@ -312,7 +300,6 @@
     </div>
 </div>
 
-<!-- スクショ保存モーダル -->
 <div id="snapshot-modal-overlay" class="modal-overlay">
     <div class="modal-card" style="max-width:360px;">
         <h3 style="color:#5856d6;">📸 スクリーンショット</h3>
@@ -336,6 +323,7 @@
     const pane2 = document.getElementById('pane2');
     const btnPick2 = document.getElementById('btn-pick2');
     const btnToggleCompare = document.getElementById('btn-toggle-compare');
+    const btnFps = document.getElementById('btn-fps');
     const seekbar1 = document.getElementById('seekbar1');
     const seekbar2 = document.getElementById('seekbar2');
     const seekRow2 = document.getElementById('seek-row-2');
@@ -352,30 +340,184 @@
     const btnModeDist = document.getElementById('btn-mode-dist');
     const btnModeAcc = document.getElementById('btn-mode-acc');
     const btnModeScale = document.getElementById('btn-mode-scale');
+    const btnModeZoom = document.getElementById('btn-mode-zoom');
+    const btnModePerp = document.getElementById('btn-mode-perp');
+    const btnModeSim = document.getElementById('btn-mode-sim');
+    const perpSlider = document.getElementById('perp-slider');
+    const simSlider = document.getElementById('sim-slider');
+    const simDegVal = document.getElementById('sim-deg-val');
+    
     const scaleModalOverlay = document.getElementById('scale-modal-overlay');
     const scaleModalTitle = document.getElementById('scale-modal-title');
     const scaleInputValue = document.getElementById('scale-input-value');
 
-    // 0: シングル, 1: 並列(Side-by-side), 2: 重ね(Overlay)
     let compareMode = 0; 
     let currentMode = 'angle';
-    const FPS = 30.0;
+    let lastMeasureMode = 'angle';
+    
+    let currentFPS = 30.0;
+    const fpsList = [30, 60, 120, 240];
+    let fpsIdx = 0;
+
+    function toggleFPS() {
+        fpsIdx = (fpsIdx + 1) % fpsList.length;
+        currentFPS = fpsList[fpsIdx];
+        btnFps.innerText = `${currentFPS}fps`;
+        
+        [1, 2].forEach(idx => {
+            const s = state[idx];
+            if (s.points.length > 0) {
+                s.points.forEach(p => { if (p.frame !== undefined) p.time = p.frame / currentFPS; });
+            }
+            calcResults(s, lastMeasureMode, false, idx);
+        });
+        updateDisplayResult();
+    }
+
     let isPlaying = false;
     let playbackRates = [1.0, 0.5, 0.25];
     let currentRateIdx = 0;
 
     const state = {
-        1: { points: [], scalePoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
-        2: { points: [], scalePoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
+        1: { points: [], scalePoints: [], perpPoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
+        2: { points: [], scalePoints: [], perpPoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
+    };
+    
+    const viewState = {
+        1: { scale: 1, x: 0, y: 0 },
+        2: { scale: 1, x: 0, y: 0 }
     };
 
     let scaleTarget = 1;
+    let lastActiveTarget = 1;
     let tempDistPx = 0;
+    let historyData = []; 
+
+    // 順運動学（FK）による関節回転計算
+    function simulateJointAngle(p2, p3, deltaDeg) {
+        const rad = deltaDeg * (Math.PI / 180);
+        const dx = p3.x - p2.x;
+        const dy = p3.y - p2.y;
+        const rotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
+        const rotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
+        return {
+            x: p2.x + rotatedX,
+            y: p2.y + rotatedY
+        };
+    }
+
+    function calcResults(s, mode, isNewPoint = false, targetIdx = 1) {
+        if (mode === 'angle') {
+            if (s.points.length === 3) {
+                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
+                const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
+                const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
+                const dot = v1.x * v2.x + v1.y * v2.y;
+                const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
+                if (mag1 * mag2 !== 0) {
+                    let cosVal = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
+                    let angle = Math.acos(cosVal) * (180 / Math.PI);
+                    s.resultMain = `関節角度: ${angle.toFixed(1)}°`;
+                    s.resultSub = `頂点(2点目)を中心とした角度`;
+                }
+            } else {
+                s.resultMain = s.points.length === 0 ? "角度モード: 3点をタップ" : `点 ${s.points.length}/3`;
+                s.resultSub = s.points.length === 1 ? "2点目(頂点)をタップ" : "頂点(2点目)を中心とした角度を測定";
+            }
+        } else if (mode === 'sim') {
+            if (s.points.length === 3) {
+                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
+                const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
+                const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
+                const dot = v1.x * v2.x + v1.y * v2.y;
+                const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
+                let curAngle = 0;
+                if (mag1 * mag2 !== 0) {
+                    let cosVal = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
+                    curAngle = Math.acos(cosVal) * (180 / Math.PI);
+                }
+                const deltaDeg = parseFloat(simSlider.value);
+                const simPt = simulateJointAngle(p2, p3, deltaDeg);
+                const diffPx = Math.hypot(simPt.x - p3.x, simPt.y - p3.y);
+                const shiftText = s.pxPerCm ? `(先端移動: ${(diffPx / s.pxPerCm).toFixed(1)}cm)` : `(先端移動: ${diffPx.toFixed(1)}px)`;
+                
+                s.resultMain = `<span class="highlight-sim">可動域予測: ${curAngle.toFixed(1)}° → ${(curAngle + deltaDeg).toFixed(1)}° (${deltaDeg > 0 ? '+' : ''}${deltaDeg}°)</span>`;
+                s.resultSub = `緑の破線が改善後の予測位置 ${shiftText}`;
+            } else {
+                s.resultMain = s.points.length === 0 ? "予測モード: 根元→関節中心→先端をタップ" : `点 ${s.points.length}/3`;
+                s.resultSub = "3点打つと、下のスライダーで角度改善シミュレーションが動きます";
+            }
+        } else if (mode === 'distance') {
+            if (s.points.length === 2) {
+                const p1 = s.points[0], p2 = s.points[1];
+                const dx = p2.x - p1.x, dy = -(p2.y - p1.y);
+                const dist = Math.hypot(dx, dy);
+                const dt = Math.abs(p2.time - p1.time);
+                s.resultMain = `距離: ${formatDistance(dist, s.pxPerCm)}`;
+                if (dt > 0 && s.pxPerCm) {
+                    const speedKMH = ((dist / s.pxPerCm) / 100) / dt * 3.6;
+                    s.resultSub = `速度: <span class="highlight-speed">${speedKMH.toFixed(1)}km/h</span> (${currentFPS}fps)`;
+                    if (isNewPoint) historyData.push({ target: targetIdx, time: p2.time, speedKMH, accelG: null });
+                }
+            } else {
+                s.resultMain = s.points.length === 0 ? "速度モード: 始点→終点をタップ" : "始点を記録";
+                s.resultSub = "1点目タップ後、コマ送りして2点目をタップ";
+            }
+        } else if (mode === 'accel') {
+            if (s.points.length === 3) {
+                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
+                const dt1 = Math.abs(p2.time - p1.time), dt2 = Math.abs(p3.time - p2.time);
+                const dist1 = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                const dist2 = Math.hypot(p3.x - p2.x, p3.y - p2.y);
+                if (dt1 > 0 && dt2 > 0 && s.pxPerCm) {
+                    const v1 = ((dist1 / s.pxPerCm) / 100) / dt1;
+                    const v2 = ((dist2 / s.pxPerCm) / 100) / dt2;
+                    const accel = (v2 - v1) / ((dt1 + dt2) / 2);
+                    const gForce = accel / 9.80665;
+                    s.resultMain = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)}m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)}G)</span>`;
+                    s.resultSub = `①:${(v1 * 3.6).toFixed(1)}k → ②:${(v2 * 3.6).toFixed(1)}k (${currentFPS}fps)`;
+                    if (isNewPoint) historyData.push({ target: targetIdx, time: p3.time, speedKMH: v2 * 3.6, accelG: gForce });
+                }
+            } else {
+                s.resultMain = s.points.length === 0 ? "加速度モード: 連続3点をタップ" : `点 ${s.points.length}/3`;
+                s.resultSub = "コマ送りしながら 始点 → 中間 → 終点 をタップ";
+            }
+        } else if (mode === 'perp') {
+            s.resultMain = `垂直線モード`;
+            s.resultSub = `下のスライダーで垂直線を動かせます`;
+        }
+    }
+
+    function applyZoom(idx) {
+        const target = document.getElementById(`zoom-target-${idx}`);
+        target.style.transform = `translate(${viewState[idx].x}px, ${viewState[idx].y}px) scale(${viewState[idx].scale})`;
+    }
+
+    function resetZoom() {
+        viewState[lastActiveTarget] = { scale: 1, x: 0, y: 0 };
+        document.getElementById('zoom-slider').value = 1;
+        applyZoom(lastActiveTarget);
+    }
+
+    document.getElementById('zoom-slider').addEventListener('input', e => {
+        viewState[lastActiveTarget].scale = parseFloat(e.target.value);
+        applyZoom(lastActiveTarget);
+    });
+    
+    perpSlider.addEventListener('input', redraw);
+    
+    simSlider.addEventListener('input', e => {
+        const deg = parseFloat(e.target.value);
+        simDegVal.innerText = `${deg > 0 ? '+' : ''}${deg}°`;
+        [1, 2].forEach(idx => calcResults(state[idx], 'sim', false, idx));
+        updateDisplayResult();
+        redraw();
+    });
 
     function fitCanvases() {
         [ {c: canvas1, v: video1}, {c: canvas2, v: video2} ].forEach(item => {
-            item.c.width = item.c.clientWidth;
-            item.c.height = item.c.clientHeight;
+            item.c.width = item.c.parentElement.clientWidth;
+            item.c.height = item.c.parentElement.clientHeight;
         });
         redraw();
     }
@@ -410,64 +552,48 @@
         seekbar2.value = 0;
     });
 
-    video1.addEventListener('timeupdate', () => {
-        if (!seeking1) seekbar1.value = video1.currentTime;
-    });
+    video1.addEventListener('timeupdate', () => { if (!seeking1) seekbar1.value = video1.currentTime; });
+    video2.addEventListener('timeupdate', () => { if (!seeking2) seekbar2.value = video2.currentTime; });
 
-    video2.addEventListener('timeupdate', () => {
-        if (!seeking2) seekbar2.value = video2.currentTime;
-    });
-
-    // モード切替（1画面 → 並列 → 重ね）
     function toggleCompareMode() {
         compareMode = (compareMode + 1) % 3;
-        
         btnToggleCompare.classList.remove('compare-parallel', 'compare-overlay');
 
         if (compareMode === 1) {
-            // 並列モード
             pane2.style.display = 'flex';
             pane2.style.position = 'relative';
             pane2.style.opacity = '1';
             pane2.style.borderLeft = '2px solid #555';
-            pane2.style.pointerEvents = 'auto'; // 操作可能
-            
+            pane2.style.pointerEvents = 'auto'; 
             btnPick2.style.display = 'inline-block';
             seekRow2.style.display = 'flex';
             btnToggleCompare.classList.add('compare-parallel');
             btnToggleCompare.innerText = '並列表示';
-            
         } else if (compareMode === 2) {
-            // 重ね合わせモード（ゴースト）
             pane2.style.display = 'flex';
             pane2.style.position = 'absolute';
             pane2.style.top = '0';
             pane2.style.left = '0';
             pane2.style.width = '100%';
             pane2.style.height = '100%';
-            pane2.style.opacity = '0.5'; // 半透明
+            pane2.style.opacity = '0.5'; 
             pane2.style.borderLeft = 'none';
-            pane2.style.pointerEvents = 'none'; // 重ね時は下の動画①を操作
-            
+            pane2.style.pointerEvents = 'none'; 
             btnPick2.style.display = 'inline-block';
             seekRow2.style.display = 'flex';
             btnToggleCompare.classList.add('compare-overlay');
             btnToggleCompare.innerText = '重ね透かし';
-            
         } else {
-            // 1画面モード
             pane2.style.display = 'none';
             pane2.style.position = 'relative';
             pane2.style.opacity = '1';
             pane2.style.borderLeft = '2px solid #555';
             pane2.style.pointerEvents = 'auto';
-            
             btnPick2.style.display = 'none';
             seekRow2.style.display = 'none';
             btnToggleCompare.innerText = '1画面のみ';
             if (video2) video2.pause();
         }
-        
         updateScaleInfoText();
         updateDisplayResult();
         setTimeout(fitCanvases, 50);
@@ -475,7 +601,6 @@
 
     async function togglePlay() {
         if (!video1.duration && !video2.duration) return;
-        
         isPlaying = !isPlaying;
         if (isPlaying) {
             video1.muted = true;
@@ -485,9 +610,7 @@
                 if (video1.duration) playPromises.push(video1.play());
                 if (compareMode > 0 && video2.duration) playPromises.push(video2.play());
                 await Promise.all(playPromises);
-            } catch (err) {
-                console.error("再生エラー:", err);
-            }
+            } catch (err) {}
             btnPlay.innerText = '⏸ 停止';
             btnPlay.style.background = '#ff9500';
         } else {
@@ -507,38 +630,28 @@
     }
 
     let seeking1 = false;
-    seekbar1.addEventListener('input', () => {
-        seeking1 = true;
-        video1.currentTime = seekbar1.value;
-    });
+    seekbar1.addEventListener('input', () => { seeking1 = true; video1.currentTime = seekbar1.value; });
     seekbar1.addEventListener('change', () => { seeking1 = false; });
 
     let seeking2 = false;
-    seekbar2.addEventListener('input', () => {
-        seeking2 = true;
-        video2.currentTime = seekbar2.value;
-    });
+    seekbar2.addEventListener('input', () => { seeking2 = true; video2.currentTime = seekbar2.value; });
     seekbar2.addEventListener('change', () => { seeking2 = false; });
 
     function stepFrame(dir) {
-        const stepSec = dir / FPS;
-        if (video1.duration) {
-            video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
-        }
-        if (compareMode > 0 && video2.duration) {
-            video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
-        }
+        const stepSec = dir / currentFPS;
+        if (video1.duration) video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
+        if (compareMode > 0 && video2.duration) video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
     }
 
     function updateDisplayResult() {
+        if (currentMode === 'zoom') return; 
         if (compareMode === 0) {
-            mainResult.innerHTML = state[1].resultMain || "動画①を選択してください";
+            mainResult.innerHTML = state[1].resultMain || "測定したい点をタップしてください";
             subResult.innerHTML = state[1].resultSub || "";
         } else {
             const r1 = state[1].resultMain ? `① ${state[1].resultMain}` : "① 未測定";
             const r2 = state[2].resultMain ? `② ${state[2].resultMain}` : "② 未測定";
             mainResult.innerHTML = `${r1} ｜ ${r2}`;
-            
             const sub1 = state[1].resultSub ? `①: ${state[1].resultSub}` : "";
             const sub2 = state[2].resultSub ? `②: ${state[2].resultSub}` : "";
             subResult.innerHTML = [sub1, sub2].filter(Boolean).join("<br>");
@@ -552,38 +665,51 @@
     }
 
     function setMode(mode) {
-        currentMode = mode;
-        state[1].points = [];
-        state[2].points = [];
-        state[1].resultMain = "";
-        state[2].resultMain = "";
-        state[1].resultSub = "";
-        state[2].resultSub = "";
+        const mainModes = ['angle', 'distance', 'accel', 'sim'];
+        if (mainModes.includes(mode) && mode !== lastMeasureMode) {
+            state[1].points = [];
+            state[2].points = [];
+        }
+        
+        if (mode !== 'zoom') {
+            if (mainModes.includes(mode)) lastMeasureMode = mode;
+            currentMode = mode;
+        } else {
+            currentMode = mode; 
+        }
+        
+        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModeZoom, btnModePerp, btnModeSim].forEach(b => b.classList.remove('mode-active'));
+
+        document.getElementById('zoom-controls').style.display = (mode === 'zoom') ? 'flex' : 'none';
+        const showPerp = (mode === 'perp' || state[1].perpPoints.length === 2 || state[2].perpPoints.length === 2);
+        document.getElementById('perp-controls').style.display = showPerp ? 'flex' : 'none';
+
+        const showSim = (mode === 'sim');
+        document.getElementById('sim-controls').style.display = showSim ? 'flex' : 'none';
+
+        if (mode === 'zoom') {
+            btnModeZoom.classList.add('mode-active');
+            document.getElementById('zoom-target-label').innerText = lastActiveTarget === 1 ? '①' : '②';
+            document.getElementById('zoom-slider').value = viewState[lastActiveTarget].scale;
+        } else {
+            if (mode === 'angle') btnModeAngle.classList.add('mode-active');
+            else if (mode === 'distance') btnModeDist.classList.add('mode-active');
+            else if (mode === 'accel') btnModeAcc.classList.add('mode-active');
+            else if (mode === 'scale') btnModeScale.classList.add('mode-active');
+            else if (mode === 'perp') btnModePerp.classList.add('mode-active');
+            else if (mode === 'sim') btnModeSim.classList.add('mode-active');
+        }
         
         if (mode === 'scale') {
             state[1].scalePoints = [];
             state[2].scalePoints = [];
             updateScaleInfoText();
-        }
-
-        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale].forEach(b => b.classList.remove('mode-active'));
-
-        if (mode === 'angle') {
-            btnModeAngle.classList.add('mode-active');
-            state[1].resultMain = "角度モード: 3点をタップ";
-            state[1].resultSub = "頂点(2点目)を中心とした角度を測定";
-        } else if (mode === 'distance') {
-            btnModeDist.classList.add('mode-active');
-            state[1].resultMain = "速度モード: 始点→終点をタップ";
-            state[1].resultSub = "1点目タップ後、コマ送りして2点目をタップ";
-        } else if (mode === 'accel') {
-            btnModeAcc.classList.add('mode-active');
-            state[1].resultMain = "加速度モード: 連続3点をタップ";
-            state[1].resultSub = "コマ送りしながら 始点 → 中間 → 終点 をタップ";
-        } else if (mode === 'scale') {
-            btnModeScale.classList.add('mode-active');
             state[1].resultMain = "物差し設定: 基準物の両端（2点）をタップ";
             state[1].resultSub = "長さを設定したい画面で2箇所タップ";
+            state[2].resultMain = "";
+            state[2].resultSub = "";
+        } else if (mode !== 'zoom') {
+            [1, 2].forEach(idx => calcResults(state[idx], mode, false, idx));
         }
         
         updateDisplayResult();
@@ -591,12 +717,16 @@
     }
 
     function clearCurrentPoints() {
-        state[1].points = [];
-        state[2].points = [];
-        state[1].resultMain = "";
-        state[2].resultMain = "";
-        state[1].resultSub = "";
-        state[2].resultSub = "";
+        if (currentMode === 'perp') {
+            state[1].perpPoints = [];
+            state[2].perpPoints = [];
+            perpSlider.value = 50;
+            document.getElementById('perp-controls').style.display = 'none';
+        } else {
+            state[1].points = [];
+            state[2].points = [];
+        }
+        [1, 2].forEach(idx => calcResults(state[idx], currentMode, false, idx));
         updateDisplayResult();
         redraw();
     }
@@ -608,21 +738,73 @@
         return `${cm.toFixed(1)} cm`;
     }
 
-    function formatDelta(px, pxPerCm) {
-        if (!pxPerCm) return `${px > 0 ? '+' : ''}${px.toFixed(1)}px`;
-        const cm = px / pxPerCm;
-        return `${cm > 0 ? '+' : ''}${cm.toFixed(1)} cm`;
-    }
+    let isTouchPanning = false;
+    let panStartX = 0, panStartY = 0;
+    let panStartOffsetX = 0, panStartOffsetY = 0;
+    let pinchInitialDist = 0;
+    let pinchInitialScale = 1;
+    let pinchTarget = 1;
 
-    canvas1.addEventListener('pointerdown', (e) => handleCanvasTap(e, canvas1, video1, 1));
-    canvas2.addEventListener('pointerdown', (e) => handleCanvasTap(e, canvas2, video2, 2));
+    document.getElementById('stage').addEventListener('touchstart', e => {
+        if (currentMode !== 'zoom') return;
+        const targetIdx = e.target.closest('#pane2') ? 2 : 1;
+        lastActiveTarget = targetIdx;
+        document.getElementById('zoom-target-label').innerText = targetIdx === 1 ? '①' : '②';
+        document.getElementById('zoom-slider').value = viewState[targetIdx].scale;
+
+        if (e.touches.length === 1) {
+            isTouchPanning = true;
+            panStartX = e.touches[0].clientX;
+            panStartY = e.touches[0].clientY;
+            panStartOffsetX = viewState[targetIdx].x;
+            panStartOffsetY = viewState[targetIdx].y;
+        } else if (e.touches.length === 2) {
+            isTouchPanning = false;
+            e.preventDefault();
+            pinchTarget = targetIdx;
+            pinchInitialDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            pinchInitialScale = viewState[targetIdx].scale;
+        }
+    }, {passive: false});
+
+    document.getElementById('stage').addEventListener('touchmove', e => {
+        if (currentMode !== 'zoom') return;
+        e.preventDefault(); 
+        if (isTouchPanning && e.touches.length === 1) {
+            const scale = viewState[lastActiveTarget].scale;
+            const dx = (e.touches[0].clientX - panStartX) / scale;
+            const dy = (e.touches[0].clientY - panStartY) / scale;
+            viewState[lastActiveTarget].x = panStartOffsetX + dx;
+            viewState[lastActiveTarget].y = panStartOffsetY + dy;
+            applyZoom(lastActiveTarget);
+        } else if (e.touches.length === 2) {
+            const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            let newScale = pinchInitialScale * (dist / pinchInitialDist);
+            newScale = Math.max(1, Math.min(newScale, 5));
+            viewState[pinchTarget].scale = newScale;
+            applyZoom(pinchTarget);
+            document.getElementById('zoom-slider').value = newScale;
+        }
+    }, {passive: false});
+
+    document.getElementById('stage').addEventListener('touchend', e => {
+        if (e.touches.length === 0) isTouchPanning = false;
+    }, {passive: false});
+
+    canvas1.addEventListener('pointerdown', (e) => { if (currentMode !== 'zoom') handleCanvasTap(e, canvas1, video1, 1); });
+    canvas2.addEventListener('pointerdown', (e) => { if (currentMode !== 'zoom') handleCanvasTap(e, canvas2, video2, 2); });
 
     function handleCanvasTap(e, cvs, vid, targetIdx) {
+        lastActiveTarget = targetIdx;
         const s = state[targetIdx];
+        
         const rect = cvs.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const scaleX = cvs.width / rect.width;
+        const scaleY = cvs.height / rect.height;
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
         const currentTime = vid.currentTime;
+        const currentFrame = Math.round(currentTime * currentFPS);
 
         if (currentMode === 'scale') {
             s.scalePoints.push({x, y});
@@ -639,75 +821,23 @@
             return;
         }
 
-        const maxPoints = currentMode === 'distance' ? 2 : 3;
-        if (s.points.length >= maxPoints) s.points = [];
-        s.points.push({x, y, time: currentTime});
-
-        if (currentMode === 'angle') {
-            if (s.points.length === 3) {
-                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
-                const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
-                const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
-                const dot = v1.x * v2.x + v1.y * v2.y;
-                const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
-
-                if (mag1 * mag2 !== 0) {
-                    let cosVal = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
-                    let angle = Math.acos(cosVal) * (180 / Math.PI);
-                    s.resultMain = `関節角度: ${angle.toFixed(1)}°`;
-                    s.resultSub = `頂点(2点目)を中心とした角度`;
-                }
-            } else {
-                s.resultMain = `点 ${s.points.length}/3`;
-                s.resultSub = s.points.length === 1 ? "2点目(頂点)をタップ" : "3点目をタップ";
+        if (currentMode === 'perp') {
+            if (s.perpPoints.length >= 2) s.perpPoints = [];
+            s.perpPoints.push({x, y});
+            calcResults(s, currentMode, true, targetIdx);
+            if (s.perpPoints.length === 2) {
+                document.getElementById('perp-controls').style.display = 'flex';
             }
-        } else if (currentMode === 'distance') {
-            if (s.points.length === 2) {
-                const p1 = s.points[0], p2 = s.points[1];
-                const dx = p2.x - p1.x, dy = -(p2.y - p1.y);
-                const dist = Math.hypot(dx, dy);
-                const dt = Math.abs(p2.time - p1.time);
-
-                s.resultMain = `距離: ${formatDistance(dist, s.pxPerCm)}`;
-                let speedKMH = 0;
-                if (dt > 0 && s.pxPerCm) {
-                    const distM = (dist / s.pxPerCm) / 100;
-                    const speedMS = distM / dt;
-                    speedKMH = speedMS * 3.6;
-                    s.resultSub = `速度: <span class="highlight-speed">${speedMS.toFixed(2)}m/s (${speedKMH.toFixed(1)}km/h)</span> | dX:${formatDelta(dx, s.pxPerCm)}`;
-                } else {
-                    s.resultSub = `dX:${formatDelta(dx, s.pxPerCm)}, dY:${formatDelta(dy, s.pxPerCm)} (時間差:${dt.toFixed(3)}s)`;
-                }
-            } else {
-                s.resultMain = "始点を記録";
-                s.resultSub = "コマ送りして終点をタップ";
-            }
-        } else if (currentMode === 'accel') {
-            if (s.points.length === 3) {
-                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
-                const dt1 = Math.abs(p2.time - p1.time), dt2 = Math.abs(p3.time - p2.time);
-                const dist1 = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-                const dist2 = Math.hypot(p3.x - p2.x, p3.y - p2.y);
-
-                if (dt1 > 0 && dt2 > 0 && s.pxPerCm) {
-                    const dist1M = (dist1 / s.pxPerCm) / 100, dist2M = (dist2 / s.pxPerCm) / 100;
-                    const v1 = dist1M / dt1, v2 = dist2M / dt2;
-                    const dv = v2 - v1;
-                    const avgDt = (dt1 + dt2) / 2;
-                    const accel = dv / avgDt;
-                    const gForce = accel / 9.80665;
-
-                    s.resultMain = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)}m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)}G)</span>`;
-                    s.resultSub = `①:${(v1 * 3.6).toFixed(1)}k → ②:${(v2 * 3.6).toFixed(1)}k (差:${(dv * 3.6 > 0 ? '+' : '')}${(dv * 3.6).toFixed(1)}k)`;
-                } else if (!s.pxPerCm) {
-                    s.resultMain = "物差し未設定";
-                    s.resultSub = "加速度の算出には物差しの設定が必要です";
-                }
-            } else {
-                s.resultMain = `点 ${s.points.length}/3`;
-                s.resultSub = "コマ送りしながら次の点をタップ";
-            }
+            updateDisplayResult();
+            redraw();
+            return;
         }
+
+        const maxPoints = (currentMode === 'distance') ? 2 : 3;
+        if (s.points.length >= maxPoints) s.points = [];
+        s.points.push({x, y, time: currentTime, frame: currentFrame});
+
+        calcResults(s, currentMode, true, targetIdx);
         updateDisplayResult();
         redraw();
     }
@@ -734,6 +864,7 @@
             const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
+            // 物差し描画
             if (s.scalePoints.length === 2 && currentMode !== 'scale') {
                 item.ctx.save();
                 item.ctx.strokeStyle = 'rgba(255, 149, 0, 0.4)';
@@ -751,14 +882,93 @@
                 return;
             }
 
-            if (s.points.length === 0) return;
-            if (currentMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
-            else if (currentMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
-            else if (currentMode === 'accel') item.ctx.strokeStyle = item.ctx.fillStyle = '#ff375f';
-            item.ctx.lineWidth = 3;
+            // 垂直線描画
+            if (s.perpPoints.length > 0) {
+                if (s.perpPoints.length === 1) {
+                    item.ctx.fillStyle = '#ff2d55';
+                    item.ctx.beginPath();
+                    item.ctx.arc(s.perpPoints[0].x, s.perpPoints[0].y, 5, 0, Math.PI * 2);
+                    item.ctx.fill();
+                } else if (s.perpPoints.length === 2) {
+                    const p1 = s.perpPoints[0], p2 = s.perpPoints[1];
+                    item.ctx.strokeStyle = '#00ffcc';
+                    item.ctx.lineWidth = 2;
+                    item.ctx.beginPath();
+                    item.ctx.moveTo(p1.x, p1.y);
+                    item.ctx.lineTo(p2.x, p2.y);
+                    item.ctx.stroke();
 
-            let labels = currentMode === 'distance' ? ["始点", "終点"] : (currentMode === 'accel' ? ["点1", "点2", "点3"] : null);
-            drawPointList(item.ctx, s.points, labels);
+                    item.ctx.fillStyle = '#ff2d55';
+                    item.ctx.beginPath();
+                    item.ctx.arc(p2.x, p2.y, 5, 0, Math.PI * 2);
+                    item.ctx.fill();
+
+                    const t = perpSlider.value / 100;
+                    const pmX = p1.x + (p2.x - p1.x) * t;
+                    const pmY = p1.y + (p2.y - p1.y) * t;
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const len = Math.hypot(dx, dy);
+                    
+                    if (len > 0) {
+                        const nx = -dy / len;
+                        const ny = dx / len;
+                        const perpLen = 2000;
+                        item.ctx.strokeStyle = '#ff2d55';
+                        item.ctx.lineWidth = 2;
+                        item.ctx.setLineDash([4, 4]);
+                        item.ctx.beginPath();
+                        item.ctx.moveTo(pmX - nx * perpLen, pmY - ny * perpLen);
+                        item.ctx.lineTo(pmX + nx * perpLen, pmY + ny * perpLen);
+                        item.ctx.stroke();
+                        item.ctx.setLineDash([]);
+                    }
+                }
+            }
+
+            // 通常の測定ポイント / 予測シミュレーションの描画
+            if (s.points.length > 0) {
+                if (lastMeasureMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
+                else if (lastMeasureMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
+                else if (lastMeasureMode === 'accel') item.ctx.strokeStyle = item.ctx.fillStyle = '#ff375f';
+                else if (lastMeasureMode === 'sim') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
+                item.ctx.lineWidth = 3;
+
+                let labels = lastMeasureMode === 'distance' ? ["始点", "終点"] : (lastMeasureMode === 'accel' ? ["点1", "点2", "点3"] : (lastMeasureMode === 'sim' ? ["根元", "関節", "先端"] : null));
+                drawPointList(item.ctx, s.points, labels);
+
+                // 🎯 予測モード時のシミュレーション線（緑破線）
+                if (lastMeasureMode === 'sim' && s.points.length === 3) {
+                    const p2 = s.points[1];
+                    const p3 = s.points[2];
+                    const deltaDeg = parseFloat(simSlider.value);
+                    const simP3 = simulateJointAngle(p2, p3, deltaDeg);
+
+                    item.ctx.save();
+                    item.ctx.strokeStyle = '#30d158';
+                    item.ctx.fillStyle = '#30d158';
+                    item.ctx.lineWidth = 3;
+                    item.ctx.setLineDash([5, 4]);
+
+                    // シミュレーション骨格線
+                    item.ctx.beginPath();
+                    item.ctx.moveTo(p2.x, p2.y);
+                    item.ctx.lineTo(simP3.x, simP3.y);
+                    item.ctx.stroke();
+                    item.ctx.setLineDash([]);
+
+                    // シミュレーション先端点
+                    item.ctx.beginPath();
+                    item.ctx.arc(simP3.x, simP3.y, 6, 0, Math.PI * 2);
+                    item.ctx.fill();
+
+                    // ラベル表示
+                    item.ctx.fillStyle = '#30d158';
+                    item.ctx.font = 'bold 11px sans-serif';
+                    item.ctx.fillText(`予測(${deltaDeg > 0 ? '+' : ''}${deltaDeg}°)`, simP3.x + 8, simP3.y - 4);
+                    item.ctx.restore();
+                }
+            }
         });
     }
 
@@ -794,7 +1004,6 @@
         const snapCanvas = document.createElement('canvas');
         const snapCtx = snapCanvas.getContext('2d');
         
-        // 1画面・重ねモードは1倍幅、並列モードは2倍幅
         const w = (compareMode === 1) ? canvas1.width * 2 : canvas1.width;
         const h = canvas1.height;
         snapCanvas.width = w;
@@ -803,19 +1012,15 @@
         snapCtx.fillStyle = '#000';
         snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
 
-        // 動画①の描画
         if (video1.videoWidth) {
             snapCtx.drawImage(video1, 0, 0, canvas1.width, h);
             snapCtx.drawImage(canvas1, 0, 0);
         }
 
-        // 動画②の描画（モードによる分岐）
         if (compareMode === 1 && video2.videoWidth) {
-            // 並列（右に並べる）
             snapCtx.drawImage(video2, canvas1.width, 0, canvas1.width, h);
             snapCtx.drawImage(canvas2, canvas1.width, 0);
         } else if (compareMode === 2 && video2.videoWidth) {
-            // 重ね（半透明にして上に重ねる）
             snapCtx.globalAlpha = 0.5;
             snapCtx.drawImage(video2, 0, 0, canvas1.width, h);
             snapCtx.drawImage(canvas2, 0, 0);
