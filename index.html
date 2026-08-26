@@ -397,6 +397,9 @@
     let tempDistPx = 0;
     let historyData = []; 
 
+    // ドラッグ＆スライド管理
+    let draggingPoint = null; // { targetIdx, arrayName, index }
+
     function simulateJointAngle(p2, p3, deltaDeg) {
         const rad = deltaDeg * (Math.PI / 180);
         const dx = p3.x - p2.x;
@@ -461,17 +464,15 @@
                 const b1 = s.cogBase[0], b2 = s.cogBase[1];
                 const lastPt = s.cogPoints[s.cogPoints.length - 1];
                 
-                // 基準線ベクトルと直交ベクトルによる分解
                 const bx = b2.x - b1.x, by = b2.y - b1.y;
                 const bLen = Math.hypot(bx, by);
                 const ux = bx / bLen, uy = by / bLen;
-                const nx = -uy, ny = ux; // 基準線に対する垂直上向き方向
+                const nx = -uy, ny = ux;
 
                 const px = lastPt.x - b1.x, py = lastPt.y - b1.y;
-                const parallelDist = px * ux + py * uy; // 基準線に沿った方向（左右）
-                const perpDist = -(px * nx + py * ny); // 基準線に対する垂直方向（上下・画面上向きを正とする）
+                const parallelDist = px * ux + py * uy;
+                const perpDist = -(px * nx + py * ny);
 
-                // 全重心点の最大移動幅（レンジ）の計算
                 let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
                 s.cogPoints.forEach(p => {
                     const vx = p.x - b1.x, vy = p.y - b1.y;
@@ -846,23 +847,84 @@
         if (e.touches.length === 0) isTouchPanning = false;
     }, {passive: false});
 
-    canvas1.addEventListener('pointerdown', (e) => { if (currentMode !== 'zoom') handleCanvasTap(e, canvas1, video1, 1); });
-    canvas2.addEventListener('pointerdown', (e) => { if (currentMode !== 'zoom') handleCanvasTap(e, canvas2, video2, 2); });
+    // ポインターイベントによるタップ＆スライド制御
+    [ {c: canvas1, v: video1, idx: 1}, {c: canvas2, v: video2, idx: 2} ].forEach(item => {
+        item.c.addEventListener('pointerdown', (e) => handlePointerDown(e, item.c, item.v, item.idx));
+        item.c.addEventListener('pointermove', (e) => handlePointerMove(e, item.c, item.idx));
+        item.c.addEventListener('pointerup', (e) => handlePointerUp(e, item.c, item.idx));
+        item.c.addEventListener('pointercancel', (e) => handlePointerUp(e, item.c, item.idx));
+    });
 
-    function handleCanvasTap(e, cvs, vid, targetIdx) {
-        lastActiveTarget = targetIdx;
-        const s = state[targetIdx];
-        
+    function getCanvasCoords(e, cvs) {
         const rect = cvs.getBoundingClientRect();
         const scaleX = cvs.width / rect.width;
         const scaleY = cvs.height / rect.height;
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
+        return {
+            x: (e.clientX - rect.left) * scaleX,
+            y: (e.clientY - rect.top) * scaleY
+        };
+    }
+
+    function findHitPoint(s, pos, mode) {
+        const HIT_RADIUS = 28; // 指で掴みやすい当たり判定半径(px)
+        
+        if (mode === 'scale') {
+            for (let i = 0; i < s.scalePoints.length; i++) {
+                if (Math.hypot(s.scalePoints[i].x - pos.x, s.scalePoints[i].y - pos.y) <= HIT_RADIUS) {
+                    return { arrayName: 'scalePoints', index: i };
+                }
+            }
+            return null;
+        }
+        if (mode === 'perp') {
+            for (let i = 0; i < s.perpPoints.length; i++) {
+                if (Math.hypot(s.perpPoints[i].x - pos.x, s.perpPoints[i].y - pos.y) <= HIT_RADIUS) {
+                    return { arrayName: 'perpPoints', index: i };
+                }
+            }
+            return null;
+        }
+        if (mode === 'cog') {
+            for (let i = 0; i < s.cogPoints.length; i++) {
+                if (Math.hypot(s.cogPoints[i].x - pos.x, s.cogPoints[i].y - pos.y) <= HIT_RADIUS) {
+                    return { arrayName: 'cogPoints', index: i };
+                }
+            }
+            for (let i = 0; i < s.cogBase.length; i++) {
+                if (Math.hypot(s.cogBase[i].x - pos.x, s.cogBase[i].y - pos.y) <= HIT_RADIUS) {
+                    return { arrayName: 'cogBase', index: i };
+                }
+            }
+            return null;
+        }
+        // 通常の points
+        for (let i = 0; i < s.points.length; i++) {
+            if (Math.hypot(s.points[i].x - pos.x, s.points[i].y - pos.y) <= HIT_RADIUS) {
+                return { arrayName: 'points', index: i };
+            }
+        }
+        return null;
+    }
+
+    function handlePointerDown(e, cvs, vid, targetIdx) {
+        if (currentMode === 'zoom') return;
+        lastActiveTarget = targetIdx;
+        const s = state[targetIdx];
+        const pos = getCanvasCoords(e, cvs);
         const currentTime = vid.currentTime;
         const currentFrame = Math.round(currentTime * currentFPS);
 
+        // 1. 既存の点のドラッグ判定
+        const hit = findHitPoint(s, pos, currentMode);
+        if (hit) {
+            draggingPoint = { targetIdx, arrayName: hit.arrayName, index: hit.index };
+            try { cvs.setPointerCapture(e.pointerId); } catch(err){}
+            return;
+        }
+
+        // 2. 既存の点がなければ新規ポイント追加
         if (currentMode === 'scale') {
-            s.scalePoints.push({x, y});
+            s.scalePoints.push({ x: pos.x, y: pos.y });
             if (s.scalePoints.length === 2) {
                 const p1 = s.scalePoints[0], p2 = s.scalePoints[1];
                 tempDistPx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
@@ -878,7 +940,7 @@
 
         if (currentMode === 'perp') {
             if (s.perpPoints.length >= 2) s.perpPoints = [];
-            s.perpPoints.push({x, y});
+            s.perpPoints.push({ x: pos.x, y: pos.y });
             calcResults(s, currentMode, true, targetIdx);
             if (s.perpPoints.length === 2) {
                 document.getElementById('perp-controls').style.display = 'flex';
@@ -890,10 +952,9 @@
 
         if (currentMode === 'cog') {
             if (s.cogBase.length < 2) {
-                s.cogBase.push({x, y});
+                s.cogBase.push({ x: pos.x, y: pos.y });
             } else {
-                // 重心の点は何個でも追加可能
-                s.cogPoints.push({x, y, time: currentTime, frame: currentFrame});
+                s.cogPoints.push({ x: pos.x, y: pos.y, time: currentTime, frame: currentFrame });
             }
             calcResults(s, currentMode, true, targetIdx);
             updateDisplayResult();
@@ -903,11 +964,33 @@
 
         const maxPoints = (currentMode === 'distance') ? 2 : 3;
         if (s.points.length >= maxPoints) s.points = [];
-        s.points.push({x, y, time: currentTime, frame: currentFrame});
+        s.points.push({ x: pos.x, y: pos.y, time: currentTime, frame: currentFrame });
 
         calcResults(s, currentMode, true, targetIdx);
         updateDisplayResult();
         redraw();
+    }
+
+    function handlePointerMove(e, cvs, targetIdx) {
+        if (!draggingPoint || draggingPoint.targetIdx !== targetIdx) return;
+        const s = state[targetIdx];
+        const pos = getCanvasCoords(e, cvs);
+
+        const pt = s[draggingPoint.arrayName][draggingPoint.index];
+        if (pt) {
+            pt.x = pos.x;
+            pt.y = pos.y;
+            calcResults(s, currentMode, false, targetIdx);
+            updateDisplayResult();
+            redraw();
+        }
+    }
+
+    function handlePointerUp(e, cvs, targetIdx) {
+        if (draggingPoint) {
+            try { cvs.releasePointerCapture(e.pointerId); } catch(err){}
+            draggingPoint = null;
+        }
     }
 
     function submitScaleModal() {
@@ -955,7 +1038,7 @@
                 if (s.perpPoints.length === 1) {
                     item.ctx.fillStyle = '#ff2d55';
                     item.ctx.beginPath();
-                    item.ctx.arc(s.perpPoints[0].x, s.perpPoints[0].y, 5, 0, Math.PI * 2);
+                    item.ctx.arc(s.perpPoints[0].x, s.perpPoints[0].y, 6, 0, Math.PI * 2);
                     item.ctx.fill();
                 } else if (s.perpPoints.length === 2) {
                     const p1 = s.perpPoints[0], p2 = s.perpPoints[1];
@@ -968,7 +1051,7 @@
 
                     item.ctx.fillStyle = '#ff2d55';
                     item.ctx.beginPath();
-                    item.ctx.arc(p2.x, p2.y, 5, 0, Math.PI * 2);
+                    item.ctx.arc(p2.x, p2.y, 6, 0, Math.PI * 2);
                     item.ctx.fill();
 
                     const t = perpSlider.value / 100;
@@ -994,7 +1077,7 @@
                 }
             }
 
-            // 3. 📍 重心移動（基準線 + 重心点トレイル）
+            // 3. 📍 重心移動
             if (lastMeasureMode === 'cog') {
                 if (s.cogBase.length > 0) {
                     item.ctx.save();
@@ -1002,7 +1085,6 @@
                     item.ctx.fillStyle = '#5e5ce6';
                     item.ctx.lineWidth = 3;
 
-                    // 基準線の描画
                     if (s.cogBase.length === 1) {
                         item.ctx.beginPath();
                         item.ctx.arc(s.cogBase[0].x, s.cogBase[0].y, 6, 0, Math.PI * 2);
@@ -1014,7 +1096,6 @@
                         item.ctx.lineTo(b2.x, b2.y);
                         item.ctx.stroke();
 
-                        // 基準線の両端点
                         item.ctx.beginPath();
                         item.ctx.arc(b1.x, b1.y, 6, 0, Math.PI * 2);
                         item.ctx.arc(b2.x, b2.y, 6, 0, Math.PI * 2);
@@ -1028,7 +1109,6 @@
                     item.ctx.restore();
                 }
 
-                // 重心点の描画（軌跡・グラデーション風）
                 if (s.cogPoints.length > 0) {
                     item.ctx.save();
                     item.ctx.strokeStyle = 'rgba(255, 204, 0, 0.6)';
@@ -1040,7 +1120,6 @@
                     }
                     item.ctx.stroke();
 
-                    // 各ポイントの丸ポチとラベル
                     s.cogPoints.forEach((pt, i) => {
                         const isLatest = (i === s.cogPoints.length - 1);
                         item.ctx.fillStyle = isLatest ? '#ff375f' : '#ffcc00';
@@ -1110,7 +1189,7 @@
 
         for (let i = 0; i < ptList.length; i++) {
             cContext.beginPath();
-            cContext.arc(ptList[i].x, ptList[i].y, 5, 0, Math.PI * 2);
+            cContext.arc(ptList[i].x, ptList[i].y, 6, 0, Math.PI * 2);
             cContext.fill();
             if (labels) {
                 const text = Array.isArray(labels) ? labels[i] : `${labels}${i + 1}`;
