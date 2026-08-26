@@ -397,8 +397,7 @@
     let tempDistPx = 0;
     let historyData = []; 
 
-    // ドラッグ＆スライド管理
-    let draggingPoint = null; // { targetIdx, arrayName, index }
+    let draggingPoint = null;
 
     function simulateJointAngle(p2, p3, deltaDeg) {
         const rad = deltaDeg * (Math.PI / 180);
@@ -847,7 +846,6 @@
         if (e.touches.length === 0) isTouchPanning = false;
     }, {passive: false});
 
-    // ポインターイベントによるタップ＆スライド制御
     [ {c: canvas1, v: video1, idx: 1}, {c: canvas2, v: video2, idx: 2} ].forEach(item => {
         item.c.addEventListener('pointerdown', (e) => handlePointerDown(e, item.c, item.v, item.idx));
         item.c.addEventListener('pointermove', (e) => handlePointerMove(e, item.c, item.idx));
@@ -866,7 +864,7 @@
     }
 
     function findHitPoint(s, pos, mode) {
-        const HIT_RADIUS = 28; // 指で掴みやすい当たり判定半径(px)
+        const HIT_RADIUS = 18; // 当たり判定を18pxに絞り、基準線周囲の新規打点を邪魔しないよう最適化
         
         if (mode === 'scale') {
             for (let i = 0; i < s.scalePoints.length; i++) {
@@ -885,19 +883,22 @@
             return null;
         }
         if (mode === 'cog') {
+            // 既存の重心点を最優先でドラッグ判定
             for (let i = 0; i < s.cogPoints.length; i++) {
                 if (Math.hypot(s.cogPoints[i].x - pos.x, s.cogPoints[i].y - pos.y) <= HIT_RADIUS) {
                     return { arrayName: 'cogPoints', index: i };
                 }
             }
-            for (let i = 0; i < s.cogBase.length; i++) {
-                if (Math.hypot(s.cogBase[i].x - pos.x, s.cogBase[i].y - pos.y) <= HIT_RADIUS) {
-                    return { arrayName: 'cogBase', index: i };
+            // 基準線がまだ未完成（0または1点）の時のみ基準点のドラッグ判定を行う
+            if (s.cogBase.length < 2) {
+                for (let i = 0; i < s.cogBase.length; i++) {
+                    if (Math.hypot(s.cogBase[i].x - pos.x, s.cogBase[i].y - pos.y) <= HIT_RADIUS) {
+                        return { arrayName: 'cogBase', index: i };
+                    }
                 }
             }
             return null;
         }
-        // 通常の points
         for (let i = 0; i < s.points.length; i++) {
             if (Math.hypot(s.points[i].x - pos.x, s.points[i].y - pos.y) <= HIT_RADIUS) {
                 return { arrayName: 'points', index: i };
@@ -914,7 +915,6 @@
         const currentTime = vid.currentTime;
         const currentFrame = Math.round(currentTime * currentFPS);
 
-        // 1. 既存の点のドラッグ判定
         const hit = findHitPoint(s, pos, currentMode);
         if (hit) {
             draggingPoint = { targetIdx, arrayName: hit.arrayName, index: hit.index };
@@ -922,7 +922,6 @@
             return;
         }
 
-        // 2. 既存の点がなければ新規ポイント追加
         if (currentMode === 'scale') {
             s.scalePoints.push({ x: pos.x, y: pos.y });
             if (s.scalePoints.length === 2) {
