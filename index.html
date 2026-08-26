@@ -69,8 +69,11 @@
         white-space: nowrap;
     }
     .hdr-btn.secondary { background: #3a3a3c; }
-    .hdr-btn.accent { background: #ff9500; color: #000; }
-    .hdr-btn.compare-active { background: #af52de; color: #fff; }
+    
+    /* 比較モードボタンの色 */
+    .hdr-btn.compare-parallel { background: #af52de; color: #fff; } /* 並列: 紫 */
+    .hdr-btn.compare-overlay { background: #ff2d55; color: #fff; } /* 重ね: 赤 */
+
     #scale-info-text {
         font-size: 11px;
         color: #ff9500;
@@ -132,7 +135,7 @@
         flex-shrink: 0;
     }
     
-    /* シークバーエリア（2段対応） */
+    /* シークバーエリア */
     .seek-container {
         display: flex;
         flex-direction: column;
@@ -233,7 +236,6 @@
         flex: 1; padding: 8px 0; border: none; border-radius: 6px; font-size: 13px; font-weight: bold;
     }
     
-    #graph-canvas { width: 100%; height: 180px; background: #1a1a1c; border-radius: 6px; border: 1px solid #444; margin-bottom: 10px; }
     #snapshot-img { max-width: 100%; max-height: 50vh; border-radius: 6px; border: 1px solid #555; margin-bottom: 10px; }
 </style>
 </head>
@@ -244,8 +246,7 @@
         <div class="btn-group-header">
             <button class="hdr-btn" onclick="triggerPickVideo(1)">動画①</button>
             <button class="hdr-btn secondary" id="btn-pick2" style="display:none;" onclick="triggerPickVideo(2)">動画②</button>
-            <button class="hdr-btn secondary" id="btn-toggle-compare" onclick="toggleCompareMode()">2画面</button>
-            <button class="hdr-btn accent" onclick="openGraphModal()">📊 グラフ</button>
+            <button class="hdr-btn secondary" id="btn-toggle-compare" onclick="toggleCompareMode()">1画面のみ</button>
             <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 保存</button>
         </div>
         <span id="scale-info-text">物差し: 未設定</span>
@@ -311,17 +312,6 @@
     </div>
 </div>
 
-<!-- グラフ表示モーダル -->
-<div id="graph-modal-overlay" class="modal-overlay">
-    <div class="modal-card" style="max-width:360px;">
-        <h3 style="color:#00ffcc;">📊 計測推移グラフ</h3>
-        <canvas id="graph-canvas"></canvas>
-        <div class="modal-btn-row">
-            <button style="background:#444; color:#fff;" onclick="closeGraphModal()">閉じる</button>
-        </div>
-    </div>
-</div>
-
 <!-- スクショ保存モーダル -->
 <div id="snapshot-modal-overlay" class="modal-overlay">
     <div class="modal-card" style="max-width:360px;">
@@ -366,20 +356,19 @@
     const scaleModalTitle = document.getElementById('scale-modal-title');
     const scaleInputValue = document.getElementById('scale-input-value');
 
-    let isCompareMode = false;
+    // 0: シングル, 1: 並列(Side-by-side), 2: 重ね(Overlay)
+    let compareMode = 0; 
     let currentMode = 'angle';
     const FPS = 30.0;
     let isPlaying = false;
     let playbackRates = [1.0, 0.5, 0.25];
     let currentRateIdx = 0;
 
-    // ①と②の独立した状態管理
     const state = {
         1: { points: [], scalePoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
         2: { points: [], scalePoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
     };
 
-    let historyData = [];
     let scaleTarget = 1;
     let tempDistPx = 0;
 
@@ -429,22 +418,56 @@
         if (!seeking2) seekbar2.value = video2.currentTime;
     });
 
+    // モード切替（1画面 → 並列 → 重ね）
     function toggleCompareMode() {
-        isCompareMode = !isCompareMode;
-        if (isCompareMode) {
+        compareMode = (compareMode + 1) % 3;
+        
+        btnToggleCompare.classList.remove('compare-parallel', 'compare-overlay');
+
+        if (compareMode === 1) {
+            // 並列モード
             pane2.style.display = 'flex';
+            pane2.style.position = 'relative';
+            pane2.style.opacity = '1';
+            pane2.style.borderLeft = '2px solid #555';
+            pane2.style.pointerEvents = 'auto'; // 操作可能
+            
             btnPick2.style.display = 'inline-block';
             seekRow2.style.display = 'flex';
-            btnToggleCompare.classList.add('compare-active');
-            btnToggleCompare.innerText = '1画面';
+            btnToggleCompare.classList.add('compare-parallel');
+            btnToggleCompare.innerText = '並列表示';
+            
+        } else if (compareMode === 2) {
+            // 重ね合わせモード（ゴースト）
+            pane2.style.display = 'flex';
+            pane2.style.position = 'absolute';
+            pane2.style.top = '0';
+            pane2.style.left = '0';
+            pane2.style.width = '100%';
+            pane2.style.height = '100%';
+            pane2.style.opacity = '0.5'; // 半透明
+            pane2.style.borderLeft = 'none';
+            pane2.style.pointerEvents = 'none'; // 重ね時は下の動画①を操作
+            
+            btnPick2.style.display = 'inline-block';
+            seekRow2.style.display = 'flex';
+            btnToggleCompare.classList.add('compare-overlay');
+            btnToggleCompare.innerText = '重ね透かし';
+            
         } else {
+            // 1画面モード
             pane2.style.display = 'none';
+            pane2.style.position = 'relative';
+            pane2.style.opacity = '1';
+            pane2.style.borderLeft = '2px solid #555';
+            pane2.style.pointerEvents = 'auto';
+            
             btnPick2.style.display = 'none';
             seekRow2.style.display = 'none';
-            btnToggleCompare.classList.remove('compare-active');
-            btnToggleCompare.innerText = '2画面';
+            btnToggleCompare.innerText = '1画面のみ';
             if (video2) video2.pause();
         }
+        
         updateScaleInfoText();
         updateDisplayResult();
         setTimeout(fitCanvases, 50);
@@ -460,7 +483,7 @@
             try {
                 const playPromises = [];
                 if (video1.duration) playPromises.push(video1.play());
-                if (isCompareMode && video2.duration) playPromises.push(video2.play());
+                if (compareMode > 0 && video2.duration) playPromises.push(video2.play());
                 await Promise.all(playPromises);
             } catch (err) {
                 console.error("再生エラー:", err);
@@ -469,7 +492,7 @@
             btnPlay.style.background = '#ff9500';
         } else {
             if (video1.duration) video1.pause();
-            if (isCompareMode && video2.duration) video2.pause();
+            if (compareMode > 0 && video2.duration) video2.pause();
             btnPlay.innerText = '▶ 再生';
             btnPlay.style.background = '#34c759';
         }
@@ -502,13 +525,13 @@
         if (video1.duration) {
             video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
         }
-        if (isCompareMode && video2.duration) {
+        if (compareMode > 0 && video2.duration) {
             video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
         }
     }
 
     function updateDisplayResult() {
-        if (!isCompareMode) {
+        if (compareMode === 0) {
             mainResult.innerHTML = state[1].resultMain || "動画①を選択してください";
             subResult.innerHTML = state[1].resultSub || "";
         } else {
@@ -525,7 +548,7 @@
     function updateScaleInfoText() {
         const s1 = state[1].pxPerCm ? `①${(state[1].pxPerCm).toFixed(1)}px/cm` : "①未設定";
         const s2 = state[2].pxPerCm ? `②${(state[2].pxPerCm).toFixed(1)}px/cm` : "②未設定";
-        scaleInfoText.innerText = isCompareMode ? `物差し: ${s1} | ${s2}` : `物差し: ${s1}`;
+        scaleInfoText.innerText = (compareMode > 0) ? `物差し: ${s1} | ${s2}` : `物差し: ${s1}`;
     }
 
     function setMode(mode) {
@@ -652,7 +675,6 @@
                     const speedMS = distM / dt;
                     speedKMH = speedMS * 3.6;
                     s.resultSub = `速度: <span class="highlight-speed">${speedMS.toFixed(2)}m/s (${speedKMH.toFixed(1)}km/h)</span> | dX:${formatDelta(dx, s.pxPerCm)}`;
-                    historyData.push({ target: targetIdx, time: p2.time, speedKMH, accelG: null });
                 } else {
                     s.resultSub = `dX:${formatDelta(dx, s.pxPerCm)}, dY:${formatDelta(dy, s.pxPerCm)} (時間差:${dt.toFixed(3)}s)`;
                 }
@@ -677,7 +699,6 @@
 
                     s.resultMain = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)}m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)}G)</span>`;
                     s.resultSub = `①:${(v1 * 3.6).toFixed(1)}k → ②:${(v2 * 3.6).toFixed(1)}k (差:${(dv * 3.6 > 0 ? '+' : '')}${(dv * 3.6).toFixed(1)}k)`;
-                    historyData.push({ target: targetIdx, time: p3.time, speedKMH: v2 * 3.6, accelG: gForce });
                 } else if (!s.pxPerCm) {
                     s.resultMain = "物差し未設定";
                     s.resultSub = "加速度の算出には物差しの設定が必要です";
@@ -713,7 +734,6 @@
             const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
-            // 物差し線の描画
             if (s.scalePoints.length === 2 && currentMode !== 'scale') {
                 item.ctx.save();
                 item.ctx.strokeStyle = 'rgba(255, 149, 0, 0.4)';
@@ -774,7 +794,8 @@
         const snapCanvas = document.createElement('canvas');
         const snapCtx = snapCanvas.getContext('2d');
         
-        const w = isCompareMode ? canvas1.width * 2 : canvas1.width;
+        // 1画面・重ねモードは1倍幅、並列モードは2倍幅
+        const w = (compareMode === 1) ? canvas1.width * 2 : canvas1.width;
         const h = canvas1.height;
         snapCanvas.width = w;
         snapCanvas.height = h + 60;
@@ -782,24 +803,33 @@
         snapCtx.fillStyle = '#000';
         snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
 
+        // 動画①の描画
         if (video1.videoWidth) {
             snapCtx.drawImage(video1, 0, 0, canvas1.width, h);
             snapCtx.drawImage(canvas1, 0, 0);
         }
 
-        if (isCompareMode && video2.videoWidth) {
+        // 動画②の描画（モードによる分岐）
+        if (compareMode === 1 && video2.videoWidth) {
+            // 並列（右に並べる）
             snapCtx.drawImage(video2, canvas1.width, 0, canvas1.width, h);
             snapCtx.drawImage(canvas2, canvas1.width, 0);
+        } else if (compareMode === 2 && video2.videoWidth) {
+            // 重ね（半透明にして上に重ねる）
+            snapCtx.globalAlpha = 0.5;
+            snapCtx.drawImage(video2, 0, 0, canvas1.width, h);
+            snapCtx.drawImage(canvas2, 0, 0);
+            snapCtx.globalAlpha = 1.0;
         }
 
         snapCtx.fillStyle = '#1c1c1e';
         snapCtx.fillRect(0, h, snapCanvas.width, 60);
         snapCtx.fillStyle = '#00ffcc';
-        snapCtx.font = 'bold 15px -apple-system, sans-serif';
+        snapCtx.font = 'bold 14px -apple-system, sans-serif';
         snapCtx.fillText(mainResult.innerText, 15, h + 24);
 
         snapCtx.fillStyle = '#ccc';
-        snapCtx.font = '12px -apple-system, sans-serif';
+        snapCtx.font = '11px -apple-system, sans-serif';
         const cleanSubText = subResult.innerText.replace(/<[^>]*>?/gm, ' ');
         snapCtx.fillText(cleanSubText, 15, h + 46);
 
@@ -807,48 +837,6 @@
         document.getElementById('snapshot-modal-overlay').style.display = 'flex';
     }
     function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
-
-    function openGraphModal() {
-        const gCanvas = document.getElementById('graph-canvas');
-        const gCtx = gCanvas.getContext('2d');
-        gCanvas.width = gCanvas.clientWidth;
-        gCanvas.height = gCanvas.clientHeight;
-        gCtx.clearRect(0, 0, gCanvas.width, gCanvas.height);
-
-        if (historyData.length === 0) {
-            gCtx.fillStyle = '#888';
-            gCtx.font = '13px sans-serif';
-            gCtx.textAlign = 'center';
-            gCtx.fillText("測定履歴データがありません", gCanvas.width / 2, gCanvas.height / 2);
-        } else {
-            gCtx.strokeStyle = '#ffcc00';
-            gCtx.lineWidth = 2;
-            gCtx.beginPath();
-            const maxSpeed = Math.max(...historyData.map(d => d.speedKMH || 0), 10);
-            historyData.forEach((d, idx) => {
-                const gx = (idx / Math.max(1, historyData.length - 1)) * (gCanvas.width - 40) + 20;
-                const gy = gCanvas.height - 30 - ((d.speedKMH || 0) / maxSpeed) * (gCanvas.height - 60);
-                if (idx === 0) gCtx.moveTo(gx, gy);
-                else gCtx.lineTo(gx, gy);
-            });
-            gCtx.stroke();
-
-            historyData.forEach((d, idx) => {
-                const gx = (idx / Math.max(1, historyData.length - 1)) * (gCanvas.width - 40) + 20;
-                const gy = gCanvas.height - 30 - ((d.speedKMH || 0) / maxSpeed) * (gCanvas.height - 60);
-                gCtx.fillStyle = d.target === 1 ? '#007aff' : '#af52de';
-                gCtx.beginPath();
-                gCtx.arc(gx, gy, 4, 0, Math.PI * 2);
-                gCtx.fill();
-                gCtx.fillStyle = '#fff';
-                gCtx.font = '9px sans-serif';
-                gCtx.fillText(`${d.target === 1 ? '①' : '②'}${(d.speedKMH || 0).toFixed(0)}k`, gx - 10, gy - 8);
-            });
-        }
-
-        document.getElementById('graph-modal-overlay').style.display = 'flex';
-    }
-    function closeGraphModal() { document.getElementById('graph-modal-overlay').style.display = 'none'; }
 </script>
 </body>
 </html>
