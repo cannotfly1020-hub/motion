@@ -51,7 +51,7 @@
     .btn-group-header {
         display: flex;
         align-items: center;
-        gap: 5px;
+        gap: 4px;
         flex-wrap: nowrap;
     }
     .hdr-btn {
@@ -60,7 +60,7 @@
         background: #007aff;
         color: white;
         border: none;
-        padding: 6px 9px;
+        padding: 6px 8px;
         border-radius: 6px;
         font-weight: bold;
         font-size: 11px;
@@ -70,7 +70,9 @@
     .hdr-btn.secondary { background: #3a3a3c; }
     .hdr-btn.compare-parallel { background: #af52de; color: #fff; }
     .hdr-btn.compare-overlay { background: #ff2d55; color: #fff; }
-    #scale-info-text { font-size: 11px; color: #ff9500; font-weight: 600; text-align: right; white-space: nowrap; }
+    .hdr-btn.fps-badge { background: #30d158; color: #000; font-size: 10px; }
+    
+    #scale-info-text { font-size: 10px; color: #ff9500; font-weight: 600; text-align: right; white-space: nowrap; }
     
     #result-box {
         width: 100%;
@@ -205,6 +207,7 @@
             <button class="hdr-btn" onclick="triggerPickVideo(1)">動画①</button>
             <button class="hdr-btn secondary" id="btn-pick2" style="display:none;" onclick="triggerPickVideo(2)">動画②</button>
             <button class="hdr-btn secondary" id="btn-toggle-compare" onclick="toggleCompareMode()">1画面のみ</button>
+            <button class="hdr-btn fps-badge" id="btn-fps" onclick="toggleFPS()">30fps</button>
             <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 保存</button>
         </div>
         <span id="scale-info-text">物差し: 未設定</span>
@@ -311,6 +314,7 @@
     const pane2 = document.getElementById('pane2');
     const btnPick2 = document.getElementById('btn-pick2');
     const btnToggleCompare = document.getElementById('btn-toggle-compare');
+    const btnFps = document.getElementById('btn-fps');
     const seekbar1 = document.getElementById('seekbar1');
     const seekbar2 = document.getElementById('seekbar2');
     const seekRow2 = document.getElementById('seek-row-2');
@@ -338,7 +342,24 @@
     let compareMode = 0; 
     let currentMode = 'angle';
     let lastMeasureMode = 'angle';
-    const FPS = 30.0;
+    
+    // FPS設定（初期値は60fpsまたは30fps。今回はよく使われる60をデフォルトにするか30にするか。ボタンで30→60→120→240と循環）
+    let currentFPS = 30.0;
+    const fpsList = [30, 60, 120, 240];
+    let fpsIdx = 0;
+
+    function toggleFPS() {
+        fpsIdx = (fpsIdx + 1) % fpsList.length;
+        currentFPS = fpsList[fpsIdx];
+        btnFps.innerText = `${currentFPS}fps`;
+        
+        // 現在測定中の結果があれば再計算して反映する
+        [1, 2].forEach(idx => {
+            calcResults(state[idx], lastMeasureMode, false, idx);
+        });
+        updateDisplayResult();
+    }
+
     let isPlaying = false;
     let playbackRates = [1.0, 0.5, 0.25];
     let currentRateIdx = 0;
@@ -358,7 +379,6 @@
     let tempDistPx = 0;
     let historyData = []; 
 
-    // ========= 計算・テキスト更新のプログラム（ここが抜けていました！） =========
     function calcResults(s, mode, isNewPoint = false, targetIdx = 1) {
         if (mode === 'angle') {
             if (s.points.length === 3) {
@@ -386,7 +406,7 @@
                 s.resultMain = `距離: ${formatDistance(dist, s.pxPerCm)}`;
                 if (dt > 0 && s.pxPerCm) {
                     const speedKMH = ((dist / s.pxPerCm) / 100) / dt * 3.6;
-                    s.resultSub = `速度: <span class="highlight-speed">${speedKMH.toFixed(1)}km/h</span>`;
+                    s.resultSub = `速度: <span class="highlight-speed">${speedKMH.toFixed(1)}km/h</span> (${currentFPS}fps対応)`;
                     if (isNewPoint) historyData.push({ target: targetIdx, time: p2.time, speedKMH, accelG: null });
                 } else {
                     s.resultSub = `dX:${formatDelta(dx, s.pxPerCm)}, dY:${formatDelta(dy, s.pxPerCm)} (時間差:${dt.toFixed(3)}s)`;
@@ -407,7 +427,7 @@
                     const accel = (v2 - v1) / ((dt1 + dt2) / 2);
                     const gForce = accel / 9.80665;
                     s.resultMain = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)}m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)}G)</span>`;
-                    s.resultSub = `①:${(v1 * 3.6).toFixed(1)}k → ②:${(v2 * 3.6).toFixed(1)}k`;
+                    s.resultSub = `①:${(v1 * 3.6).toFixed(1)}k → ②:${(v2 * 3.6).toFixed(1)}k (${currentFPS}fps対応)`;
                     if (isNewPoint) historyData.push({ target: targetIdx, time: p3.time, speedKMH: v2 * 3.6, accelG: gForce });
                 } else if (!s.pxPerCm) {
                     s.resultMain = "物差し未設定";
@@ -427,7 +447,6 @@
             }
         }
     }
-    // =================================================================================
 
     function applyZoom(idx) {
         const target = document.getElementById(`zoom-target-${idx}`);
@@ -576,7 +595,8 @@
     seekbar2.addEventListener('change', () => { seeking2 = false; });
 
     function stepFrame(dir) {
-        const stepSec = dir / FPS;
+        // 選択されているFPSに合わせて正確に1コマ分（1 / currentFPS 秒）進む・戻るように改良！
+        const stepSec = dir / currentFPS;
         if (video1.duration) video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
         if (compareMode > 0 && video2.duration) video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
     }
@@ -604,7 +624,6 @@
     }
 
     function setMode(mode) {
-        // メイン測定(角度・速度・加速度)が切り替わった時だけ通常ポイントをクリア
         const mainModes = ['angle', 'distance', 'accel'];
         if (mainModes.includes(mode) && mode !== lastMeasureMode) {
             state[1].points = [];
@@ -805,7 +824,6 @@
             const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
-            // 1. 物差し
             if (s.scalePoints.length === 2 && currentMode !== 'scale') {
                 item.ctx.save();
                 item.ctx.strokeStyle = 'rgba(255, 149, 0, 0.4)';
@@ -823,7 +841,6 @@
                 return;
             }
 
-            // 2. 垂直線の描画
             if (s.perpPoints.length > 0) {
                 if (s.perpPoints.length === 1) {
                     item.ctx.fillStyle = '#ff2d55';
@@ -841,7 +858,7 @@
 
                     item.ctx.fillStyle = '#ff2d55';
                     item.ctx.beginPath();
-                    item.ctx.arc(p2.x, p2.y, 5, 0, Math.PI * 2);
+                    item.ctx.arc(p2.y ? p2.x : p2.x, p2.y, 5, 0, Math.PI * 2);
                     item.ctx.fill();
 
                     const t = perpSlider.value / 100;
@@ -869,7 +886,6 @@
                 }
             }
 
-            // 3. 通常の測定ポイント
             if (s.points.length > 0) {
                 if (lastMeasureMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
                 else if (lastMeasureMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
