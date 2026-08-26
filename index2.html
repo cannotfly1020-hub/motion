@@ -27,7 +27,6 @@
         overflow: hidden;
     }
     
-    /* ヘッダー */
     #header {
         width: 100%;
         background: #1c1c1e;
@@ -73,7 +72,6 @@
     .hdr-btn.compare-overlay { background: #ff2d55; color: #fff; }
     #scale-info-text { font-size: 11px; color: #ff9500; font-weight: 600; text-align: right; white-space: nowrap; }
     
-    /* 計測データ表示ボックス */
     #result-box {
         width: 100%;
         background: #262629;
@@ -86,7 +84,6 @@
     .highlight-acc { color: #ff375f; font-weight: bold; }
     .highlight-speed { color: #ffcc00; font-weight: bold; }
 
-    /* 映像ステージ */
     #stage {
         width: 100%;
         position: relative;
@@ -107,7 +104,6 @@
         overflow: hidden;
         background: #000;
     }
-    /* ズーム用ラッパー */
     .zoom-target {
         width: 100%;
         height: 100%;
@@ -118,7 +114,6 @@
     video { width: 100%; height: 100%; object-fit: contain; }
     canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; }
 
-    /* 操作パネル */
     #controls {
         width: 100%;
         background: #1c1c1e;
@@ -139,12 +134,13 @@
     .seek-label.v2 { color: #af52de; }
     input[type=range] { flex: 1; height: 20px; accent-color: #007aff; }
     #seekbar2 { accent-color: #af52de; }
+    #perp-slider { accent-color: #ff2d55; }
 
-    /* モードボタン（5列に変更） */
+    /* モードボタン（3列×2段に変更して見やすく） */
     .mode-grid {
         width: 100%;
         display: grid;
-        grid-template-columns: repeat(5, 1fr);
+        grid-template-columns: repeat(3, 1fr);
         gap: 4px;
     }
     button.ctrl-btn {
@@ -156,7 +152,7 @@
         color: white;
         border: none;
         border-radius: 6px;
-        font-size: 10px;
+        font-size: 11px;
         font-weight: 600;
         cursor: pointer;
         text-align: center;
@@ -166,6 +162,7 @@
     #btn-mode-acc.mode-active { background: #ff375f; color: white; font-weight: bold; }
     #btn-mode-scale.mode-active { background: #ff9500; color: black; font-weight: bold; }
     #btn-mode-zoom.mode-active { background: #007aff; color: white; font-weight: bold; }
+    #btn-mode-perp.mode-active { background: #ff2d55; color: white; font-weight: bold; }
     
     .playback-row {
         width: 100%;
@@ -248,18 +245,28 @@
             <input type="range" id="seekbar2" min="0" max="100" value="0" step="0.001">
         </div>
     </div>
+    
+    <!-- モードボタン -->
     <div class="mode-grid">
         <button class="ctrl-btn mode-active" id="btn-mode-angle" onclick="setMode('angle')">角度(3点)</button>
         <button class="ctrl-btn" id="btn-mode-dist" onclick="setMode('distance')">速度(2点)</button>
         <button class="ctrl-btn" id="btn-mode-acc" onclick="setMode('accel')">加速(3点)</button>
+        <button class="ctrl-btn" id="btn-mode-perp" onclick="setMode('perp')">垂直線(2点)</button>
         <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">基準</button>
         <button class="ctrl-btn" id="btn-mode-zoom" onclick="setMode('zoom')">🔍移動</button>
     </div>
     
+    <!-- ズーム専用コントロール -->
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
         <span style="font-size:11px; font-weight:bold; color:#007aff;">倍率(画面<span id="zoom-target-label">①</span>)</span>
         <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1">
         <button class="ctrl-btn" style="width:auto; padding:5px 12px; background:#444;" onclick="resetZoom()">リセット</button>
+    </div>
+
+    <!-- 垂直線専用コントロール -->
+    <div id="perp-controls" style="display:none; width:100%; align-items:center; gap:8px;">
+        <span style="font-size:11px; font-weight:bold; color:#ff2d55;">垂直線移動</span>
+        <input type="range" id="perp-slider" min="0" max="100" step="0.5" value="50">
     </div>
 
     <div class="playback-row">
@@ -326,6 +333,8 @@
     const btnModeAcc = document.getElementById('btn-mode-acc');
     const btnModeScale = document.getElementById('btn-mode-scale');
     const btnModeZoom = document.getElementById('btn-mode-zoom');
+    const btnModePerp = document.getElementById('btn-mode-perp');
+    const perpSlider = document.getElementById('perp-slider');
     
     const scaleModalOverlay = document.getElementById('scale-modal-overlay');
     const scaleModalTitle = document.getElementById('scale-modal-title');
@@ -344,7 +353,6 @@
         2: { points: [], scalePoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
     };
     
-    // ズーム・パン状態の管理
     const viewState = {
         1: { scale: 1, x: 0, y: 0 },
         2: { scale: 1, x: 0, y: 0 }
@@ -369,10 +377,11 @@
         viewState[lastActiveTarget].scale = parseFloat(e.target.value);
         applyZoom(lastActiveTarget);
     });
+    
+    perpSlider.addEventListener('input', redraw);
 
     function fitCanvases() {
         [ {c: canvas1, v: video1}, {c: canvas2, v: video2} ].forEach(item => {
-            // 親コンテナのサイズをキャンバスの実解像度にする
             item.c.width = item.c.parentElement.clientWidth;
             item.c.height = item.c.parentElement.clientHeight;
         });
@@ -506,7 +515,7 @@
     }
 
     function updateDisplayResult() {
-        if (currentMode === 'zoom') return; // ズーム中はテキストを変えない
+        if (currentMode === 'zoom') return; 
         if (compareMode === 0) {
             mainResult.innerHTML = state[1].resultMain || "測定したい点をタップしてください";
             subResult.innerHTML = state[1].resultSub || "";
@@ -528,7 +537,6 @@
     }
 
     function setMode(mode) {
-        // 測定モード同士の切り替え時は点をクリアする
         if (mode !== 'zoom' && currentMode !== 'zoom' && mode !== lastMeasureMode) {
             state[1].points = [];
             state[2].points = [];
@@ -536,6 +544,7 @@
             state[2].resultMain = "";
             state[1].resultSub = "";
             state[2].resultSub = "";
+            perpSlider.value = 50; // リセット
         }
         if (mode !== 'zoom') {
             lastMeasureMode = mode;
@@ -543,25 +552,30 @@
         
         currentMode = mode;
         
-        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModeZoom].forEach(b => b.classList.remove('mode-active'));
+        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModeZoom, btnModePerp].forEach(b => b.classList.remove('mode-active'));
+
+        document.getElementById('zoom-controls').style.display = (mode === 'zoom') ? 'flex' : 'none';
+        document.getElementById('perp-controls').style.display = (mode === 'perp') ? 'flex' : 'none';
 
         if (mode === 'zoom') {
             btnModeZoom.classList.add('mode-active');
-            document.getElementById('zoom-controls').style.display = 'flex';
             document.getElementById('zoom-target-label').innerText = lastActiveTarget === 1 ? '①' : '②';
             document.getElementById('zoom-slider').value = viewState[lastActiveTarget].scale;
         } else {
-            document.getElementById('zoom-controls').style.display = 'none';
             if (mode === 'angle') btnModeAngle.classList.add('mode-active');
             else if (mode === 'distance') btnModeDist.classList.add('mode-active');
             else if (mode === 'accel') btnModeAcc.classList.add('mode-active');
             else if (mode === 'scale') btnModeScale.classList.add('mode-active');
+            else if (mode === 'perp') btnModePerp.classList.add('mode-active');
         }
         
         if (mode === 'scale') {
             state[1].scalePoints = [];
             state[2].scalePoints = [];
             updateScaleInfoText();
+        } else if (mode === 'perp') {
+            state[1].resultMain = "垂直線: 基準となる2点をタップ";
+            state[1].resultSub = "下のスライダーで垂直線を移動できます";
         }
         
         updateDisplayResult();
@@ -575,6 +589,7 @@
         state[2].resultMain = "";
         state[1].resultSub = "";
         state[2].resultSub = "";
+        perpSlider.value = 50;
         updateDisplayResult();
         redraw();
     }
@@ -586,7 +601,6 @@
         return `${cm.toFixed(1)} cm`;
     }
 
-    // ★★★ ピンチズームとパン移動の処理 ★★★
     let isTouchPanning = false;
     let panStartX = 0, panStartY = 0;
     let panStartOffsetX = 0, panStartOffsetY = 0;
@@ -619,7 +633,7 @@
 
     document.getElementById('stage').addEventListener('touchmove', e => {
         if (currentMode !== 'zoom') return;
-        e.preventDefault(); // ネイティブのスクロール防止
+        e.preventDefault(); 
         if (isTouchPanning && e.touches.length === 1) {
             const scale = viewState[lastActiveTarget].scale;
             const dx = (e.touches[0].clientX - panStartX) / scale;
@@ -641,32 +655,6 @@
         if (e.touches.length === 0) isTouchPanning = false;
     }, {passive: false});
 
-    // PC用マウスでのパン移動
-    let isPointerPanning = false;
-    document.getElementById('stage').addEventListener('pointerdown', e => {
-        if (currentMode !== 'zoom' || e.pointerType === 'touch') return;
-        isPointerPanning = true;
-        lastActiveTarget = e.target.closest('#pane2') ? 2 : 1;
-        panStartX = e.clientX;
-        panStartY = e.clientY;
-        panStartOffsetX = viewState[lastActiveTarget].x;
-        panStartOffsetY = viewState[lastActiveTarget].y;
-        document.getElementById('zoom-target-label').innerText = lastActiveTarget === 1 ? '①' : '②';
-        document.getElementById('zoom-slider').value = viewState[lastActiveTarget].scale;
-    });
-    window.addEventListener('pointermove', e => {
-        if (currentMode !== 'zoom' || e.pointerType === 'touch' || !isPointerPanning) return;
-        const scale = viewState[lastActiveTarget].scale;
-        const dx = (e.clientX - panStartX) / scale;
-        const dy = (e.clientY - panStartY) / scale;
-        viewState[lastActiveTarget].x = panStartOffsetX + dx;
-        viewState[lastActiveTarget].y = panStartOffsetY + dy;
-        applyZoom(lastActiveTarget);
-    });
-    window.addEventListener('pointerup', () => { isPointerPanning = false; });
-
-
-    // ★★★ 点を打つ処理 ★★★
     canvas1.addEventListener('pointerdown', (e) => { if (currentMode !== 'zoom') handleCanvasTap(e, canvas1, video1, 1); });
     canvas2.addEventListener('pointerdown', (e) => { if (currentMode !== 'zoom') handleCanvasTap(e, canvas2, video2, 2); });
 
@@ -674,7 +662,6 @@
         lastActiveTarget = targetIdx;
         const s = state[targetIdx];
         
-        // ズームしている場合の座標逆算（ズレなく正確に打てる魔法の計算）
         const rect = cvs.getBoundingClientRect();
         const scaleX = cvs.width / rect.width;
         const scaleY = cvs.height / rect.height;
@@ -697,7 +684,7 @@
             return;
         }
 
-        const maxPoints = currentMode === 'distance' ? 2 : 3;
+        const maxPoints = (currentMode === 'distance' || currentMode === 'perp') ? 2 : 3;
         if (s.points.length >= maxPoints) s.points = [];
         s.points.push({x, y, time: currentTime});
 
@@ -708,7 +695,6 @@
                 const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
                 const dot = v1.x * v2.x + v1.y * v2.y;
                 const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
-
                 if (mag1 * mag2 !== 0) {
                     let cosVal = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
                     let angle = Math.acos(cosVal) * (180 / Math.PI);
@@ -725,7 +711,6 @@
                 const dx = p2.x - p1.x, dy = -(p2.y - p1.y);
                 const dist = Math.hypot(dx, dy);
                 const dt = Math.abs(p2.time - p1.time);
-
                 s.resultMain = `距離: ${formatDistance(dist, s.pxPerCm)}`;
                 if (dt > 0 && s.pxPerCm) {
                     const speedKMH = ((dist / s.pxPerCm) / 100) / dt * 3.6;
@@ -741,7 +726,6 @@
                 const dt1 = Math.abs(p2.time - p1.time), dt2 = Math.abs(p3.time - p2.time);
                 const dist1 = Math.hypot(p2.x - p1.x, p2.y - p1.y);
                 const dist2 = Math.hypot(p3.x - p2.x, p3.y - p2.y);
-
                 if (dt1 > 0 && dt2 > 0 && s.pxPerCm) {
                     const v1 = ((dist1 / s.pxPerCm) / 100) / dt1;
                     const v2 = ((dist2 / s.pxPerCm) / 100) / dt2;
@@ -753,6 +737,14 @@
             } else {
                 s.resultMain = `点 ${s.points.length}/3`;
                 s.resultSub = "コマ送りしながら次の点をタップ";
+            }
+        } else if (currentMode === 'perp') {
+            if (s.points.length === 2) {
+                s.resultMain = `基準線設定完了`;
+                s.resultSub = `下のスライダーで垂直線を動かせます`;
+            } else {
+                s.resultMain = "基準となる1点目";
+                s.resultSub = "2点目をタップして線を引きます";
             }
         }
         updateDisplayResult();
@@ -799,6 +791,57 @@
             }
 
             if (s.points.length === 0) return;
+            
+            // 垂直線モードの特別描画
+            if (lastMeasureMode === 'perp') {
+                if (s.points.length > 0) {
+                    item.ctx.fillStyle = '#00ffcc';
+                    item.ctx.beginPath();
+                    item.ctx.arc(s.points[0].x, s.points[0].y, 5, 0, Math.PI * 2);
+                    item.ctx.fill();
+                }
+                if (s.points.length === 2) {
+                    const p1 = s.points[0], p2 = s.points[1];
+                    // 基準線（水色）
+                    item.ctx.strokeStyle = '#00ffcc';
+                    item.ctx.lineWidth = 2;
+                    item.ctx.beginPath();
+                    item.ctx.moveTo(p1.x, p1.y);
+                    item.ctx.lineTo(p2.x, p2.y);
+                    item.ctx.stroke();
+
+                    item.ctx.fillStyle = '#00ffcc';
+                    item.ctx.beginPath();
+                    item.ctx.arc(p2.x, p2.y, 5, 0, Math.PI * 2);
+                    item.ctx.fill();
+
+                    // 垂直線の計算と描画（赤色）
+                    const t = perpSlider.value / 100;
+                    const pmX = p1.x + (p2.x - p1.x) * t;
+                    const pmY = p1.y + (p2.y - p1.y) * t;
+                    
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const len = Math.hypot(dx, dy);
+                    
+                    if (len > 0) {
+                        const nx = -dy / len;
+                        const ny = dx / len;
+                        const perpLen = 2000; // 画面を突き抜ける十分な長さ
+                        
+                        item.ctx.strokeStyle = '#ff2d55'; // 赤色
+                        item.ctx.lineWidth = 2;
+                        item.ctx.setLineDash([4, 4]); // 破線
+                        item.ctx.beginPath();
+                        item.ctx.moveTo(pmX - nx * perpLen, pmY - ny * perpLen);
+                        item.ctx.lineTo(pmX + nx * perpLen, pmY + ny * perpLen);
+                        item.ctx.stroke();
+                        item.ctx.setLineDash([]); // 元に戻す
+                    }
+                }
+                return; // 垂直線モード時は通常の点を描画しない
+            }
+
             if (lastMeasureMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
             else if (lastMeasureMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
             else if (lastMeasureMode === 'accel') item.ctx.strokeStyle = item.ctx.fillStyle = '#ff375f';
