@@ -27,7 +27,7 @@
         overflow: hidden;
     }
     
-    /* ヘッダー（上部の時計・ノッチをしっかり避ける） */
+    /* ヘッダー */
     #header {
         width: 100%;
         background: #1c1c1e;
@@ -117,7 +117,7 @@
     video { width: 100%; height: 100%; object-fit: contain; }
     canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; }
 
-    /* 操作パネル（下部バーを避ける） */
+    /* 操作パネル */
     #controls {
         width: 100%;
         background: #1c1c1e;
@@ -131,16 +131,34 @@
         border-top: 1px solid #333;
         flex-shrink: 0;
     }
-    .slider-box {
+    
+    /* シークバーエリア（2段対応） */
+    .seek-container {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
         width: 100%;
+    }
+    .seek-row {
         display: flex;
         align-items: center;
-    }
-    input[type=range] {
+        gap: 6px;
         width: 100%;
-        height: 22px;
+    }
+    .seek-label {
+        font-size: 10px;
+        font-weight: bold;
+        color: #007aff;
+        width: 22px;
+        flex-shrink: 0;
+    }
+    .seek-label.v2 { color: #af52de; }
+    input[type=range] {
+        flex: 1;
+        height: 20px;
         accent-color: #007aff;
     }
+    #seekbar2 { accent-color: #af52de; }
 
     .mode-grid {
         width: 100%;
@@ -152,7 +170,7 @@
         -webkit-appearance: none;
         appearance: none;
         width: 100%;
-        padding: 8px 0;
+        padding: 7px 0;
         background: #2c2c2e;
         color: white;
         border: none;
@@ -242,18 +260,25 @@
 
 <div id="stage">
     <div class="video-pane" id="pane1">
-        <video id="video1" playsinline webkit-playsinline></video>
+        <video id="video1" playsinline webkit-playsinline muted></video>
         <canvas id="canvas1"></canvas>
     </div>
     <div class="video-pane" id="pane2">
-        <video id="video2" playsinline webkit-playsinline></video>
+        <video id="video2" playsinline webkit-playsinline muted></video>
         <canvas id="canvas2"></canvas>
     </div>
 </div>
 
 <div id="controls">
-    <div class="slider-box">
-        <input type="range" id="seekbar" min="0" max="100" value="0" step="0.001">
+    <div class="seek-container">
+        <div class="seek-row">
+            <span class="seek-label">①</span>
+            <input type="range" id="seekbar1" min="0" max="100" value="0" step="0.001">
+        </div>
+        <div class="seek-row" id="seek-row-2" style="display:none;">
+            <span class="seek-label v2">②</span>
+            <input type="range" id="seekbar2" min="0" max="100" value="0" step="0.001">
+        </div>
     </div>
     <div class="mode-grid">
         <button class="ctrl-btn mode-active" id="btn-mode-angle" onclick="setMode('angle')">角度 (3点)</button>
@@ -321,7 +346,9 @@
     const pane2 = document.getElementById('pane2');
     const btnPick2 = document.getElementById('btn-pick2');
     const btnToggleCompare = document.getElementById('btn-toggle-compare');
-    const seekbar = document.getElementById('seekbar');
+    const seekbar1 = document.getElementById('seekbar1');
+    const seekbar2 = document.getElementById('seekbar2');
+    const seekRow2 = document.getElementById('seek-row-2');
     const mainResult = document.getElementById('main-result');
     const subResult = document.getElementById('sub-result');
     const scaleInfoText = document.getElementById('scale-info-text');
@@ -351,6 +378,9 @@
 
     let historyData = [];
 
+    // 2動画の再生同期用（時間差）
+    let timeOffset = 0; 
+
     function fitCanvases() {
         [ {c: canvas1, v: video1}, {c: canvas2, v: video2} ].forEach(item => {
             item.c.width = item.c.clientWidth;
@@ -370,6 +400,7 @@
 
     function loadVideoFile(file, vidElem) {
         if (file) {
+            vidElem.muted = true;
             vidElem.src = URL.createObjectURL(file);
             vidElem.load();
         }
@@ -377,13 +408,23 @@
 
     video1.addEventListener('loadedmetadata', () => {
         fitCanvases();
-        seekbar.max = video1.duration;
-        seekbar.value = 0;
+        seekbar1.max = video1.duration;
+        seekbar1.value = 0;
         setMode(currentMode);
     });
 
+    video2.addEventListener('loadedmetadata', () => {
+        fitCanvases();
+        seekbar2.max = video2.duration;
+        seekbar2.value = 0;
+    });
+
     video1.addEventListener('timeupdate', () => {
-        if (!seeking) seekbar.value = video1.currentTime;
+        if (!seeking1) seekbar1.value = video1.currentTime;
+    });
+
+    video2.addEventListener('timeupdate', () => {
+        if (!seeking2) seekbar2.value = video2.currentTime;
     });
 
     function toggleCompareMode() {
@@ -391,28 +432,43 @@
         if (isCompareMode) {
             pane2.style.display = 'flex';
             btnPick2.style.display = 'inline-block';
+            seekRow2.style.display = 'flex';
             btnToggleCompare.classList.add('compare-active');
             btnToggleCompare.innerText = '1画面';
         } else {
             pane2.style.display = 'none';
             btnPick2.style.display = 'none';
+            seekRow2.style.display = 'none';
             btnToggleCompare.classList.remove('compare-active');
             btnToggleCompare.innerText = '2画面';
+            if (video2) video2.pause();
         }
         setTimeout(fitCanvases, 50);
     }
 
-    function togglePlay() {
-        if (!video1.duration) return;
+    // 同時再生・一時停止（iOS対応 & オフセット維持）
+    async function togglePlay() {
+        if (!video1.duration && !video2.duration) return;
+        
         isPlaying = !isPlaying;
         if (isPlaying) {
-            video1.play();
-            if (isCompareMode) video2.play();
+            video1.muted = true;
+            video2.muted = true;
+            timeOffset = video2.currentTime - video1.currentTime; // 現在のズレ幅を記録
+            
+            try {
+                const playPromises = [];
+                if (video1.duration) playPromises.push(video1.play());
+                if (isCompareMode && video2.duration) playPromises.push(video2.play());
+                await Promise.all(playPromises);
+            } catch (err) {
+                console.error("再生エラー:", err);
+            }
             btnPlay.innerText = '⏸ 停止';
             btnPlay.style.background = '#ff9500';
         } else {
-            video1.pause();
-            if (isCompareMode) video2.pause();
+            if (video1.duration) video1.pause();
+            if (isCompareMode && video2.duration) video2.pause();
             btnPlay.innerText = '▶ 再生';
             btnPlay.style.background = '#34c759';
         }
@@ -426,20 +482,30 @@
         btnSpeed.innerText = `${rate}x`;
     }
 
-    let seeking = false;
-    seekbar.addEventListener('input', () => {
-        seeking = true;
-        video1.currentTime = seekbar.value;
-        if (isCompareMode && video2.duration) video2.currentTime = seekbar.value;
+    // シークバー①（個別調整）
+    let seeking1 = false;
+    seekbar1.addEventListener('input', () => {
+        seeking1 = true;
+        video1.currentTime = seekbar1.value;
     });
-    seekbar.addEventListener('change', () => { seeking = false; });
+    seekbar1.addEventListener('change', () => { seeking1 = false; });
 
+    // シークバー②（個別調整）
+    let seeking2 = false;
+    seekbar2.addEventListener('input', () => {
+        seeking2 = true;
+        video2.currentTime = seekbar2.value;
+    });
+    seekbar2.addEventListener('change', () => { seeking2 = false; });
+
+    // 同期コマ送り（現在のタイミング差を保ったまま1コマずつ送る）
     function stepFrame(dir) {
+        const stepSec = dir / FPS;
         if (video1.duration) {
-            video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + (dir / FPS)));
-            if (isCompareMode && video2.duration) {
-                video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + (dir / FPS)));
-            }
+            video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
+        }
+        if (isCompareMode && video2.duration) {
+            video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
         }
     }
 
@@ -638,7 +704,7 @@
     }
 
     function captureSnapshot() {
-        if (!video1.videoWidth) {
+        if (!video1.videoWidth && !video2.videoWidth) {
             alert("動画が読み込まれていません");
             return;
         }
@@ -653,8 +719,10 @@
         snapCtx.fillStyle = '#000';
         snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
 
-        snapCtx.drawImage(video1, 0, 0, canvas1.width, h);
-        snapCtx.drawImage(canvas1, 0, 0);
+        if (video1.videoWidth) {
+            snapCtx.drawImage(video1, 0, 0, canvas1.width, h);
+            snapCtx.drawImage(canvas1, 0, 0);
+        }
 
         if (isCompareMode && video2.videoWidth) {
             snapCtx.drawImage(video2, canvas1.width, 0, canvas1.width, h);
