@@ -343,7 +343,6 @@
     let currentMode = 'angle';
     let lastMeasureMode = 'angle';
     
-    // FPS設定の管理
     let currentFPS = 30.0;
     const fpsList = [30, 60, 120, 240];
     let fpsIdx = 0;
@@ -353,9 +352,17 @@
         currentFPS = fpsList[fpsIdx];
         btnFps.innerText = `${currentFPS}fps`;
         
-        // FPSが切り替わったら、すでに打ってある測定ポイントの速度・加速度をリアルタイムで再計算する！
+        // ★FPS変更時、打ったポイントの「コマ数差（フレーム数差）」を元に正確な時間を再計算して数値を即座に連動させる！
         [1, 2].forEach(idx => {
-            calcResults(state[idx], lastMeasureMode, false, idx);
+            const s = state[idx];
+            if (s.points.length > 0) {
+                s.points.forEach(p => {
+                    if (p.frame !== undefined) {
+                        p.time = p.frame / currentFPS;
+                    }
+                });
+            }
+            calcResults(s, lastMeasureMode, false, idx);
         });
         updateDisplayResult();
     }
@@ -379,7 +386,6 @@
     let tempDistPx = 0;
     let historyData = []; 
 
-    // ★★★ 速度・加速度の計算に「currentFPS」を確実に反映させる計算エンジン ★★★
     function calcResults(s, mode, isNewPoint = false, targetIdx = 1) {
         if (mode === 'angle') {
             if (s.points.length === 3) {
@@ -406,7 +412,6 @@
                 const dt = Math.abs(p2.time - p1.time);
                 s.resultMain = `距離: ${formatDistance(dist, s.pxPerCm)}`;
                 if (dt > 0 && s.pxPerCm) {
-                    // ★動画上の時間差(dt)をそのまま使って正確な速度を計算！
                     const speedKMH = ((dist / s.pxPerCm) / 100) / dt * 3.6;
                     s.resultSub = `速度: <span class="highlight-speed">${speedKMH.toFixed(1)}km/h</span> (${currentFPS}fps)`;
                     if (isNewPoint) historyData.push({ target: targetIdx, time: p2.time, speedKMH, accelG: null });
@@ -597,7 +602,6 @@
     seekbar2.addEventListener('change', () => { seeking2 = false; });
 
     function stepFrame(dir) {
-        // ★選択したFPSに合わせて正確に1コマ（1 / currentFPS 秒）動くように連動！
         const stepSec = dir / currentFPS;
         if (video1.duration) video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
         if (compareMode > 0 && video2.duration) video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
@@ -767,6 +771,9 @@
         const x = (e.clientX - rect.left) * scaleX;
         const y = (e.clientY - rect.top) * scaleY;
         const currentTime = vid.currentTime;
+        
+        // ★何コマ目（フレーム）でタップされたかをFPSを基準に記録する
+        const currentFrame = Math.round(currentTime * currentFPS);
 
         if (currentMode === 'scale') {
             s.scalePoints.push({x, y});
@@ -797,7 +804,7 @@
 
         const maxPoints = (currentMode === 'distance') ? 2 : 3;
         if (s.points.length >= maxPoints) s.points = [];
-        s.points.push({x, y, time: currentTime});
+        s.points.push({x, y, time: currentTime, frame: currentFrame});
 
         calcResults(s, currentMode, true, targetIdx);
         updateDisplayResult();
