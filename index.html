@@ -4,14 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="動作分析">
-<title>動作分析ツール</title>
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="動作分析Pro">
+<title>動作分析 Pro</title>
 <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-tap-highlight-color: transparent;
+    }
     html, body {
         width: 100%;
-        height: 100dvh; /* 動的ビューポートで画面ぴったりに収める */
+        height: 100dvh;
         background: #000;
         color: #fff;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -20,109 +27,149 @@
         overflow: hidden;
     }
     
-    /* ヘッダーエリア */
+    /* ヘッダー */
     #header {
+        width: 100%;
         background: #1c1c1e;
-        padding: 6px 12px;
+        padding-top: calc(8px + env(safe-area-inset-top));
+        padding-left: calc(10px + env(safe-area-inset-left));
+        padding-right: calc(10px + env(safe-area-inset-right));
+        padding-bottom: 8px;
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 6px;
         border-bottom: 1px solid #333;
         z-index: 10;
         flex-shrink: 0;
     }
     .header-top-row {
+        width: 100%;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
+        gap: 6px;
     }
-    #btn-pick {
-        background: #007aff; color: white; border: none;
-        padding: 5px 12px; border-radius: 6px; font-weight: bold; font-size: 13px;
-        flex-shrink: 0;
+    .btn-group-header {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: nowrap;
     }
+    .hdr-btn {
+        -webkit-appearance: none;
+        appearance: none;
+        background: #007aff;
+        color: white;
+        border: none;
+        padding: 6px 9px;
+        border-radius: 6px;
+        font-weight: bold;
+        font-size: 11px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .hdr-btn.secondary { background: #3a3a3c; }
+    .hdr-btn.accent { background: #ff9500; color: #000; }
+    .hdr-btn.compare-active { background: #af52de; color: #fff; }
     #scale-info-text {
-        font-size: 12px; color: #ff9500; font-weight: 600; text-align: right;
+        font-size: 11px;
+        color: #ff9500;
+        font-weight: 600;
+        text-align: right;
+        white-space: nowrap;
     }
-    #file-input { display: none; }
-
+    
     /* 計測データ表示ボックス */
     #result-box {
+        width: 100%;
         background: #262629;
         border-radius: 6px;
-        padding: 6px 10px;
+        padding: 6px 8px;
         border: 1px solid #3a3a3c;
     }
-    #main-result {
-        color: #00ffcc;
-        font-size: 14px;
-        font-weight: bold;
-        line-height: 1.2;
-    }
-    #sub-result {
-        color: #aaa;
-        font-size: 11px;
-        margin-top: 2px;
-        font-weight: 500;
-        line-height: 1.3;
-    }
+    #main-result { color: #00ffcc; font-size: 13px; font-weight: bold; line-height: 1.2; }
+    #sub-result { color: #aaa; font-size: 11px; margin-top: 2px; font-weight: 500; line-height: 1.2; }
     .highlight-acc { color: #ff375f; font-weight: bold; }
     .highlight-speed { color: #ffcc00; font-weight: bold; }
 
-    /* 映像・描画エリア */
+    /* 映像ステージ */
     #stage {
+        width: 100%;
         position: relative;
         flex: 1;
-        min-height: 0; /* flexbox内で縮小可能にする */
+        min-height: 0;
         display: flex;
-        align-items: center;
-        justify-content: center;
         background: #000;
         overflow: hidden;
     }
-    video {
+    .video-pane {
+        position: relative;
+        flex: 1;
         width: 100%;
         height: 100%;
-        object-fit: contain;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: #000;
     }
-    canvas {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        touch-action: none;
-    }
+    #pane2 { display: none; border-left: 2px solid #555; }
+    video { width: 100%; height: 100%; object-fit: contain; }
+    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; }
 
     /* 操作パネル */
     #controls {
+        width: 100%;
         background: #1c1c1e;
-        padding: 8px 10px calc(8px + env(safe-area-inset-bottom)) 10px;
+        padding-top: 6px;
+        padding-left: calc(10px + env(safe-area-inset-left));
+        padding-right: calc(10px + env(safe-area-inset-right));
+        padding-bottom: calc(8px + env(safe-area-inset-bottom));
         display: flex;
         flex-direction: column;
         gap: 6px;
         border-top: 1px solid #333;
         flex-shrink: 0;
     }
-    .slider-box {
+    
+    /* シークバーエリア（2段対応） */
+    .seek-container {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: 100%;
+    }
+    .seek-row {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 6px;
+        width: 100%;
     }
+    .seek-label {
+        font-size: 10px;
+        font-weight: bold;
+        color: #007aff;
+        width: 16px;
+        flex-shrink: 0;
+    }
+    .seek-label.v2 { color: #af52de; }
     input[type=range] {
         flex: 1;
         height: 20px;
         accent-color: #007aff;
     }
-    
-    /* モード切替ボタングリッド */
+    #seekbar2 { accent-color: #af52de; }
+
     .mode-grid {
+        width: 100%;
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 5px;
     }
     button.ctrl-btn {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
         padding: 7px 0;
         background: #2c2c2e;
         color: white;
@@ -130,62 +177,108 @@
         border-radius: 6px;
         font-size: 11px;
         font-weight: 600;
+        cursor: pointer;
+        text-align: center;
     }
     button.ctrl-btn:active { background: #444; }
-    button.mode-active { background: #30d158; color: black; }
-    #btn-mode-acc.mode-active { background: #ff375f; color: white; }
-    #btn-mode-scale.mode-active { background: #ff9500; color: black; }
+    button.mode-active { background: #30d158; color: black; font-weight: bold; }
+    #btn-mode-acc.mode-active { background: #ff375f; color: white; font-weight: bold; }
+    #btn-mode-scale.mode-active { background: #ff9500; color: black; font-weight: bold; }
     
-    .btn-row { display: flex; gap: 6px; }
+    .playback-row {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr 1.3fr 1fr 0.9fr 1fr;
+        gap: 5px;
+    }
+    #btn-play { background: #34c759; color: #000; font-weight: bold; }
     #btn-clear { background: #ff3b30; }
 
     /* モーダル */
-    #scale-modal-overlay {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center;
-        z-index: 1000; backdrop-filter: blur(4px);
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.75);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        backdrop-filter: blur(4px);
     }
     .modal-card {
-        background: #2c2c2e; border: 1px solid #444; border-radius: 14px; width: 85%; max-width: 320px;
-        padding: 20px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        background: #2c2c2e;
+        border: 1px solid #444;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 340px;
+        padding: 16px;
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.6);
     }
-    .modal-card h3 { font-size: 16px; margin-bottom: 8px; color: #ff9500; }
-    .modal-card p { font-size: 13px; color: #ccc; margin-bottom: 15px; }
-    .modal-input-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 18px; }
+    .modal-card h3 { font-size: 15px; margin-bottom: 6px; color: #ff9500; }
+    .modal-card p { font-size: 12px; color: #ccc; margin-bottom: 12px; }
+    .modal-input-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 14px; }
     .modal-input-row input {
-        width: 120px; font-size: 18px; padding: 8px; text-align: center;
-        border-radius: 8px; border: 1px solid #555; background: #1c1c1e; color: #fff;
+        width: 100px; font-size: 16px; padding: 6px; text-align: center;
+        border-radius: 6px; border: 1px solid #555; background: #1c1c1e; color: #fff;
         user-select: auto; -webkit-user-select: auto;
     }
-    .modal-input-row span { font-size: 16px; font-weight: bold; }
-    .modal-btn-row { display: flex; gap: 10px; }
-    .modal-btn-row button { flex: 1; padding: 10px 0; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; }
-    #btn-modal-cancel { background: #444; color: #fff; }
-    #btn-modal-ok { background: #ff9500; color: #000; }
+    .modal-btn-row { display: flex; gap: 8px; }
+    .modal-btn-row button {
+        -webkit-appearance: none;
+        appearance: none;
+        flex: 1; padding: 8px 0; border: none; border-radius: 6px; font-size: 13px; font-weight: bold;
+    }
+    
+    #graph-canvas { width: 100%; height: 180px; background: #1a1a1c; border-radius: 6px; border: 1px solid #444; margin-bottom: 10px; }
+    #snapshot-img { max-width: 100%; max-height: 50vh; border-radius: 6px; border: 1px solid #555; margin-bottom: 10px; }
 </style>
 </head>
 <body>
 
 <div id="header">
     <div class="header-top-row">
-        <button id="btn-pick" onclick="document.getElementById('file-input').click()">動画選択</button>
-        <span id="scale-info-text">スケール: 未設定</span>
-        <input type="file" id="file-input" accept="video/*">
+        <div class="btn-group-header">
+            <button class="hdr-btn" onclick="triggerPickVideo(1)">動画①</button>
+            <button class="hdr-btn secondary" id="btn-pick2" style="display:none;" onclick="triggerPickVideo(2)">動画②</button>
+            <button class="hdr-btn secondary" id="btn-toggle-compare" onclick="toggleCompareMode()">2画面</button>
+            <button class="hdr-btn accent" onclick="openGraphModal()">📊 グラフ</button>
+            <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 保存</button>
+        </div>
+        <span id="scale-info-text">物差し: 未設定</span>
+        <input type="file" id="file-input-1" accept="video/*" style="display:none">
+        <input type="file" id="file-input-2" accept="video/*" style="display:none">
     </div>
     <div id="result-box">
-        <div id="main-result">動画を選択してください</div>
+        <div id="main-result">動画①を選択してください</div>
         <div id="sub-result"></div>
     </div>
 </div>
 
 <div id="stage">
-    <video id="video" playsinline webkit-playsinline></video>
-    <canvas id="canvas"></canvas>
+    <div class="video-pane" id="pane1">
+        <video id="video1" playsinline webkit-playsinline muted></video>
+        <canvas id="canvas1"></canvas>
+    </div>
+    <div class="video-pane" id="pane2">
+        <video id="video2" playsinline webkit-playsinline muted></video>
+        <canvas id="canvas2"></canvas>
+    </div>
 </div>
 
 <div id="controls">
-    <div class="slider-box">
-        <input type="range" id="seekbar" min="0" max="100" value="0" step="0.001">
+    <div class="seek-container">
+        <div class="seek-row">
+            <span class="seek-label">①</span>
+            <input type="range" id="seekbar1" min="0" max="100" value="0" step="0.001">
+        </div>
+        <div class="seek-row" id="seek-row-2" style="display:none;">
+            <span class="seek-label v2">②</span>
+            <input type="range" id="seekbar2" min="0" max="100" value="0" step="0.001">
+        </div>
     </div>
     <div class="mode-grid">
         <button class="ctrl-btn mode-active" id="btn-mode-angle" onclick="setMode('angle')">角度 (3点)</button>
@@ -193,167 +286,343 @@
         <button class="ctrl-btn" id="btn-mode-acc" onclick="setMode('accel')">加速度 (3点)</button>
         <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">物差し</button>
     </div>
-    <div class="btn-row">
-        <button class="ctrl-btn" onclick="stepFrame(-1)">◀ -1コマ</button>
-        <button class="ctrl-btn" onclick="stepFrame(1)">+1コマ ▶</button>
-        <button class="ctrl-btn" id="btn-clear" onclick="clearCurrentPoints()">点クリア</button>
+    <div class="playback-row">
+        <button class="ctrl-btn" onclick="stepFrame(-1)">◀ -1</button>
+        <button class="ctrl-btn" id="btn-play" onclick="togglePlay()">▶ 再生</button>
+        <button class="ctrl-btn" onclick="stepFrame(1)">+1 ▶</button>
+        <button class="ctrl-btn" id="btn-speed" onclick="togglePlaybackRate()">1.0x</button>
+        <button class="ctrl-btn" id="btn-clear" onclick="clearCurrentPoints()">クリア</button>
     </div>
 </div>
 
-<div id="scale-modal-overlay">
+<!-- 物差し設定モーダル -->
+<div id="scale-modal-overlay" class="modal-overlay">
     <div class="modal-card">
-        <h3>基準物の長さ設定</h3>
-        <p>指定した2点間の実際の長さを入力してください</p>
+        <h3 id="scale-modal-title">基準物の長さ設定 (動画①)</h3>
+        <p>指定した2点間の実際の長さを入力</p>
         <div class="modal-input-row">
             <input type="number" id="scale-input-value" inputmode="decimal" placeholder="100" value="100">
-            <span>cm</span>
+            <span style="font-weight:bold; font-size:15px;">cm</span>
         </div>
         <div class="modal-btn-row">
-            <button id="btn-modal-cancel" onclick="cancelScaleModal()">キャンセル</button>
-            <button id="btn-modal-ok" onclick="submitScaleModal()">確定</button>
+            <button style="background:#444; color:#fff;" onclick="cancelScaleModal()">キャンセル</button>
+            <button style="background:#ff9500; color:#000;" onclick="submitScaleModal()">確定</button>
+        </div>
+    </div>
+</div>
+
+<!-- グラフ表示モーダル -->
+<div id="graph-modal-overlay" class="modal-overlay">
+    <div class="modal-card" style="max-width:360px;">
+        <h3 style="color:#00ffcc;">📊 計測推移グラフ</h3>
+        <canvas id="graph-canvas"></canvas>
+        <div class="modal-btn-row">
+            <button style="background:#444; color:#fff;" onclick="closeGraphModal()">閉じる</button>
+        </div>
+    </div>
+</div>
+
+<!-- スクショ保存モーダル -->
+<div id="snapshot-modal-overlay" class="modal-overlay">
+    <div class="modal-card" style="max-width:360px;">
+        <h3 style="color:#5856d6;">📸 スクリーンショット</h3>
+        <p style="font-size:11px; color:#aaa;">画像を長押しして「写真に追加」で保存できます</p>
+        <img id="snapshot-img" src="" alt="Screenshot">
+        <div class="modal-btn-row">
+            <button style="background:#444; color:#fff;" onclick="closeSnapshotModal()">閉じる</button>
         </div>
     </div>
 </div>
 
 <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const seekbar = document.getElementById('seekbar');
+    const video1 = document.getElementById('video1');
+    const canvas1 = document.getElementById('canvas1');
+    const ctx1 = canvas1.getContext('2d');
+
+    const video2 = document.getElementById('video2');
+    const canvas2 = document.getElementById('canvas2');
+    const ctx2 = canvas2.getContext('2d');
+
+    const pane2 = document.getElementById('pane2');
+    const btnPick2 = document.getElementById('btn-pick2');
+    const btnToggleCompare = document.getElementById('btn-toggle-compare');
+    const seekbar1 = document.getElementById('seekbar1');
+    const seekbar2 = document.getElementById('seekbar2');
+    const seekRow2 = document.getElementById('seek-row-2');
     const mainResult = document.getElementById('main-result');
     const subResult = document.getElementById('sub-result');
     const scaleInfoText = document.getElementById('scale-info-text');
-    const fileInput = document.getElementById('file-input');
+    const btnPlay = document.getElementById('btn-play');
+    const btnSpeed = document.getElementById('btn-speed');
+
+    const fileInput1 = document.getElementById('file-input-1');
+    const fileInput2 = document.getElementById('file-input-2');
 
     const btnModeAngle = document.getElementById('btn-mode-angle');
     const btnModeDist = document.getElementById('btn-mode-dist');
     const btnModeAcc = document.getElementById('btn-mode-acc');
     const btnModeScale = document.getElementById('btn-mode-scale');
     const scaleModalOverlay = document.getElementById('scale-modal-overlay');
+    const scaleModalTitle = document.getElementById('scale-modal-title');
     const scaleInputValue = document.getElementById('scale-input-value');
 
-    let points = [];
-    let scalePoints = [];
-    let pxPerCm = null;
+    let isCompareMode = false;
     let currentMode = 'angle';
-    let tempDistPx = 0;
     const FPS = 30.0;
+    let isPlaying = false;
+    let playbackRates = [1.0, 0.5, 0.25];
+    let currentRateIdx = 0;
 
-    function fitCanvas() {
-        canvas.width = canvas.clientWidth;
-        canvas.height = canvas.clientHeight;
+    // ①と②の独立した状態管理
+    const state = {
+        1: { points: [], scalePoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
+        2: { points: [], scalePoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
+    };
+
+    let historyData = [];
+    let scaleTarget = 1;
+    let tempDistPx = 0;
+
+    function fitCanvases() {
+        [ {c: canvas1, v: video1}, {c: canvas2, v: video2} ].forEach(item => {
+            item.c.width = item.c.clientWidth;
+            item.c.height = item.c.clientHeight;
+        });
         redraw();
     }
-    window.addEventListener('resize', fitCanvas);
+    window.addEventListener('resize', fitCanvases);
+
+    function triggerPickVideo(idx) {
+        if (idx === 1) fileInput1.click();
+        else fileInput2.click();
+    }
+
+    fileInput1.addEventListener('change', e => loadVideoFile(e.target.files[0], video1));
+    fileInput2.addEventListener('change', e => loadVideoFile(e.target.files[0], video2));
+
+    function loadVideoFile(file, vidElem) {
+        if (file) {
+            vidElem.muted = true;
+            vidElem.src = URL.createObjectURL(file);
+            vidElem.load();
+        }
+    }
+
+    video1.addEventListener('loadedmetadata', () => {
+        fitCanvases();
+        seekbar1.max = video1.duration;
+        seekbar1.value = 0;
+        setMode(currentMode);
+    });
+
+    video2.addEventListener('loadedmetadata', () => {
+        fitCanvases();
+        seekbar2.max = video2.duration;
+        seekbar2.value = 0;
+    });
+
+    video1.addEventListener('timeupdate', () => {
+        if (!seeking1) seekbar1.value = video1.currentTime;
+    });
+
+    video2.addEventListener('timeupdate', () => {
+        if (!seeking2) seekbar2.value = video2.currentTime;
+    });
+
+    function toggleCompareMode() {
+        isCompareMode = !isCompareMode;
+        if (isCompareMode) {
+            pane2.style.display = 'flex';
+            btnPick2.style.display = 'inline-block';
+            seekRow2.style.display = 'flex';
+            btnToggleCompare.classList.add('compare-active');
+            btnToggleCompare.innerText = '1画面';
+        } else {
+            pane2.style.display = 'none';
+            btnPick2.style.display = 'none';
+            seekRow2.style.display = 'none';
+            btnToggleCompare.classList.remove('compare-active');
+            btnToggleCompare.innerText = '2画面';
+            if (video2) video2.pause();
+        }
+        updateScaleInfoText();
+        updateDisplayResult();
+        setTimeout(fitCanvases, 50);
+    }
+
+    async function togglePlay() {
+        if (!video1.duration && !video2.duration) return;
+        
+        isPlaying = !isPlaying;
+        if (isPlaying) {
+            video1.muted = true;
+            video2.muted = true;
+            try {
+                const playPromises = [];
+                if (video1.duration) playPromises.push(video1.play());
+                if (isCompareMode && video2.duration) playPromises.push(video2.play());
+                await Promise.all(playPromises);
+            } catch (err) {
+                console.error("再生エラー:", err);
+            }
+            btnPlay.innerText = '⏸ 停止';
+            btnPlay.style.background = '#ff9500';
+        } else {
+            if (video1.duration) video1.pause();
+            if (isCompareMode && video2.duration) video2.pause();
+            btnPlay.innerText = '▶ 再生';
+            btnPlay.style.background = '#34c759';
+        }
+    }
+
+    function togglePlaybackRate() {
+        currentRateIdx = (currentRateIdx + 1) % playbackRates.length;
+        const rate = playbackRates[currentRateIdx];
+        video1.playbackRate = rate;
+        video2.playbackRate = rate;
+        btnSpeed.innerText = `${rate}x`;
+    }
+
+    let seeking1 = false;
+    seekbar1.addEventListener('input', () => {
+        seeking1 = true;
+        video1.currentTime = seekbar1.value;
+    });
+    seekbar1.addEventListener('change', () => { seeking1 = false; });
+
+    let seeking2 = false;
+    seekbar2.addEventListener('input', () => {
+        seeking2 = true;
+        video2.currentTime = seekbar2.value;
+    });
+    seekbar2.addEventListener('change', () => { seeking2 = false; });
+
+    function stepFrame(dir) {
+        const stepSec = dir / FPS;
+        if (video1.duration) {
+            video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
+        }
+        if (isCompareMode && video2.duration) {
+            video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
+        }
+    }
+
+    function updateDisplayResult() {
+        if (!isCompareMode) {
+            mainResult.innerHTML = state[1].resultMain || "動画①を選択してください";
+            subResult.innerHTML = state[1].resultSub || "";
+        } else {
+            const r1 = state[1].resultMain ? `① ${state[1].resultMain}` : "① 未測定";
+            const r2 = state[2].resultMain ? `② ${state[2].resultMain}` : "② 未測定";
+            mainResult.innerHTML = `${r1} ｜ ${r2}`;
+            
+            const sub1 = state[1].resultSub ? `①: ${state[1].resultSub}` : "";
+            const sub2 = state[2].resultSub ? `②: ${state[2].resultSub}` : "";
+            subResult.innerHTML = [sub1, sub2].filter(Boolean).join("<br>");
+        }
+    }
+
+    function updateScaleInfoText() {
+        const s1 = state[1].pxPerCm ? `①${(state[1].pxPerCm).toFixed(1)}px/cm` : "①未設定";
+        const s2 = state[2].pxPerCm ? `②${(state[2].pxPerCm).toFixed(1)}px/cm` : "②未設定";
+        scaleInfoText.innerText = isCompareMode ? `物差し: ${s1} | ${s2}` : `物差し: ${s1}`;
+    }
 
     function setMode(mode) {
         currentMode = mode;
-        points = [];
+        state[1].points = [];
+        state[2].points = [];
+        state[1].resultMain = "";
+        state[2].resultMain = "";
+        state[1].resultSub = "";
+        state[2].resultSub = "";
+        
+        if (mode === 'scale') {
+            state[1].scalePoints = [];
+            state[2].scalePoints = [];
+            updateScaleInfoText();
+        }
+
         [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale].forEach(b => b.classList.remove('mode-active'));
 
         if (mode === 'angle') {
             btnModeAngle.classList.add('mode-active');
-            mainResult.innerText = "角度モード: 3点をタップ";
-            subResult.innerHTML = "1点目と3点目を結ぶ、2点目を中心とした角度";
+            state[1].resultMain = "角度モード: 3点をタップ";
+            state[1].resultSub = "頂点(2点目)を中心とした角度を測定";
         } else if (mode === 'distance') {
             btnModeDist.classList.add('mode-active');
-            mainResult.innerText = "距離・速度モード: 始点→終点をタップ";
-            subResult.innerHTML = "1点目タップ後、コマ送りして2点目をタップ";
+            state[1].resultMain = "速度モード: 始点→終点をタップ";
+            state[1].resultSub = "1点目タップ後、コマ送りして2点目をタップ";
         } else if (mode === 'accel') {
             btnModeAcc.classList.add('mode-active');
-            mainResult.innerText = "加速度モード: 3点をタップ (始点→中間→終点)";
-            subResult.innerHTML = "各点でコマ送りしながら連続する3点をタップ";
+            state[1].resultMain = "加速度モード: 連続3点をタップ";
+            state[1].resultSub = "コマ送りしながら 始点 → 中間 → 終点 をタップ";
         } else if (mode === 'scale') {
             btnModeScale.classList.add('mode-active');
-            scalePoints = [];
-            mainResult.innerText = "物差し設定: 基準物の両端（2点）をタップ";
-            subResult.innerHTML = "既知の長さ(バットや身長など)の端を2箇所タップ";
+            state[1].resultMain = "物差し設定: 基準物の両端（2点）をタップ";
+            state[1].resultSub = "長さを設定したい画面で2箇所タップ";
         }
+        
+        updateDisplayResult();
         redraw();
     }
 
-    fileInput.addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (file) {
-            video.src = URL.createObjectURL(file);
-            video.load();
-            setMode(currentMode);
-        }
-    });
-
-    video.addEventListener('loadedmetadata', function() {
-        fitCanvas();
-        seekbar.max = video.duration;
-        seekbar.value = 0;
-    });
-
-    video.addEventListener('timeupdate', function() {
-        if (!seeking) seekbar.value = video.currentTime;
-    });
-
-    let seeking = false;
-    seekbar.addEventListener('input', function() {
-        seeking = true;
-        video.currentTime = seekbar.value;
-    });
-    seekbar.addEventListener('change', function() {
-        seeking = false;
-    });
-
-    function stepFrame(dir) {
-        if (video.duration) {
-            video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + (dir / FPS)));
-        }
-    }
-
     function clearCurrentPoints() {
-        points = [];
-        setMode(currentMode);
+        state[1].points = [];
+        state[2].points = [];
+        state[1].resultMain = "";
+        state[2].resultMain = "";
+        state[1].resultSub = "";
+        state[2].resultSub = "";
+        updateDisplayResult();
+        redraw();
     }
 
-    function formatDistance(px) {
+    function formatDistance(px, pxPerCm) {
         if (!pxPerCm) return `${px.toFixed(1)} px`;
         const cm = px / pxPerCm;
         if (cm >= 100) return `${(cm / 100).toFixed(2)} m (${cm.toFixed(1)} cm)`;
         return `${cm.toFixed(1)} cm`;
     }
 
-    function formatDelta(px) {
+    function formatDelta(px, pxPerCm) {
         if (!pxPerCm) return `${px > 0 ? '+' : ''}${px.toFixed(1)}px`;
         const cm = px / pxPerCm;
         return `${cm > 0 ? '+' : ''}${cm.toFixed(1)} cm`;
     }
 
-    canvas.addEventListener('pointerdown', function(e) {
-        const rect = canvas.getBoundingClientRect();
+    canvas1.addEventListener('pointerdown', (e) => handleCanvasTap(e, canvas1, video1, 1));
+    canvas2.addEventListener('pointerdown', (e) => handleCanvasTap(e, canvas2, video2, 2));
+
+    function handleCanvasTap(e, cvs, vid, targetIdx) {
+        const s = state[targetIdx];
+        const rect = cvs.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
-        const currentTime = video.currentTime;
+        const currentTime = vid.currentTime;
 
         if (currentMode === 'scale') {
-            scalePoints.push({x, y});
-            if (scalePoints.length === 2) {
-                const p1 = scalePoints[0];
-                const p2 = scalePoints[1];
+            s.scalePoints.push({x, y});
+            if (s.scalePoints.length === 2) {
+                const p1 = s.scalePoints[0], p2 = s.scalePoints[1];
                 tempDistPx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                scaleTarget = targetIdx;
+                scaleModalTitle.innerText = `基準物の長さ設定 (動画${targetIdx === 1 ? '①' : '②'})`;
                 scaleModalOverlay.style.display = 'flex';
                 scaleInputValue.focus();
                 scaleInputValue.select();
-            } else {
-                mainResult.innerText = "物差し設定: 2点目をタップ";
-                subResult.innerHTML = "基準物のもう片方の端をタップしてください";
             }
             redraw();
             return;
         }
 
         const maxPoints = currentMode === 'distance' ? 2 : 3;
-        if (points.length >= maxPoints) points = [];
-        points.push({x, y, time: currentTime});
+        if (s.points.length >= maxPoints) s.points = [];
+        s.points.push({x, y, time: currentTime});
 
         if (currentMode === 'angle') {
-            if (points.length === 3) {
-                const p1 = points[0], p2 = points[1], p3 = points[2];
+            if (s.points.length === 3) {
+                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
                 const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
                 const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
                 const dot = v1.x * v2.x + v1.y * v2.y;
@@ -362,156 +631,224 @@
                 if (mag1 * mag2 !== 0) {
                     let cosVal = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
                     let angle = Math.acos(cosVal) * (180 / Math.PI);
-                    mainResult.innerText = `関節角度: ${angle.toFixed(1)}°`;
-                    subResult.innerHTML = `頂点(2点目)を中心とした角度`;
+                    s.resultMain = `関節角度: ${angle.toFixed(1)}°`;
+                    s.resultSub = `頂点(2点目)を中心とした角度`;
                 }
             } else {
-                mainResult.innerText = `点 ${points.length}/3 をタップ中`;
-                subResult.innerHTML = points.length === 1 ? "2点目（関節の頂点）をタップ" : "3点目をタップ";
+                s.resultMain = `点 ${s.points.length}/3`;
+                s.resultSub = s.points.length === 1 ? "2点目(頂点)をタップ" : "3点目をタップ";
             }
         } else if (currentMode === 'distance') {
-            if (points.length === 2) {
-                const p1 = points[0], p2 = points[1];
+            if (s.points.length === 2) {
+                const p1 = s.points[0], p2 = s.points[1];
                 const dx = p2.x - p1.x, dy = -(p2.y - p1.y);
                 const dist = Math.hypot(dx, dy);
                 const dt = Math.abs(p2.time - p1.time);
 
-                mainResult.innerText = `移動距離: ${formatDistance(dist)}`;
-                let speedText = "";
-                if (dt > 0) {
-                    if (pxPerCm) {
-                        const distM = (dist / pxPerCm) / 100;
-                        const speedMS = distM / dt;
-                        const speedKMH = speedMS * 3.6;
-                        speedText = `<span class="highlight-speed">速度: ${speedMS.toFixed(2)} m/s (${speedKMH.toFixed(1)} km/h)</span>`;
-                    } else {
-                        const speedPx = dist / dt;
-                        speedText = `<span class="highlight-speed">速度: ${speedPx.toFixed(1)} px/s</span>`;
-                    }
+                s.resultMain = `距離: ${formatDistance(dist, s.pxPerCm)}`;
+                let speedKMH = 0;
+                if (dt > 0 && s.pxPerCm) {
+                    const distM = (dist / s.pxPerCm) / 100;
+                    const speedMS = distM / dt;
+                    speedKMH = speedMS * 3.6;
+                    s.resultSub = `速度: <span class="highlight-speed">${speedMS.toFixed(2)}m/s (${speedKMH.toFixed(1)}km/h)</span> | dX:${formatDelta(dx, s.pxPerCm)}`;
+                    historyData.push({ target: targetIdx, time: p2.time, speedKMH, accelG: null });
                 } else {
-                    speedText = `<span class="highlight-speed">速度: 測定不能(時間差0秒)</span>`;
+                    s.resultSub = `dX:${formatDelta(dx, s.pxPerCm)}, dY:${formatDelta(dy, s.pxPerCm)} (時間差:${dt.toFixed(3)}s)`;
                 }
-                subResult.innerHTML = `水平(dX): ${formatDelta(dx)} | 垂直(dY): ${formatDelta(dy)}<br>時間差: ${dt.toFixed(3)}秒 | ${speedText}`;
             } else {
-                mainResult.innerText = "始点を記録しました";
-                subResult.innerHTML = "コマ送りボタンで動画を進め、移動先(終点)をタップ";
+                s.resultMain = "始点を記録";
+                s.resultSub = "コマ送りして終点をタップ";
             }
         } else if (currentMode === 'accel') {
-            if (points.length === 1) {
-                mainResult.innerText = "点1(始点)を記録しました";
-                subResult.innerHTML = "コマ送りして「中間点(点2)」をタップしてください";
-            } else if (points.length === 2) {
-                mainResult.innerText = "点2(中間)を記録しました";
-                subResult.innerHTML = "さらにコマ送りして「終点(点3)」をタップしてください";
-            } else if (points.length === 3) {
-                const p1 = points[0], p2 = points[1], p3 = points[2];
+            if (s.points.length === 3) {
+                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
                 const dt1 = Math.abs(p2.time - p1.time), dt2 = Math.abs(p3.time - p2.time);
-                const totalDt = dt1 + dt2;
                 const dist1 = Math.hypot(p2.x - p1.x, p2.y - p1.y);
                 const dist2 = Math.hypot(p3.x - p2.x, p3.y - p2.y);
 
-                if (dt1 > 0 && dt2 > 0 && pxPerCm) {
-                    const dist1M = (dist1 / pxPerCm) / 100, dist2M = (dist2 / pxPerCm) / 100;
+                if (dt1 > 0 && dt2 > 0 && s.pxPerCm) {
+                    const dist1M = (dist1 / s.pxPerCm) / 100, dist2M = (dist2 / s.pxPerCm) / 100;
                     const v1 = dist1M / dt1, v2 = dist2M / dt2;
                     const dv = v2 - v1;
                     const avgDt = (dt1 + dt2) / 2;
                     const accel = dv / avgDt;
                     const gForce = accel / 9.80665;
 
-                    mainResult.innerHTML = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)} m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)} G)</span>`;
-                    subResult.innerHTML = `区間①: ${(v1 * 3.6).toFixed(1)} km/h → 区間②: ${(v2 * 3.6).toFixed(1)} km/h<br>速度差: ${(dv * 3.6 > 0 ? '+' : '')}${(dv * 3.6).toFixed(1)} km/h (経過時間: ${totalDt.toFixed(3)}s)`;
-                } else if (!pxPerCm) {
-                    mainResult.innerText = "物差しが未設定です";
-                    subResult.innerHTML = "加速度の算出には「物差し」による実寸設定が必要です";
-                } else {
-                    mainResult.innerText = "測定不能";
-                    subResult.innerHTML = "各点の間でコマ送りして時間を進めてください";
+                    s.resultMain = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)}m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)}G)</span>`;
+                    s.resultSub = `①:${(v1 * 3.6).toFixed(1)}k → ②:${(v2 * 3.6).toFixed(1)}k (差:${(dv * 3.6 > 0 ? '+' : '')}${(dv * 3.6).toFixed(1)}k)`;
+                    historyData.push({ target: targetIdx, time: p3.time, speedKMH: v2 * 3.6, accelG: gForce });
+                } else if (!s.pxPerCm) {
+                    s.resultMain = "物差し未設定";
+                    s.resultSub = "加速度の算出には物差しの設定が必要です";
                 }
+            } else {
+                s.resultMain = `点 ${s.points.length}/3`;
+                s.resultSub = "コマ送りしながら次の点をタップ";
             }
         }
+        updateDisplayResult();
         redraw();
-    });
+    }
 
     function submitScaleModal() {
         const realCm = parseFloat(scaleInputValue.value);
         if (realCm && realCm > 0) {
-            pxPerCm = tempDistPx / realCm;
-            scaleInfoText.innerText = `基準: ${realCm}cm (${pxPerCm.toFixed(1)}px/cm)`;
+            state[scaleTarget].pxPerCm = tempDistPx / realCm;
+            updateScaleInfoText();
             scaleModalOverlay.style.display = 'none';
             setMode('distance');
-            mainResult.innerText = "スケール設定完了！";
-            subResult.innerHTML = "始点をタップしてください";
         } else {
             alert("有効な数値を入力してください");
         }
     }
-
     function cancelScaleModal() {
-        scalePoints = [];
+        state[scaleTarget].scalePoints = [];
         scaleModalOverlay.style.display = 'none';
         setMode('scale');
-        mainResult.innerText = "スケール設定をキャンセルしました";
-        subResult.innerHTML = "再度設定する場合は2点をタップしてください";
-        redraw();
     }
 
     function redraw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (scalePoints.length === 2 && currentMode !== 'scale') {
-            ctx.save();
-            ctx.strokeStyle = 'rgba(255, 149, 0, 0.5)';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([4, 4]);
-            ctx.beginPath();
-            ctx.moveTo(scalePoints[0].x, scalePoints[0].y);
-            ctx.lineTo(scalePoints[1].x, scalePoints[1].y);
-            ctx.stroke();
-            ctx.restore();
-        }
+        [ {idx: 1, c: canvas1, ctx: ctx1}, {idx: 2, c: canvas2, ctx: ctx2} ].forEach(item => {
+            const s = state[item.idx];
+            item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
-        if (currentMode === 'scale') {
-            ctx.strokeStyle = '#ff9500'; ctx.fillStyle = '#ff9500'; ctx.lineWidth = 3;
-            drawPointList(scalePoints, "基準");
-            return;
-        }
+            // 物差し線の描画
+            if (s.scalePoints.length === 2 && currentMode !== 'scale') {
+                item.ctx.save();
+                item.ctx.strokeStyle = 'rgba(255, 149, 0, 0.4)';
+                item.ctx.lineWidth = 2; item.ctx.setLineDash([4, 4]);
+                item.ctx.beginPath();
+                item.ctx.moveTo(s.scalePoints[0].x, s.scalePoints[0].y);
+                item.ctx.lineTo(s.scalePoints[1].x, s.scalePoints[1].y);
+                item.ctx.stroke();
+                item.ctx.restore();
+            }
 
-        if (points.length === 0) return;
+            if (currentMode === 'scale') {
+                item.ctx.strokeStyle = '#ff9500'; item.ctx.fillStyle = '#ff9500'; item.ctx.lineWidth = 3;
+                drawPointList(item.ctx, s.scalePoints, "基準");
+                return;
+            }
 
-        if (currentMode === 'angle') ctx.strokeStyle = ctx.fillStyle = '#00ffcc';
-        else if (currentMode === 'distance') ctx.strokeStyle = ctx.fillStyle = '#ffcc00';
-        else if (currentMode === 'accel') ctx.strokeStyle = ctx.fillStyle = '#ff375f';
-        ctx.lineWidth = 3;
+            if (s.points.length === 0) return;
+            if (currentMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
+            else if (currentMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
+            else if (currentMode === 'accel') item.ctx.strokeStyle = item.ctx.fillStyle = '#ff375f';
+            item.ctx.lineWidth = 3;
 
-        let labels = null;
-        if (currentMode === 'distance') labels = ["始点", "終点"];
-        if (currentMode === 'accel') labels = ["点1(始)", "点2(中)", "点3(終)"];
-        drawPointList(points, labels);
+            let labels = currentMode === 'distance' ? ["始点", "終点"] : (currentMode === 'accel' ? ["点1", "点2", "点3"] : null);
+            drawPointList(item.ctx, s.points, labels);
+        });
     }
 
-    function drawPointList(ptList, labels) {
+    function drawPointList(cContext, ptList, labels) {
         if (ptList.length === 0) return;
-        ctx.beginPath();
+        cContext.beginPath();
         for (let i = 0; i < ptList.length; i++) {
-            if (i === 0) ctx.moveTo(ptList[i].x, ptList[i].y);
-            else ctx.lineTo(ptList[i].x, ptList[i].y);
+            if (i === 0) cContext.moveTo(ptList[i].x, ptList[i].y);
+            else cContext.lineTo(ptList[i].x, ptList[i].y);
         }
-        ctx.stroke();
+        cContext.stroke();
 
         for (let i = 0; i < ptList.length; i++) {
-            ctx.beginPath();
-            ctx.arc(ptList[i].x, ptList[i].y, 6, 0, Math.PI * 2);
-            ctx.fill();
-
+            cContext.beginPath();
+            cContext.arc(ptList[i].x, ptList[i].y, 5, 0, Math.PI * 2);
+            cContext.fill();
             if (labels) {
                 const text = Array.isArray(labels) ? labels[i] : `${labels}${i + 1}`;
                 if (text) {
-                    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif';
-                    ctx.fillText(text, ptList[i].x + 8, ptList[i].y - 6);
-                    ctx.fillStyle = ctx.strokeStyle;
+                    cContext.fillStyle = '#fff'; cContext.font = 'bold 10px sans-serif';
+                    cContext.fillText(text, ptList[i].x + 7, ptList[i].y - 5);
+                    cContext.fillStyle = cContext.strokeStyle;
                 }
             }
         }
     }
+
+    function captureSnapshot() {
+        if (!video1.videoWidth && !video2.videoWidth) {
+            alert("動画が読み込まれていません");
+            return;
+        }
+        const snapCanvas = document.createElement('canvas');
+        const snapCtx = snapCanvas.getContext('2d');
+        
+        const w = isCompareMode ? canvas1.width * 2 : canvas1.width;
+        const h = canvas1.height;
+        snapCanvas.width = w;
+        snapCanvas.height = h + 60;
+
+        snapCtx.fillStyle = '#000';
+        snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
+
+        if (video1.videoWidth) {
+            snapCtx.drawImage(video1, 0, 0, canvas1.width, h);
+            snapCtx.drawImage(canvas1, 0, 0);
+        }
+
+        if (isCompareMode && video2.videoWidth) {
+            snapCtx.drawImage(video2, canvas1.width, 0, canvas1.width, h);
+            snapCtx.drawImage(canvas2, canvas1.width, 0);
+        }
+
+        snapCtx.fillStyle = '#1c1c1e';
+        snapCtx.fillRect(0, h, snapCanvas.width, 60);
+        snapCtx.fillStyle = '#00ffcc';
+        snapCtx.font = 'bold 15px -apple-system, sans-serif';
+        snapCtx.fillText(mainResult.innerText, 15, h + 24);
+
+        snapCtx.fillStyle = '#ccc';
+        snapCtx.font = '12px -apple-system, sans-serif';
+        const cleanSubText = subResult.innerText.replace(/<[^>]*>?/gm, ' ');
+        snapCtx.fillText(cleanSubText, 15, h + 46);
+
+        document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png');
+        document.getElementById('snapshot-modal-overlay').style.display = 'flex';
+    }
+    function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
+
+    function openGraphModal() {
+        const gCanvas = document.getElementById('graph-canvas');
+        const gCtx = gCanvas.getContext('2d');
+        gCanvas.width = gCanvas.clientWidth;
+        gCanvas.height = gCanvas.clientHeight;
+        gCtx.clearRect(0, 0, gCanvas.width, gCanvas.height);
+
+        if (historyData.length === 0) {
+            gCtx.fillStyle = '#888';
+            gCtx.font = '13px sans-serif';
+            gCtx.textAlign = 'center';
+            gCtx.fillText("測定履歴データがありません", gCanvas.width / 2, gCanvas.height / 2);
+        } else {
+            gCtx.strokeStyle = '#ffcc00';
+            gCtx.lineWidth = 2;
+            gCtx.beginPath();
+            const maxSpeed = Math.max(...historyData.map(d => d.speedKMH || 0), 10);
+            historyData.forEach((d, idx) => {
+                const gx = (idx / Math.max(1, historyData.length - 1)) * (gCanvas.width - 40) + 20;
+                const gy = gCanvas.height - 30 - ((d.speedKMH || 0) / maxSpeed) * (gCanvas.height - 60);
+                if (idx === 0) gCtx.moveTo(gx, gy);
+                else gCtx.lineTo(gx, gy);
+            });
+            gCtx.stroke();
+
+            historyData.forEach((d, idx) => {
+                const gx = (idx / Math.max(1, historyData.length - 1)) * (gCanvas.width - 40) + 20;
+                const gy = gCanvas.height - 30 - ((d.speedKMH || 0) / maxSpeed) * (gCanvas.height - 60);
+                gCtx.fillStyle = d.target === 1 ? '#007aff' : '#af52de';
+                gCtx.beginPath();
+                gCtx.arc(gx, gy, 4, 0, Math.PI * 2);
+                gCtx.fill();
+                gCtx.fillStyle = '#fff';
+                gCtx.font = '9px sans-serif';
+                gCtx.fillText(`${d.target === 1 ? '①' : '②'}${(d.speedKMH || 0).toFixed(0)}k`, gx - 10, gy - 8);
+            });
+        }
+
+        document.getElementById('graph-modal-overlay').style.display = 'flex';
+    }
+    function closeGraphModal() { document.getElementById('graph-modal-overlay').style.display = 'none'; }
 </script>
 </body>
 </html>
