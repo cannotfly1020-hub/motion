@@ -136,7 +136,6 @@
     #seekbar2 { accent-color: #af52de; }
     #perp-slider { accent-color: #ff2d55; }
 
-    /* モードボタン（3列×2段に変更して見やすく） */
     .mode-grid {
         width: 100%;
         display: grid;
@@ -173,7 +172,6 @@
     #btn-play { background: #34c759; color: #000; font-weight: bold; }
     #btn-clear { background: #ff3b30; }
 
-    /* モーダル */
     .modal-overlay {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%;
         background: rgba(0,0,0,0.75); display: none; justify-content: center; align-items: center;
@@ -246,7 +244,6 @@
         </div>
     </div>
     
-    <!-- モードボタン -->
     <div class="mode-grid">
         <button class="ctrl-btn mode-active" id="btn-mode-angle" onclick="setMode('angle')">角度(3点)</button>
         <button class="ctrl-btn" id="btn-mode-dist" onclick="setMode('distance')">速度(2点)</button>
@@ -256,14 +253,12 @@
         <button class="ctrl-btn" id="btn-mode-zoom" onclick="setMode('zoom')">🔍移動</button>
     </div>
     
-    <!-- ズーム専用コントロール -->
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
         <span style="font-size:11px; font-weight:bold; color:#007aff;">倍率(画面<span id="zoom-target-label">①</span>)</span>
         <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1">
         <button class="ctrl-btn" style="width:auto; padding:5px 12px; background:#444;" onclick="resetZoom()">リセット</button>
     </div>
 
-    <!-- 垂直線専用コントロール -->
     <div id="perp-controls" style="display:none; width:100%; align-items:center; gap:8px;">
         <span style="font-size:11px; font-weight:bold; color:#ff2d55;">垂直線移動</span>
         <input type="range" id="perp-slider" min="0" max="100" step="0.5" value="50">
@@ -348,9 +343,10 @@
     let playbackRates = [1.0, 0.5, 0.25];
     let currentRateIdx = 0;
 
+    // 垂直線(perpPoints)と通常ポイント(points)を完全に分離
     const state = {
-        1: { points: [], scalePoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
-        2: { points: [], scalePoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
+        1: { points: [], scalePoints: [], perpPoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
+        2: { points: [], scalePoints: [], perpPoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
     };
     
     const viewState = {
@@ -361,6 +357,7 @@
     let scaleTarget = 1;
     let lastActiveTarget = 1;
     let tempDistPx = 0;
+    let historyData = []; // グラフ等のための履歴(今回グラフは隠していますが念のため残置)
 
     function applyZoom(idx) {
         const target = document.getElementById(`zoom-target-${idx}`);
@@ -378,6 +375,7 @@
         applyZoom(lastActiveTarget);
     });
     
+    // スライダーを動かした時に画面を再描画（線を動かす）
     perpSlider.addEventListener('input', redraw);
 
     function fitCanvases() {
@@ -522,406 +520,4 @@
         } else {
             const r1 = state[1].resultMain ? `① ${state[1].resultMain}` : "① 未測定";
             const r2 = state[2].resultMain ? `② ${state[2].resultMain}` : "② 未測定";
-            mainResult.innerHTML = `${r1} ｜ ${r2}`;
-            
-            const sub1 = state[1].resultSub ? `①: ${state[1].resultSub}` : "";
-            const sub2 = state[2].resultSub ? `②: ${state[2].resultSub}` : "";
-            subResult.innerHTML = [sub1, sub2].filter(Boolean).join("<br>");
-        }
-    }
-
-    function updateScaleInfoText() {
-        const s1 = state[1].pxPerCm ? `①${(state[1].pxPerCm).toFixed(1)}px/cm` : "①未設定";
-        const s2 = state[2].pxPerCm ? `②${(state[2].pxPerCm).toFixed(1)}px/cm` : "②未設定";
-        scaleInfoText.innerText = (compareMode > 0) ? `物差し: ${s1} | ${s2}` : `物差し: ${s1}`;
-    }
-
-    function setMode(mode) {
-        if (mode !== 'zoom' && currentMode !== 'zoom' && mode !== lastMeasureMode) {
-            state[1].points = [];
-            state[2].points = [];
-            state[1].resultMain = "";
-            state[2].resultMain = "";
-            state[1].resultSub = "";
-            state[2].resultSub = "";
-            perpSlider.value = 50; // リセット
-        }
-        if (mode !== 'zoom') {
-            lastMeasureMode = mode;
-        }
-        
-        currentMode = mode;
-        
-        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModeZoom, btnModePerp].forEach(b => b.classList.remove('mode-active'));
-
-        document.getElementById('zoom-controls').style.display = (mode === 'zoom') ? 'flex' : 'none';
-        document.getElementById('perp-controls').style.display = (mode === 'perp') ? 'flex' : 'none';
-
-        if (mode === 'zoom') {
-            btnModeZoom.classList.add('mode-active');
-            document.getElementById('zoom-target-label').innerText = lastActiveTarget === 1 ? '①' : '②';
-            document.getElementById('zoom-slider').value = viewState[lastActiveTarget].scale;
-        } else {
-            if (mode === 'angle') btnModeAngle.classList.add('mode-active');
-            else if (mode === 'distance') btnModeDist.classList.add('mode-active');
-            else if (mode === 'accel') btnModeAcc.classList.add('mode-active');
-            else if (mode === 'scale') btnModeScale.classList.add('mode-active');
-            else if (mode === 'perp') btnModePerp.classList.add('mode-active');
-        }
-        
-        if (mode === 'scale') {
-            state[1].scalePoints = [];
-            state[2].scalePoints = [];
-            updateScaleInfoText();
-        } else if (mode === 'perp') {
-            state[1].resultMain = "垂直線: 基準となる2点をタップ";
-            state[1].resultSub = "下のスライダーで垂直線を移動できます";
-        }
-        
-        updateDisplayResult();
-        redraw();
-    }
-
-    function clearCurrentPoints() {
-        state[1].points = [];
-        state[2].points = [];
-        state[1].resultMain = "";
-        state[2].resultMain = "";
-        state[1].resultSub = "";
-        state[2].resultSub = "";
-        perpSlider.value = 50;
-        updateDisplayResult();
-        redraw();
-    }
-
-    function formatDistance(px, pxPerCm) {
-        if (!pxPerCm) return `${px.toFixed(1)} px`;
-        const cm = px / pxPerCm;
-        if (cm >= 100) return `${(cm / 100).toFixed(2)} m (${cm.toFixed(1)} cm)`;
-        return `${cm.toFixed(1)} cm`;
-    }
-
-    let isTouchPanning = false;
-    let panStartX = 0, panStartY = 0;
-    let panStartOffsetX = 0, panStartOffsetY = 0;
-    let pinchInitialDist = 0;
-    let pinchInitialScale = 1;
-    let pinchTarget = 1;
-
-    document.getElementById('stage').addEventListener('touchstart', e => {
-        if (currentMode !== 'zoom') return;
-        
-        const targetIdx = e.target.closest('#pane2') ? 2 : 1;
-        lastActiveTarget = targetIdx;
-        document.getElementById('zoom-target-label').innerText = targetIdx === 1 ? '①' : '②';
-        document.getElementById('zoom-slider').value = viewState[targetIdx].scale;
-
-        if (e.touches.length === 1) {
-            isTouchPanning = true;
-            panStartX = e.touches[0].clientX;
-            panStartY = e.touches[0].clientY;
-            panStartOffsetX = viewState[targetIdx].x;
-            panStartOffsetY = viewState[targetIdx].y;
-        } else if (e.touches.length === 2) {
-            isTouchPanning = false;
-            e.preventDefault();
-            pinchTarget = targetIdx;
-            pinchInitialDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-            pinchInitialScale = viewState[targetIdx].scale;
-        }
-    }, {passive: false});
-
-    document.getElementById('stage').addEventListener('touchmove', e => {
-        if (currentMode !== 'zoom') return;
-        e.preventDefault(); 
-        if (isTouchPanning && e.touches.length === 1) {
-            const scale = viewState[lastActiveTarget].scale;
-            const dx = (e.touches[0].clientX - panStartX) / scale;
-            const dy = (e.touches[0].clientY - panStartY) / scale;
-            viewState[lastActiveTarget].x = panStartOffsetX + dx;
-            viewState[lastActiveTarget].y = panStartOffsetY + dy;
-            applyZoom(lastActiveTarget);
-        } else if (e.touches.length === 2) {
-            const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-            let newScale = pinchInitialScale * (dist / pinchInitialDist);
-            newScale = Math.max(1, Math.min(newScale, 5));
-            viewState[pinchTarget].scale = newScale;
-            applyZoom(pinchTarget);
-            document.getElementById('zoom-slider').value = newScale;
-        }
-    }, {passive: false});
-
-    document.getElementById('stage').addEventListener('touchend', e => {
-        if (e.touches.length === 0) isTouchPanning = false;
-    }, {passive: false});
-
-    canvas1.addEventListener('pointerdown', (e) => { if (currentMode !== 'zoom') handleCanvasTap(e, canvas1, video1, 1); });
-    canvas2.addEventListener('pointerdown', (e) => { if (currentMode !== 'zoom') handleCanvasTap(e, canvas2, video2, 2); });
-
-    function handleCanvasTap(e, cvs, vid, targetIdx) {
-        lastActiveTarget = targetIdx;
-        const s = state[targetIdx];
-        
-        const rect = cvs.getBoundingClientRect();
-        const scaleX = cvs.width / rect.width;
-        const scaleY = cvs.height / rect.height;
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
-        const currentTime = vid.currentTime;
-
-        if (currentMode === 'scale') {
-            s.scalePoints.push({x, y});
-            if (s.scalePoints.length === 2) {
-                const p1 = s.scalePoints[0], p2 = s.scalePoints[1];
-                tempDistPx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-                scaleTarget = targetIdx;
-                scaleModalTitle.innerText = `基準物の長さ設定 (動画${targetIdx === 1 ? '①' : '②'})`;
-                scaleModalOverlay.style.display = 'flex';
-                scaleInputValue.focus();
-                scaleInputValue.select();
-            }
-            redraw();
-            return;
-        }
-
-        const maxPoints = (currentMode === 'distance' || currentMode === 'perp') ? 2 : 3;
-        if (s.points.length >= maxPoints) s.points = [];
-        s.points.push({x, y, time: currentTime});
-
-        if (currentMode === 'angle') {
-            if (s.points.length === 3) {
-                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
-                const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
-                const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
-                const dot = v1.x * v2.x + v1.y * v2.y;
-                const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
-                if (mag1 * mag2 !== 0) {
-                    let cosVal = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
-                    let angle = Math.acos(cosVal) * (180 / Math.PI);
-                    s.resultMain = `関節角度: ${angle.toFixed(1)}°`;
-                    s.resultSub = `頂点(2点目)を中心とした角度`;
-                }
-            } else {
-                s.resultMain = `点 ${s.points.length}/3`;
-                s.resultSub = s.points.length === 1 ? "2点目(頂点)をタップ" : "3点目をタップ";
-            }
-        } else if (currentMode === 'distance') {
-            if (s.points.length === 2) {
-                const p1 = s.points[0], p2 = s.points[1];
-                const dx = p2.x - p1.x, dy = -(p2.y - p1.y);
-                const dist = Math.hypot(dx, dy);
-                const dt = Math.abs(p2.time - p1.time);
-                s.resultMain = `距離: ${formatDistance(dist, s.pxPerCm)}`;
-                if (dt > 0 && s.pxPerCm) {
-                    const speedKMH = ((dist / s.pxPerCm) / 100) / dt * 3.6;
-                    s.resultSub = `速度: <span class="highlight-speed">${speedKMH.toFixed(1)}km/h</span>`;
-                }
-            } else {
-                s.resultMain = "始点を記録";
-                s.resultSub = "コマ送りして終点をタップ";
-            }
-        } else if (currentMode === 'accel') {
-            if (s.points.length === 3) {
-                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
-                const dt1 = Math.abs(p2.time - p1.time), dt2 = Math.abs(p3.time - p2.time);
-                const dist1 = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-                const dist2 = Math.hypot(p3.x - p2.x, p3.y - p2.y);
-                if (dt1 > 0 && dt2 > 0 && s.pxPerCm) {
-                    const v1 = ((dist1 / s.pxPerCm) / 100) / dt1;
-                    const v2 = ((dist2 / s.pxPerCm) / 100) / dt2;
-                    const accel = (v2 - v1) / ((dt1 + dt2) / 2);
-                    const gForce = accel / 9.80665;
-                    s.resultMain = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)}m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)}G)</span>`;
-                    s.resultSub = `①:${(v1 * 3.6).toFixed(1)}k → ②:${(v2 * 3.6).toFixed(1)}k`;
-                }
-            } else {
-                s.resultMain = `点 ${s.points.length}/3`;
-                s.resultSub = "コマ送りしながら次の点をタップ";
-            }
-        } else if (currentMode === 'perp') {
-            if (s.points.length === 2) {
-                s.resultMain = `基準線設定完了`;
-                s.resultSub = `下のスライダーで垂直線を動かせます`;
-            } else {
-                s.resultMain = "基準となる1点目";
-                s.resultSub = "2点目をタップして線を引きます";
-            }
-        }
-        updateDisplayResult();
-        redraw();
-    }
-
-    function submitScaleModal() {
-        const realCm = parseFloat(scaleInputValue.value);
-        if (realCm && realCm > 0) {
-            state[scaleTarget].pxPerCm = tempDistPx / realCm;
-            updateScaleInfoText();
-            scaleModalOverlay.style.display = 'none';
-            setMode('distance');
-        } else {
-            alert("有効な数値を入力してください");
-        }
-    }
-    function cancelScaleModal() {
-        state[scaleTarget].scalePoints = [];
-        scaleModalOverlay.style.display = 'none';
-        setMode('scale');
-    }
-
-    function redraw() {
-        [ {idx: 1, c: canvas1, ctx: ctx1}, {idx: 2, c: canvas2, ctx: ctx2} ].forEach(item => {
-            const s = state[item.idx];
-            item.ctx.clearRect(0, 0, item.c.width, item.c.height);
-
-            if (s.scalePoints.length === 2 && currentMode !== 'scale') {
-                item.ctx.save();
-                item.ctx.strokeStyle = 'rgba(255, 149, 0, 0.4)';
-                item.ctx.lineWidth = 2; item.ctx.setLineDash([4, 4]);
-                item.ctx.beginPath();
-                item.ctx.moveTo(s.scalePoints[0].x, s.scalePoints[0].y);
-                item.ctx.lineTo(s.scalePoints[1].x, s.scalePoints[1].y);
-                item.ctx.stroke();
-                item.ctx.restore();
-            }
-
-            if (currentMode === 'scale') {
-                item.ctx.strokeStyle = '#ff9500'; item.ctx.fillStyle = '#ff9500'; item.ctx.lineWidth = 3;
-                drawPointList(item.ctx, s.scalePoints, "基準");
-                return;
-            }
-
-            if (s.points.length === 0) return;
-            
-            // 垂直線モードの特別描画
-            if (lastMeasureMode === 'perp') {
-                if (s.points.length > 0) {
-                    item.ctx.fillStyle = '#00ffcc';
-                    item.ctx.beginPath();
-                    item.ctx.arc(s.points[0].x, s.points[0].y, 5, 0, Math.PI * 2);
-                    item.ctx.fill();
-                }
-                if (s.points.length === 2) {
-                    const p1 = s.points[0], p2 = s.points[1];
-                    // 基準線（水色）
-                    item.ctx.strokeStyle = '#00ffcc';
-                    item.ctx.lineWidth = 2;
-                    item.ctx.beginPath();
-                    item.ctx.moveTo(p1.x, p1.y);
-                    item.ctx.lineTo(p2.x, p2.y);
-                    item.ctx.stroke();
-
-                    item.ctx.fillStyle = '#00ffcc';
-                    item.ctx.beginPath();
-                    item.ctx.arc(p2.x, p2.y, 5, 0, Math.PI * 2);
-                    item.ctx.fill();
-
-                    // 垂直線の計算と描画（赤色）
-                    const t = perpSlider.value / 100;
-                    const pmX = p1.x + (p2.x - p1.x) * t;
-                    const pmY = p1.y + (p2.y - p1.y) * t;
-                    
-                    const dx = p2.x - p1.x;
-                    const dy = p2.y - p1.y;
-                    const len = Math.hypot(dx, dy);
-                    
-                    if (len > 0) {
-                        const nx = -dy / len;
-                        const ny = dx / len;
-                        const perpLen = 2000; // 画面を突き抜ける十分な長さ
-                        
-                        item.ctx.strokeStyle = '#ff2d55'; // 赤色
-                        item.ctx.lineWidth = 2;
-                        item.ctx.setLineDash([4, 4]); // 破線
-                        item.ctx.beginPath();
-                        item.ctx.moveTo(pmX - nx * perpLen, pmY - ny * perpLen);
-                        item.ctx.lineTo(pmX + nx * perpLen, pmY + ny * perpLen);
-                        item.ctx.stroke();
-                        item.ctx.setLineDash([]); // 元に戻す
-                    }
-                }
-                return; // 垂直線モード時は通常の点を描画しない
-            }
-
-            if (lastMeasureMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
-            else if (lastMeasureMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
-            else if (lastMeasureMode === 'accel') item.ctx.strokeStyle = item.ctx.fillStyle = '#ff375f';
-            item.ctx.lineWidth = 3;
-
-            let labels = lastMeasureMode === 'distance' ? ["始点", "終点"] : (lastMeasureMode === 'accel' ? ["点1", "点2", "点3"] : null);
-            drawPointList(item.ctx, s.points, labels);
-        });
-    }
-
-    function drawPointList(cContext, ptList, labels) {
-        if (ptList.length === 0) return;
-        cContext.beginPath();
-        for (let i = 0; i < ptList.length; i++) {
-            if (i === 0) cContext.moveTo(ptList[i].x, ptList[i].y);
-            else cContext.lineTo(ptList[i].x, ptList[i].y);
-        }
-        cContext.stroke();
-
-        for (let i = 0; i < ptList.length; i++) {
-            cContext.beginPath();
-            cContext.arc(ptList[i].x, ptList[i].y, 5, 0, Math.PI * 2);
-            cContext.fill();
-            if (labels) {
-                const text = Array.isArray(labels) ? labels[i] : `${labels}${i + 1}`;
-                if (text) {
-                    cContext.fillStyle = '#fff'; cContext.font = 'bold 10px sans-serif';
-                    cContext.fillText(text, ptList[i].x + 7, ptList[i].y - 5);
-                    cContext.fillStyle = cContext.strokeStyle;
-                }
-            }
-        }
-    }
-
-    function captureSnapshot() {
-        if (!video1.videoWidth && !video2.videoWidth) {
-            alert("動画が読み込まれていません");
-            return;
-        }
-        const snapCanvas = document.createElement('canvas');
-        const snapCtx = snapCanvas.getContext('2d');
-        
-        const w = (compareMode === 1) ? canvas1.width * 2 : canvas1.width;
-        const h = canvas1.height;
-        snapCanvas.width = w;
-        snapCanvas.height = h + 60;
-
-        snapCtx.fillStyle = '#000';
-        snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
-
-        if (video1.videoWidth) {
-            snapCtx.drawImage(video1, 0, 0, canvas1.width, h);
-            snapCtx.drawImage(canvas1, 0, 0);
-        }
-
-        if (compareMode === 1 && video2.videoWidth) {
-            snapCtx.drawImage(video2, canvas1.width, 0, canvas1.width, h);
-            snapCtx.drawImage(canvas2, canvas1.width, 0);
-        } else if (compareMode === 2 && video2.videoWidth) {
-            snapCtx.globalAlpha = 0.5;
-            snapCtx.drawImage(video2, 0, 0, canvas1.width, h);
-            snapCtx.drawImage(canvas2, 0, 0);
-            snapCtx.globalAlpha = 1.0;
-        }
-
-        snapCtx.fillStyle = '#1c1c1e';
-        snapCtx.fillRect(0, h, snapCanvas.width, 60);
-        snapCtx.fillStyle = '#00ffcc';
-        snapCtx.font = 'bold 14px -apple-system, sans-serif';
-        snapCtx.fillText(mainResult.innerText, 15, h + 24);
-
-        snapCtx.fillStyle = '#ccc';
-        snapCtx.font = '11px -apple-system, sans-serif';
-        const cleanSubText = subResult.innerText.replace(/<[^>]*>?/gm, ' ');
-        snapCtx.fillText(cleanSubText, 15, h + 46);
-
-        document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png');
-        document.getElementById('snapshot-modal-overlay').style.display = 'flex';
-    }
-    function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
-</script>
-</body>
-</html>
+            mainResult.innerHTML = `${r1} ｜${
