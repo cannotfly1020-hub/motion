@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="動作分析Pro">
 <title>動作分析 Pro</title>
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 
 <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
@@ -105,7 +105,6 @@
 <div id="stage">
     <div class="video-pane" id="pane1">
         <div class="zoom-target" id="zoom-target-1">
-            <!-- crossorigin属性を削除しCORSエラーを防止 -->
             <video id="video1" playsinline webkit-playsinline muted></video>
             <canvas id="canvas1"></canvas>
         </div>
@@ -270,7 +269,6 @@
             if (s.points.length > 0) {
                 s.points.forEach(p => { if (p.frame !== undefined) p.time = p.frame / currentFPS; });
             }
-            // 重心モードのtimeも更新
             if (s.cogPoints.length > 0) {
                 s.cogPoints.forEach(p => { if (p.frame !== undefined) p.time = p.frame / currentFPS; });
             }
@@ -461,10 +459,26 @@
     }
     window.addEventListener('resize', fitCanvases);
 
+    // 新しい動画を読み込んだ時にデータをリセットする関数
+    function resetState(idx) {
+        state[idx] = { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" };
+        if (idx === 1) currentTorsionAngle = 0;
+        updateScaleInfoText();
+        updateDisplayResult();
+        redraw();
+    }
+
     function triggerPickVideo(idx) { idx === 1 ? fileInput1.click() : fileInput2.click(); }
-    fileInput1.addEventListener('change', e => loadVideoFile(e.target.files[0], video1));
-    fileInput2.addEventListener('change', e => loadVideoFile(e.target.files[0], video2));
-    function loadVideoFile(file, vidElem) { if (file) { vidElem.src = URL.createObjectURL(file); vidElem.load(); } }
+    
+    function loadVideoFile(file, vidElem, idx) { 
+        if (file) { 
+            resetState(idx); // 新規読み込み時に前回のデータを消去
+            vidElem.src = URL.createObjectURL(file); 
+            vidElem.load(); 
+        } 
+    }
+    fileInput1.addEventListener('change', e => loadVideoFile(e.target.files[0], video1, 1));
+    fileInput2.addEventListener('change', e => loadVideoFile(e.target.files[0], video2, 2));
 
     video1.addEventListener('loadedmetadata', () => { fitCanvases(); seekbar1.max = video1.duration; seekbar1.value = 0; setMode(currentMode); });
     video2.addEventListener('loadedmetadata', () => { fitCanvases(); seekbar2.max = video2.duration; seekbar2.value = 0; });
@@ -770,6 +784,14 @@
             if (currentMode === 'ai') {
                 const currentFrame = Math.round(video1.currentTime * currentFPS);
                 s.aiOverrides[currentFrame] = s.aiJoints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
+                if (s.limbsLandmarks) {
+                    const jointMap = [11, 12, 23, 24];
+                    const landmarkIdx = jointMap[draggingPoint.index];
+                    if (s.limbsLandmarks[landmarkIdx]) {
+                        s.limbsLandmarks[landmarkIdx].x = pos.x;
+                        s.limbsLandmarks[landmarkIdx].y = pos.y;
+                    }
+                }
                 calcAiResults('manual');
             } else if (currentMode !== 'scale') {
                 calcResults(s, currentMode); updateDisplayResult();
@@ -841,7 +863,6 @@
         return null;
     }
 
-    // 動画の実際の表示領域を計算 (object-fit: contain 対応)
     function getVideoRenderRect(vid, cvs) {
         if (!vid.videoWidth) return { width: cvs.width, height: cvs.height, x: 0, y: 0 };
         const videoRatio = vid.videoWidth / vid.videoHeight;
@@ -862,6 +883,7 @@
 
     function redraw() {
         [ {idx: 1, c: canvas1, ctx: ctx1, v: video1}, {idx: 2, c: canvas2, ctx: ctx2, v: video2} ].forEach(item => {
+            if (compareMode === 0 && item.idx === 2) return; // 1画面時はCanvas2の描画をスキップ
             const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
@@ -1047,13 +1069,33 @@
         if (w === 0 || h === 0) return;
         snapCanvas.width = w; snapCanvas.height = h + 60;
         snapCtx.fillStyle = '#000'; snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
-        if (video1.videoWidth) { snapCtx.drawImage(video1, 0, 0, canvas1.width, h); snapCtx.drawImage(canvas1, 0, 0); }
-        if (compareMode === 1 && video2.videoWidth) { snapCtx.drawImage(video2, canvas1.width, 0, canvas1.width, h); snapCtx.drawImage(canvas2, canvas1.width, 0); } 
-        else if (compareMode === 2 && video2.videoWidth) { snapCtx.globalAlpha = 0.5; snapCtx.drawImage(video2, 0, 0, canvas1.width, h); snapCtx.drawImage(canvas2, 0, 0); snapCtx.globalAlpha = 1.0; }
+        
+        if (video1.videoWidth) { 
+            const r1 = getVideoRenderRect(video1, canvas1);
+            snapCtx.drawImage(video1, r1.x, r1.y, r1.width, r1.height); 
+            snapCtx.drawImage(canvas1, 0, 0); 
+        }
+        if (compareMode === 1 && video2.videoWidth) { 
+            const r2 = getVideoRenderRect(video2, canvas2);
+            snapCtx.drawImage(video2, canvas1.width + r2.x, r2.y, r2.width, r2.height); 
+            snapCtx.drawImage(canvas2, canvas1.width, 0); 
+        } 
+        else if (compareMode === 2 && video2.videoWidth) { 
+            const r2 = getVideoRenderRect(video2, canvas2);
+            snapCtx.globalAlpha = 0.5; 
+            snapCtx.drawImage(video2, r2.x, r2.y, r2.width, r2.height); 
+            snapCtx.drawImage(canvas2, 0, 0); 
+            snapCtx.globalAlpha = 1.0; 
+        }
+        
         snapCtx.fillStyle = '#1c1c1e'; snapCtx.fillRect(0, h, snapCanvas.width, 60);
-        snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 14px -apple-system, sans-serif'; snapCtx.fillText(mainResult.innerText.replace(/<[^>]*>?/gm, ''), 15, h + 24);
-        snapCtx.fillStyle = '#ccc'; snapCtx.font = '11px -apple-system, sans-serif'; snapCtx.fillText(subResult.innerText.replace(/<[^>]*>?/gm, ' '), 15, h + 46);
-        document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); document.getElementById('snapshot-modal-overlay').style.display = 'flex';
+        snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 14px -apple-system, sans-serif'; 
+        snapCtx.fillText(mainResult.innerText, 15, h + 24);
+        snapCtx.fillStyle = '#ccc'; snapCtx.font = '11px -apple-system, sans-serif'; 
+        snapCtx.fillText(subResult.innerText, 15, h + 46);
+        
+        document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); 
+        document.getElementById('snapshot-modal-overlay').style.display = 'flex';
     }
     function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
 
@@ -1083,15 +1125,18 @@
             recordCtx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
 
             if (video1.videoWidth) {
-                recordCtx.drawImage(video1, 0, 0, canvas1.width, h);
+                const r1 = getVideoRenderRect(video1, canvas1);
+                recordCtx.drawImage(video1, r1.x, r1.y, r1.width, r1.height);
                 recordCtx.drawImage(canvas1, 0, 0);
             }
             if (compareMode === 1 && video2.videoWidth) {
-                recordCtx.drawImage(video2, canvas1.width, 0, canvas1.width, h);
+                const r2 = getVideoRenderRect(video2, canvas2);
+                recordCtx.drawImage(video2, canvas1.width + r2.x, r2.y, r2.width, r2.height);
                 recordCtx.drawImage(canvas2, canvas1.width, 0);
             } else if (compareMode === 2 && video2.videoWidth) {
+                const r2 = getVideoRenderRect(video2, canvas2);
                 recordCtx.globalAlpha = 0.5;
-                recordCtx.drawImage(video2, 0, 0, canvas1.width, h);
+                recordCtx.drawImage(video2, r2.x, r2.y, r2.width, r2.height);
                 recordCtx.drawImage(canvas2, 0, 0);
                 recordCtx.globalAlpha = 1.0;
             }
@@ -1100,10 +1145,10 @@
             recordCtx.fillRect(0, h, recordCanvas.width, 50);
             recordCtx.fillStyle = '#00ffcc';
             recordCtx.font = 'bold 13px -apple-system, sans-serif';
-            recordCtx.fillText(mainResult.innerText.replace(/<[^>]*>?/gm, ''), 12, h + 22);
+            recordCtx.fillText(mainResult.innerText, 12, h + 22);
             recordCtx.fillStyle = '#ccc';
             recordCtx.font = '10px -apple-system, sans-serif';
-            recordCtx.fillText(subResult.innerText.replace(/<[^>]*>?/gm, ' '), 12, h + 40);
+            recordCtx.fillText(subResult.innerText, 12, h + 40);
 
             recordAnimId = requestAnimationFrame(drawRecordFrame);
         }
@@ -1190,7 +1235,6 @@
         const landmarks = results.poseLandmarks;
         const rect = getVideoRenderRect(video1, canvas1);
         
-        // Z座標にも実際の横幅を掛けてスケールを合わせる
         const getPos = (lm) => ({ 
             x: rect.x + lm.x * rect.width, 
             y: rect.y + lm.y * rect.height, 
@@ -1233,8 +1277,10 @@
     });
     
     video1.addEventListener('seeked', async () => { 
-        if (currentMode === 'ai' && video1.readyState >= 2) {
+        if (currentMode === 'ai' && video1.readyState >= 2 && !isAiDetecting) {
+            isAiDetecting = true;
             await pose.send({image: video1}); 
+            isAiDetecting = false;
         }
     });
 </script>
