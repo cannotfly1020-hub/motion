@@ -24,6 +24,9 @@
     .hdr-btn.compare-parallel { background: #af52de; color: #fff; }
     .hdr-btn.compare-overlay { background: #ff2d55; color: #fff; }
     .hdr-btn.fps-badge { background: #30d158; color: #000; font-size: 10px; }
+    .hdr-btn.rec-btn { background: #ff3b30; color: #fff; }
+    .hdr-btn.rec-active { background: #ff453a; animation: blink 1s infinite; }
+    @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
     #scale-info-text { font-size: 10px; color: #ff9500; font-weight: 600; white-space: nowrap; margin-left: auto; flex-shrink: 0; padding-left: 4px; }
     #result-box { width: 100%; background: #262629; border-radius: 6px; padding: 5px 8px; border: 1px solid #3a3a3c; }
     #main-result { color: #00ffcc; font-size: 12px; font-weight: bold; line-height: 1.2; }
@@ -81,7 +84,8 @@
             <button class="hdr-btn secondary" id="btn-pick2" style="display:none;" onclick="triggerPickVideo(2)">動画②</button>
             <button class="hdr-btn secondary" id="btn-toggle-compare" onclick="toggleCompareMode()">1画面</button>
             <button class="hdr-btn fps-badge" id="btn-fps" onclick="toggleFPS()">30fps</button>
-            <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 保存</button>
+            <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 静止画</button>
+            <button class="hdr-btn rec-btn" id="btn-record" onclick="toggleRecording()">🎥 録画開始</button>
         </div>
         <span id="scale-info-text">物差し: 未設定</span>
         <input type="file" id="file-input-1" accept="video/*" style="display:none">
@@ -96,13 +100,13 @@
 <div id="stage">
     <div class="video-pane" id="pane1">
         <div class="zoom-target" id="zoom-target-1">
-            <video id="video1" playsinline webkit-playsinline muted></video>
+            <video id="video1" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
             <canvas id="canvas1"></canvas>
         </div>
     </div>
     <div class="video-pane" id="pane2">
         <div class="zoom-target" id="zoom-target-2">
-            <video id="video2" playsinline webkit-playsinline muted></video>
+            <video id="video2" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
             <canvas id="canvas2"></canvas>
         </div>
     </div>
@@ -174,7 +178,7 @@
 
 <div id="snapshot-modal-overlay" class="modal-overlay">
     <div class="modal-card" style="max-width:360px;">
-        <h3 style="color:#5856d6;">📸 スクリーンショット</h3>
+        <h3 style="color:#5856d6;">📸 静止画キャプチャ</h3>
         <p style="font-size:11px; color:#aaa;">画像を長押しして「写真に追加」で保存できます</p>
         <img id="snapshot-img" src="" alt="Screenshot">
         <div class="modal-btn-row">
@@ -196,6 +200,7 @@
     const btnPick2 = document.getElementById('btn-pick2');
     const btnToggleCompare = document.getElementById('btn-toggle-compare');
     const btnFps = document.getElementById('btn-fps');
+    const btnRecord = document.getElementById('btn-record');
     const seekbar1 = document.getElementById('seekbar1');
     const seekbar2 = document.getElementById('seekbar2');
     const seekRow2 = document.getElementById('seek-row-2');
@@ -235,6 +240,14 @@
     let fpsIdx = 0;
 
     let currentTorsionAngle = 0;
+
+    // 録画関連
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let isRecording = false;
+    let recordCanvas = null;
+    let recordCtx = null;
+    let recordAnimId = null;
 
     const state = {
         1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
@@ -776,7 +789,6 @@
         return null;
     }
 
-    // ★修正: 顔・手先を除いた「主要な四肢の骨格」のみを描画する
     function redraw() {
         [ {idx: 1, c: canvas1, ctx: ctx1}, {idx: 2, c: canvas2, ctx: ctx2} ].forEach(item => {
             const s = state[item.idx];
@@ -787,12 +799,11 @@
                     // 1. 顔・手先を除いた四肢の骨格ラインを描画
                     if (s.limbsLandmarks) {
                         const lm = s.limbsLandmarks;
-                        // 接続する主要な関節ペア（腕・脚）
                         const limbConnections = [
-                            [11, 13], [13, 15],       // 左腕（肩-肘-手首）
-                            [12, 14], [14, 16],       // 右腕（肩-肘-手首）
-                            [23, 25], [25, 27], [27, 29], [29, 31], // 左脚（股関節-膝-足首-踵-つま先）
-                            [24, 26], [26, 28], [28, 30], [30, 32]  // 右脚（股関節-膝-足首-踵-つま先）
+                            [11, 13], [13, 15],       
+                            [12, 14], [14, 16],       
+                            [23, 25], [25, 27], [27, 29], [29, 31], 
+                            [24, 26], [26, 28], [28, 30], [30, 32]  
                         ];
 
                         item.ctx.save();
@@ -808,7 +819,6 @@
                             }
                         });
 
-                        // 四肢の主要な関節（肩・腰を除く肘・手首・膝・足首・足先）に小さめの点を打つ
                         const keyJointIndices = [13, 14, 15, 16, 25, 26, 27, 28, 29, 30, 31, 32];
                         item.ctx.fillStyle = '#00ffcc';
                         keyJointIndices.forEach(idx => {
@@ -961,7 +971,116 @@
     function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
 
     // ==========================================
-    // ▼ ここから MediaPipe (AI自動解析) のコード ▼
+    // ▼ 動画エクスポート（録画）機能 ▼
+    // ==========================================
+
+    function toggleRecording() {
+        if (isRecording) {
+            stopRecording();
+        } else {
+            startRecording();
+        }
+    }
+
+    function startRecording() {
+        if (!video1.duration) { alert("動画が読み込まれていません"); return; }
+
+        recordedChunks = [];
+        recordCanvas = document.createElement('canvas');
+        const w = (compareMode === 1) ? canvas1.width * 2 : canvas1.width;
+        const h = canvas1.height;
+        recordCanvas.width = w;
+        recordCanvas.height = h + 50;
+        recordCtx = recordCanvas.getContext('2d');
+
+        function drawRecordFrame() {
+            if (!isRecording) return;
+            recordCtx.fillStyle = '#000';
+            recordCtx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
+
+            // 映像とオーバーレイを描画
+            if (video1.videoWidth) {
+                recordCtx.drawImage(video1, 0, 0, canvas1.width, h);
+                recordCtx.drawImage(canvas1, 0, 0);
+            }
+            if (compareMode === 1 && video2.videoWidth) {
+                recordCtx.drawImage(video2, canvas1.width, 0, canvas1.width, h);
+                recordCtx.drawImage(canvas2, canvas1.width, 0);
+            } else if (compareMode === 2 && video2.videoWidth) {
+                recordCtx.globalAlpha = 0.5;
+                recordCtx.drawImage(video2, 0, 0, canvas1.width, h);
+                recordCtx.drawImage(canvas2, 0, 0);
+                recordCtx.globalAlpha = 1.0;
+            }
+
+            // 下部にリアルタイム計測バーを焼き込み
+            recordCtx.fillStyle = '#1c1c1e';
+            recordCtx.fillRect(0, h, recordCanvas.width, 50);
+            recordCtx.fillStyle = '#00ffcc';
+            recordCtx.font = 'bold 13px -apple-system, sans-serif';
+            recordCtx.fillText(mainResult.innerText.replace(/<[^>]*>?/gm, ''), 12, h + 22);
+            recordCtx.fillStyle = '#ccc';
+            recordCtx.font = '10px -apple-system, sans-serif';
+            recordCtx.fillText(subResult.innerText.replace(/<[^>]*>?/gm, ' '), 12, h + 40);
+
+            recordAnimId = requestAnimationFrame(drawRecordFrame);
+        }
+
+        const stream = recordCanvas.captureStream(currentFPS);
+        
+        let mimeType = 'video/webm;codecs=vp9';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = 'video/webm';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'video/mp4';
+            }
+        }
+
+        try {
+            mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5000000 });
+        } catch (e) {
+            mediaRecorder = new MediaRecorder(stream);
+        }
+
+        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = exportRecordedVideo;
+
+        mediaRecorder.start();
+        isRecording = true;
+        btnRecord.innerText = '⏹ 録画停止';
+        btnRecord.classList.add('rec-active');
+
+        drawRecordFrame();
+
+        // 録画開始に合わせて動画も自動再生
+        if (video1.paused) togglePlay();
+    }
+
+    function stopRecording() {
+        if (!isRecording) return;
+        isRecording = false;
+        if (recordAnimId) cancelAnimationFrame(recordAnimId);
+        mediaRecorder.stop();
+        btnRecord.innerText = '🎥 録画開始';
+        btnRecord.classList.remove('rec-active');
+        if (!video1.paused) togglePlay();
+    }
+
+    function exportRecordedVideo() {
+        const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const ext = (mediaRecorder.mimeType && mediaRecorder.mimeType.includes('mp4')) ? 'mp4' : 'webm';
+        a.download = `動作分析_${new Date().toISOString().slice(0, 10)}_${Date.now()}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    // ==========================================
+    // ▼ MediaPipe (AI自動解析) のコード ▼
     // ==========================================
 
     const pose = new Pose({locateFile: (file) => {
@@ -989,7 +1108,6 @@
         const landmarks = results.poseLandmarks;
         const getPos = (lm) => ({ x: lm.x * canvas1.width, y: lm.y * canvas1.height, z: lm.z || 0 });
         
-        // 全体の座標をキャンバスピクセルに変換
         const mappedLandmarks = {};
         for (let i = 0; i < landmarks.length; i++) {
             mappedLandmarks[i] = getPos(landmarks[i]);
