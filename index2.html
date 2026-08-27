@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="動作分析Pro">
 <title>動作分析 Pro</title>
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
 
 <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
@@ -105,13 +105,14 @@
 <div id="stage">
     <div class="video-pane" id="pane1">
         <div class="zoom-target" id="zoom-target-1">
-            <video id="video1" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
+            <!-- crossorigin属性を削除しCORSエラーを防止 -->
+            <video id="video1" playsinline webkit-playsinline muted></video>
             <canvas id="canvas1"></canvas>
         </div>
     </div>
     <div class="video-pane" id="pane2">
         <div class="zoom-target" id="zoom-target-2">
-            <video id="video2" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
+            <video id="video2" playsinline webkit-playsinline muted></video>
             <canvas id="canvas2"></canvas>
         </div>
     </div>
@@ -219,16 +220,6 @@
     const fileInput1 = document.getElementById('file-input-1');
     const fileInput2 = document.getElementById('file-input-2');
 
-    const btnModeAngle = document.getElementById('btn-mode-angle');
-    const btnModeDist = document.getElementById('btn-mode-dist');
-    const btnModeAcc = document.getElementById('btn-mode-acc');
-    const btnModeScale = document.getElementById('btn-mode-scale');
-    const btnModeZoom = document.getElementById('btn-mode-zoom');
-    const btnModePerp = document.getElementById('btn-mode-perp');
-    const btnModeSim = document.getElementById('btn-mode-sim');
-    const btnModeCog = document.getElementById('btn-mode-cog');
-    const btnModeAi = document.getElementById('btn-mode-ai');
-    
     const perpSlider = document.getElementById('perp-slider');
     const simSlider = document.getElementById('sim-slider');
     const simDegVal = document.getElementById('sim-deg-val');
@@ -256,7 +247,6 @@
 
     let isAiDetecting = false;
 
-    // state[2]の不要なAIプロパティを整理
     const state = {
         1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
         2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
@@ -279,6 +269,10 @@
             const s = state[idx];
             if (s.points.length > 0) {
                 s.points.forEach(p => { if (p.frame !== undefined) p.time = p.frame / currentFPS; });
+            }
+            // 重心モードのtimeも更新
+            if (s.cogPoints.length > 0) {
+                s.cogPoints.forEach(p => { if (p.frame !== undefined) p.time = p.frame / currentFPS; });
             }
             calcResults(s, lastMeasureMode);
         });
@@ -470,7 +464,7 @@
     function triggerPickVideo(idx) { idx === 1 ? fileInput1.click() : fileInput2.click(); }
     fileInput1.addEventListener('change', e => loadVideoFile(e.target.files[0], video1));
     fileInput2.addEventListener('change', e => loadVideoFile(e.target.files[0], video2));
-    function loadVideoFile(file, vidElem) { if (file) { vidElem.muted = true; vidElem.src = URL.createObjectURL(file); vidElem.load(); } }
+    function loadVideoFile(file, vidElem) { if (file) { vidElem.src = URL.createObjectURL(file); vidElem.load(); } }
 
     video1.addEventListener('loadedmetadata', () => { fitCanvases(); seekbar1.max = video1.duration; seekbar1.value = 0; setMode(currentMode); });
     video2.addEventListener('loadedmetadata', () => { fitCanvases(); seekbar2.max = video2.duration; seekbar2.value = 0; });
@@ -514,7 +508,6 @@
         if (!video1.duration && !video2.duration) return;
         isPlaying = !isPlaying;
         if (isPlaying) {
-            video1.muted = true; video2.muted = true;
             try {
                 const playPromises = [];
                 if (video1.duration) playPromises.push(video1.play());
@@ -537,12 +530,12 @@
 
     let seeking1 = false;
     seekbar1.addEventListener('input', () => { seeking1 = true; video1.currentTime = seekbar1.value; });
-    seekbar1.addEventListener('change', () => { seeking1 = false; });
+    seekbar1.addEventListener('change', () => { seeking1 = false; redraw(); });
     video1.addEventListener('timeupdate', () => { if (!seeking1) seekbar1.value = video1.currentTime; });
 
     let seeking2 = false;
     seekbar2.addEventListener('input', () => { seeking2 = true; video2.currentTime = seekbar2.value; });
-    seekbar2.addEventListener('change', () => { seeking2 = false; });
+    seekbar2.addEventListener('change', () => { seeking2 = false; redraw(); });
     video2.addEventListener('timeupdate', () => { if (!seeking2) seekbar2.value = video2.currentTime; });
 
     function stepFrame(dir) {
@@ -553,6 +546,7 @@
         if (compareMode > 0 && video2 && !isNaN(video2.duration) && video2.duration > 0) {
             video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
         }
+        redraw();
     }
 
     function updateDisplayResult() {
@@ -586,25 +580,24 @@
         if (mode !== 'zoom' && mode !== 'ai') { if (mainModes.includes(mode)) lastMeasureMode = mode; currentMode = mode; } 
         else { currentMode = mode; }
         
-        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModeZoom, btnModePerp, btnModeSim, btnModeCog, btnModeAi].forEach(b => { if (b) b.classList.remove('mode-active'); });
+        document.querySelectorAll('.mode-active').forEach(b => b.classList.remove('mode-active'));
         document.getElementById('zoom-controls').style.display = (mode === 'zoom') ? 'flex' : 'none';
         document.getElementById('perp-controls').style.display = (mode === 'perp' || mode === 'cog' || state[1].perpPoints.length === 2 || state[2].perpPoints.length === 2) ? 'flex' : 'none';
         document.getElementById('sim-controls').style.display = (mode === 'sim') ? 'flex' : 'none';
 
         if (mode === 'zoom') {
-            btnModeZoom.classList.add('mode-active'); document.getElementById('zoom-target-label').innerText = lastActiveTarget === 1 ? '①' : '②';
+            document.getElementById('btn-mode-zoom').classList.add('mode-active'); 
+            document.getElementById('zoom-target-label').innerText = lastActiveTarget === 1 ? '①' : '②';
             document.getElementById('zoom-slider').value = viewState[lastActiveTarget].scale;
         } else if (mode === 'ai') {
-            btnModeAi.classList.add('mode-active');
+            document.getElementById('btn-mode-ai').classList.add('mode-active');
             mainResult.innerHTML = "🤖 AI読込中..."; subResult.innerHTML = "動画を再生するかコマ送りして解析を開始してください";
             currentTorsionAngle = 0;
             if (video1.readyState >= 2) pose.send({image: video1});
             redraw();
         } else {
-            if (mode === 'angle') btnModeAngle.classList.add('mode-active'); else if (mode === 'distance') btnModeDist.classList.add('mode-active');
-            else if (mode === 'accel') btnModeAcc.classList.add('mode-active'); else if (mode === 'scale') btnModeScale.classList.add('mode-active');
-            else if (mode === 'perp') btnModePerp.classList.add('mode-active'); else if (mode === 'sim') btnModeSim.classList.add('mode-active');
-            else if (mode === 'cog') btnModeCog.classList.add('mode-active');
+            const btnMap = { 'angle': 'btn-mode-angle', 'distance': 'btn-mode-dist', 'accel': 'btn-mode-acc', 'scale': 'btn-mode-scale', 'perp': 'btn-mode-perp', 'sim': 'btn-mode-sim', 'cog': 'btn-mode-cog' };
+            if (btnMap[mode]) document.getElementById(btnMap[mode]).classList.add('mode-active');
         }
         
         if (mode === 'scale') {
@@ -686,13 +679,12 @@
     document.getElementById('stage').addEventListener('touchend', e => { if (e.touches.length === 0) isTouchPanning = false; }, {passive: false});
 
     [ {c: canvas1, v: video1, idx: 1}, {c: canvas2, v: video2, idx: 2} ].forEach(item => {
-        item.c.addEventListener('pointerdown', (e) => handlePointerDown(e, item.c, item.v, item.idx));
+        item.c.addEventListener('pointerdown', (e) => { e.preventDefault(); handlePointerDown(e, item.c, item.v, item.idx); });
         item.c.addEventListener('pointermove', (e) => handlePointerMove(e, item.c, item.idx));
         item.c.addEventListener('pointerup', (e) => handlePointerUp(e, item.c));
         item.c.addEventListener('pointercancel', (e) => handlePointerUp(e, item.c));
     });
 
-    // ズーム時のCanvas解像度破壊を防ぐ正確な座標逆算
     function getCanvasCoords(e, cvs) {
         const rect = cvs.getBoundingClientRect();
         return { 
@@ -719,10 +711,7 @@
             }
             return null;
         }
-        // 重心モードではプロット追加を優先するため既存ポイントのドラッグ吸着を無効化
-        if (mode === 'cog') {
-            return null;
-        }
+        if (mode === 'cog') return null;
         if (mode === 'perp') {
             for (let i = 0; i < s.perpPoints.length; i++) { if (Math.hypot(s.perpPoints[i].x - pos.x, s.perpPoints[i].y - pos.y) <= HIT_RADIUS) return { arrayName: 'perpPoints', index: i }; }
             return null;
@@ -781,15 +770,6 @@
             if (currentMode === 'ai') {
                 const currentFrame = Math.round(video1.currentTime * currentFPS);
                 s.aiOverrides[currentFrame] = s.aiJoints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
-                // 四肢ラインの根本ランドマークも同期更新
-                if (s.limbsLandmarks) {
-                    const jointMap = [11, 12, 23, 24];
-                    const landmarkIdx = jointMap[draggingPoint.index];
-                    if (s.limbsLandmarks[landmarkIdx]) {
-                        s.limbsLandmarks[landmarkIdx].x = pos.x;
-                        s.limbsLandmarks[landmarkIdx].y = pos.y;
-                    }
-                }
                 calcAiResults('manual');
             } else if (currentMode !== 'scale') {
                 calcResults(s, currentMode); updateDisplayResult();
@@ -861,8 +841,27 @@
         return null;
     }
 
+    // 動画の実際の表示領域を計算 (object-fit: contain 対応)
+    function getVideoRenderRect(vid, cvs) {
+        if (!vid.videoWidth) return { width: cvs.width, height: cvs.height, x: 0, y: 0 };
+        const videoRatio = vid.videoWidth / vid.videoHeight;
+        const canvasRatio = cvs.width / cvs.height;
+        let renderWidth, renderHeight, offsetX = 0, offsetY = 0;
+
+        if (videoRatio > canvasRatio) {
+            renderWidth = cvs.width;
+            renderHeight = cvs.width / videoRatio;
+            offsetY = (cvs.height - renderHeight) / 2;
+        } else {
+            renderHeight = cvs.height;
+            renderWidth = cvs.height * videoRatio;
+            offsetX = (cvs.width - renderWidth) / 2;
+        }
+        return { width: renderWidth, height: renderHeight, x: offsetX, y: offsetY };
+    }
+
     function redraw() {
-        [ {idx: 1, c: canvas1, ctx: ctx1}, {idx: 2, c: canvas2, ctx: ctx2} ].forEach(item => {
+        [ {idx: 1, c: canvas1, ctx: ctx1, v: video1}, {idx: 2, c: canvas2, ctx: ctx2, v: video2} ].forEach(item => {
             const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
@@ -1044,7 +1043,7 @@
     function captureSnapshot() {
         if (!video1.videoWidth && !video2.videoWidth) { alert("動画が読み込まれていません"); return; }
         const snapCanvas = document.createElement('canvas'), snapCtx = snapCanvas.getContext('2d');
-        const w = (compareMode === 1) ? canvas1.width * 2 : canvas1.width, h = canvas1.height;
+        const w = (compareMode === 1 && video2.videoWidth) ? canvas1.width * 2 : canvas1.width, h = canvas1.height;
         if (w === 0 || h === 0) return;
         snapCanvas.width = w; snapCanvas.height = h + 60;
         snapCtx.fillStyle = '#000'; snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
@@ -1071,7 +1070,7 @@
 
         recordedChunks = [];
         recordCanvas = document.createElement('canvas');
-        const w = (compareMode === 1) ? canvas1.width * 2 : canvas1.width;
+        const w = (compareMode === 1 && video2.videoWidth) ? canvas1.width * 2 : canvas1.width;
         const h = canvas1.height;
         if (w === 0 || h === 0) return;
         recordCanvas.width = w;
@@ -1189,7 +1188,14 @@
         }
 
         const landmarks = results.poseLandmarks;
-        const getPos = (lm) => ({ x: lm.x * canvas1.width, y: lm.y * canvas1.height, z: lm.z || 0 });
+        const rect = getVideoRenderRect(video1, canvas1);
+        
+        // Z座標にも実際の横幅を掛けてスケールを合わせる
+        const getPos = (lm) => ({ 
+            x: rect.x + lm.x * rect.width, 
+            y: rect.y + lm.y * rect.height, 
+            z: (lm.z || 0) * rect.width 
+        });
         
         const mappedLandmarks = {};
         for (let i = 0; i < landmarks.length; i++) {
