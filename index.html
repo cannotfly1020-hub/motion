@@ -856,7 +856,6 @@
         item.c.addEventListener('pointercancel', (e) => handlePointerUp(e, item.c, item.idx));
     });
 
-    // 画面タップ座標をCanvas解像度に正しく変換
     function getCanvasCoords(e, cvs) {
         const rect = cvs.getBoundingClientRect();
         if (cvs.width !== rect.width || cvs.height !== rect.height) {
@@ -870,8 +869,26 @@
     }
 
     function findHitPoint(s, pos, mode) {
-        const HIT_RADIUS = 20;
+        if (mode === 'cog') {
+            // 重心モード中：基準線が完成しているなら、基準点へのヒット判定は極小(6px)にし、新規打点を優先
+            if (s.cogPoints.length > 0) {
+                for (let i = s.cogPoints.length - 1; i >= 0; i--) {
+                    if (Math.hypot(s.cogPoints[i].x - pos.x, s.cogPoints[i].y - pos.y) <= 12) {
+                        return { arrayName: 'cogPoints', index: i };
+                    }
+                }
+            }
+            if (s.cogBase.length === 2) {
+                for (let i = 0; i < s.cogBase.length; i++) {
+                    if (Math.hypot(s.cogBase[i].x - pos.x, s.cogBase[i].y - pos.y) <= 8) {
+                        return { arrayName: 'cogBase', index: i };
+                    }
+                }
+            }
+            return null;
+        }
         
+        const HIT_RADIUS = 15;
         if (mode === 'scale') {
             for (let i = 0; i < s.scalePoints.length; i++) {
                 if (Math.hypot(s.scalePoints[i].x - pos.x, s.scalePoints[i].y - pos.y) <= HIT_RADIUS) {
@@ -884,19 +901,6 @@
             for (let i = 0; i < s.perpPoints.length; i++) {
                 if (Math.hypot(s.perpPoints[i].x - pos.x, s.perpPoints[i].y - pos.y) <= HIT_RADIUS) {
                     return { arrayName: 'perpPoints', index: i };
-                }
-            }
-            return null;
-        }
-        if (mode === 'cog') {
-            for (let i = s.cogPoints.length - 1; i >= 0; i--) {
-                if (Math.hypot(s.cogPoints[i].x - pos.x, s.cogPoints[i].y - pos.y) <= HIT_RADIUS) {
-                    return { arrayName: 'cogPoints', index: i };
-                }
-            }
-            for (let i = 0; i < s.cogBase.length; i++) {
-                if (Math.hypot(s.cogBase[i].x - pos.x, s.cogBase[i].y - pos.y) <= HIT_RADIUS) {
-                    return { arrayName: 'cogBase', index: i };
                 }
             }
             return null;
@@ -1099,7 +1103,7 @@
 
                         item.ctx.beginPath();
                         item.ctx.arc(b1.x, b1.y, 7, 0, Math.PI * 2);
-                        item.ctx.arc(b2.x, b2.y, 6, 0, Math.PI * 2);
+                        item.ctx.arc(b2.x, b2.y, 7, 0, Math.PI * 2);
                         item.ctx.fill();
 
                         item.ctx.fillStyle = '#fff';
