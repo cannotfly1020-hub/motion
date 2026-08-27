@@ -90,13 +90,34 @@
         border-radius: 6px;
         padding: 6px 8px;
         border: 1px solid #3a3a3c;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
     }
+    .result-text-area { flex: 1; min-width: 0; }
     #main-result { color: #00ffcc; font-size: 13px; font-weight: bold; line-height: 1.2; }
     #sub-result { color: #aaa; font-size: 11px; margin-top: 2px; font-weight: 500; line-height: 1.2; }
     .highlight-acc { color: #ff375f; font-weight: bold; }
     .highlight-speed { color: #ffcc00; font-weight: bold; }
     .highlight-sim { color: #30d158; font-weight: bold; }
     .highlight-cog { color: #5e5ce6; font-weight: bold; }
+
+    #btn-open-cog-data {
+        -webkit-appearance: none;
+        appearance: none;
+        background: #5e5ce6;
+        color: white;
+        border: none;
+        padding: 5px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: bold;
+        cursor: pointer;
+        display: none;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
 
     #stage {
         width: 100%;
@@ -193,23 +214,55 @@
         z-index: 1000; backdrop-filter: blur(4px);
     }
     .modal-card {
-        background: #2c2c2e; border: 1px solid #444; border-radius: 12px; width: 90%; max-width: 340px;
+        background: #2c2c2e; border: 1px solid #444; border-radius: 12px; width: 92%; max-width: 380px;
         padding: 16px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        max-height: 85vh; display: flex; flex-direction: column;
     }
     .modal-card h3 { font-size: 15px; margin-bottom: 6px; color: #ff9500; }
-    .modal-card p { font-size: 12px; color: #ccc; margin-bottom: 12px; }
+    .modal-card p { font-size: 12px; color: #ccc; margin-bottom: 10px; }
     .modal-input-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 14px; }
     .modal-input-row input {
         width: 100px; font-size: 16px; padding: 6px; text-align: center;
         border-radius: 6px; border: 1px solid #555; background: #1c1c1e; color: #fff;
         user-select: auto; -webkit-user-select: auto;
     }
-    .modal-btn-row { display: flex; gap: 8px; }
+    .modal-btn-row { display: flex; gap: 8px; margin-top: 10px; flex-shrink: 0; }
     .modal-btn-row button {
         -webkit-appearance: none; appearance: none;
         flex: 1; padding: 8px 0; border: none; border-radius: 6px; font-size: 13px; font-weight: bold;
     }
     #snapshot-img { max-width: 100%; max-height: 50vh; border-radius: 6px; border: 1px solid #555; margin-bottom: 10px; }
+
+    /* 重心データテーブル */
+    .cog-table-container {
+        width: 100%;
+        overflow-y: auto;
+        flex: 1;
+        border: 1px solid #444;
+        border-radius: 6px;
+        background: #1c1c1e;
+        margin-bottom: 6px;
+    }
+    .cog-data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+        text-align: right;
+    }
+    .cog-data-table th, .cog-data-table td {
+        padding: 6px 8px;
+        border-bottom: 1px solid #333;
+    }
+    .cog-data-table th {
+        background: #2c2c2e;
+        color: #ff9500;
+        font-weight: bold;
+        position: sticky;
+        top: 0;
+        text-align: right;
+    }
+    .cog-data-table th:first-child, .cog-data-table td:first-child { text-align: center; }
+    .cog-data-table tr:last-child td { border-bottom: none; }
 </style>
 </head>
 <body>
@@ -230,8 +283,11 @@
         <input type="file" id="file-input-2" accept="video/*" style="display:none">
     </div>
     <div id="result-box">
-        <div id="main-result">動画①を選択してください</div>
-        <div id="sub-result"></div>
+        <div class="result-text-area">
+            <div id="main-result">動画①を選択してください</div>
+            <div id="sub-result"></div>
+        </div>
+        <button id="btn-open-cog-data" onclick="openCogDataModal()">📊 全データ</button>
     </div>
 </div>
 
@@ -281,17 +337,39 @@
         <input type="range" id="perp-slider" min="0" max="100" step="0.5" value="50">
     </div>
 
-    <div id="sim-controls" style="display:none; width:100%; align-items:center; gap:8px;">
-        <span style="font-size:11px; font-weight:bold; color:#30d158; white-space:nowrap;">角度調整: <span id="sim-deg-val">+10°</span></span>
-        <input type="range" id="sim-slider" min="-30" max="30" step="1" value="10">
-    </div>
-
     <div class="playback-row">
         <button class="ctrl-btn" onclick="stepFrame(-1)">◀ -1</button>
         <button class="ctrl-btn" id="btn-play" onclick="togglePlay()">▶ 再生</button>
         <button class="ctrl-btn" onclick="stepFrame(1)">+1 ▶</button>
         <button class="ctrl-btn" id="btn-speed" onclick="togglePlaybackRate()">1.0x</button>
         <button class="ctrl-btn" id="btn-clear" onclick="clearCurrentPoints()">クリア</button>
+    </div>
+</div>
+
+<!-- 重心データ詳細モーダル -->
+<div id="cog-data-modal-overlay" class="modal-overlay">
+    <div class="modal-card">
+        <h3 style="color:#5e5ce6;">📍 重心移動 全打点データ</h3>
+        <p id="cog-data-summary">全N点 / 左右ブレ幅: -- / 上下ブレ幅: --</p>
+        <div class="cog-table-container">
+            <table class="cog-data-table">
+                <thead>
+                    <tr>
+                        <th>点</th>
+                        <th>コマ(秒)</th>
+                        <th>左右変位</th>
+                        <th>上下変位</th>
+                        <th>移動量</th>
+                    </tr>
+                </thead>
+                <tbody id="cog-data-tbody">
+                </tbody>
+            </table>
+        </div>
+        <div class="modal-btn-row">
+            <button style="background:#5856d6; color:#fff;" onclick="copyCogDataCSV()">📋 CSVコピー</button>
+            <button style="background:#444; color:#fff;" onclick="closeCogDataModal()">閉じる</button>
+        </div>
     </div>
 </div>
 
@@ -344,6 +422,7 @@
     const scaleInfoText = document.getElementById('scale-info-text');
     const btnPlay = document.getElementById('btn-play');
     const btnSpeed = document.getElementById('btn-speed');
+    const btnOpenCogData = document.getElementById('btn-open-cog-data');
 
     const fileInput1 = document.getElementById('file-input-1');
     const fileInput2 = document.getElementById('file-input-2');
@@ -354,12 +433,13 @@
     const btnModePerp = document.getElementById('btn-mode-perp');
     const btnModeCog = document.getElementById('btn-mode-cog');
     const perpSlider = document.getElementById('perp-slider');
-    const simSlider = document.getElementById('sim-slider');
-    const simDegVal = document.getElementById('sim-deg-val');
     
     const scaleModalOverlay = document.getElementById('scale-modal-overlay');
     const scaleModalTitle = document.getElementById('scale-modal-title');
     const scaleInputValue = document.getElementById('scale-input-value');
+    const cogDataModalOverlay = document.getElementById('cog-data-modal-overlay');
+    const cogDataTbody = document.getElementById('cog-data-tbody');
+    const cogDataSummary = document.getElementById('cog-data-summary');
 
     let compareMode = 0; 
     let currentMode = 'angle';
@@ -423,6 +503,7 @@
 
     function calcResults(s, mode, isNewPoint = false, targetIdx = 1) {
         if (mode === 'angle') {
+            btnOpenCogData.style.display = 'none';
             if (s.points.length === 3) {
                 const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
                 const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
@@ -441,12 +522,15 @@
             }
         } else if (mode === 'cog') {
             if (s.perpPoints.length < 2) {
+                btnOpenCogData.style.display = 'none';
                 s.resultMain = "先に「垂直線(基準)」で基準線を2点引いてください";
                 s.resultSub = "垂直線が設定されると、そこを原点に上下左右の変位が計算されます";
             } else if (s.cogPoints.length === 0) {
+                btnOpenCogData.style.display = 'none';
                 s.resultMain = "重心移動: 追跡したい点をタップ";
                 s.resultSub = "コマ送りしながら、頭や骨盤の点を何個でもタップできます";
             } else {
+                btnOpenCogData.style.display = 'inline-block';
                 const p1 = s.perpPoints[0], p2 = s.perpPoints[1];
                 const t = perpSlider.value / 100;
                 const originX = p1.x + (p2.x - p1.x) * t;
@@ -482,6 +566,7 @@
                 s.resultSub = `最大移動幅: 左右ブレ ${spanLStr} ｜ 上下ブレ ${spanVStr}`;
             }
         } else if (mode === 'distance') {
+            btnOpenCogData.style.display = 'none';
             if (s.points.length === 2) {
                 const p1 = s.points[0], p2 = s.points[1];
                 const dx = p2.x - p1.x, dy = -(p2.y - p1.y);
@@ -498,6 +583,7 @@
                 s.resultSub = "1点目タップ後、コマ送りして2点目をタップ";
             }
         } else if (mode === 'accel') {
+            btnOpenCogData.style.display = 'none';
             if (s.points.length === 3) {
                 const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
                 const dt1 = Math.abs(p2.time - p1.time), dt2 = Math.abs(p3.time - p2.time);
@@ -517,9 +603,105 @@
                 s.resultSub = "コマ送りしながら 始点 → 中間 → 終点 をタップ";
             }
         } else if (mode === 'perp') {
+            btnOpenCogData.style.display = 'none';
             s.resultMain = s.perpPoints.length === 2 ? `垂直線(基準) 設定完了` : `基準線となる2点をタップ`;
             s.resultSub = `スライダーで垂直線を動かせます。設定後は「📍重心移動」で測定可能`;
         }
+    }
+
+    function openCogDataModal() {
+        const s = state[lastActiveTarget];
+        if (!s.perpPoints || s.perpPoints.length < 2 || s.cogPoints.length === 0) {
+            alert("重心データがありません");
+            return;
+        }
+
+        const p1 = s.perpPoints[0], p2 = s.perpPoints[1];
+        const t = perpSlider.value / 100;
+        const originX = p1.x + (p2.x - p1.x) * t;
+        const originY = p1.y + (p2.y - p1.y) * t;
+
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const len = Math.hypot(dx, dy);
+        const ux = dx / len, uy = dy / len;
+        const nx = -uy, ny = ux;
+
+        let minL = Infinity, maxL = -Infinity, minV = Infinity, maxV = -Infinity;
+        let html = '';
+
+        s.cogPoints.forEach((p, idx) => {
+            const rx = p.x - originX, ry = p.y - originY;
+            const lat = rx * ux + ry * uy;
+            const ver = -(rx * nx + ry * ny);
+            if (lat < minL) minL = lat; if (lat > maxL) maxL = lat;
+            if (ver < minV) minV = ver; if (ver > maxV) maxV = ver;
+
+            let stepDistStr = '-';
+            if (idx > 0) {
+                const prev = s.cogPoints[idx - 1];
+                const stepPx = Math.hypot(p.x - prev.x, p.y - prev.y);
+                stepDistStr = formatDistance(stepPx, s.pxPerCm);
+            }
+
+            const frameStr = p.frame !== undefined ? `F${p.frame} (${p.time.toFixed(2)}s)` : `${p.time.toFixed(2)}s`;
+            html += `<tr>
+                <td><strong>${idx + 1}</strong></td>
+                <td>${frameStr}</td>
+                <td style="color:#00ffcc;">${formatDelta(lat, s.pxPerCm)}</td>
+                <td style="color:#ff375f;">${formatDelta(ver, s.pxPerCm)}</td>
+                <td>${stepDistStr}</td>
+            </tr>`;
+        });
+
+        cogDataTbody.innerHTML = html;
+        const spanLStr = formatDistance(maxL - minL, s.pxPerCm);
+        const spanVStr = formatDistance(maxV - minV, s.pxPerCm);
+        cogDataSummary.innerHTML = `全 ${s.cogPoints.length} 点 ｜ 左右ブレ幅: <span style="color:#00ffcc; font-weight:bold;">${spanLStr}</span> ｜ 上下ブレ幅: <span style="color:#ff375f; font-weight:bold;">${spanVStr}</span>`;
+
+        cogDataModalOverlay.style.display = 'flex';
+    }
+
+    function closeCogDataModal() {
+        cogDataModalOverlay.style.display = 'none';
+    }
+
+    function copyCogDataCSV() {
+        const s = state[lastActiveTarget];
+        if (!s.perpPoints || s.perpPoints.length < 2 || s.cogPoints.length === 0) return;
+
+        const p1 = s.perpPoints[0], p2 = s.perpPoints[1];
+        const t = perpSlider.value / 100;
+        const originX = p1.x + (p2.x - p1.x) * t;
+        const originY = p1.y + (p2.y - p1.y) * t;
+
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const len = Math.hypot(dx, dy);
+        const ux = dx / len, uy = dy / len;
+        const nx = -uy, ny = ux;
+
+        let csv = "点番号,フレーム,時間(秒),左右変位(cm),上下変位(cm),ステップ移動量(cm)\n";
+        s.cogPoints.forEach((p, idx) => {
+            const rx = p.x - originX, ry = p.y - originY;
+            const lat = rx * ux + ry * uy;
+            const ver = -(rx * nx + ry * ny);
+            const latVal = s.pxPerCm ? (lat / s.pxPerCm).toFixed(2) : lat.toFixed(1);
+            const verVal = s.pxPerCm ? (ver / s.pxPerCm).toFixed(2) : ver.toFixed(1);
+            
+            let stepVal = '0';
+            if (idx > 0) {
+                const prev = s.cogPoints[idx - 1];
+                const stepPx = Math.hypot(p.x - prev.x, p.y - prev.y);
+                stepVal = s.pxPerCm ? (stepPx / s.pxPerCm).toFixed(2) : stepPx.toFixed(1);
+            }
+
+            csv += `${idx + 1},${p.frame || 0},${p.time.toFixed(3)},${latVal},${verVal},${stepVal}\n`;
+        });
+
+        navigator.clipboard.writeText(csv).then(() => {
+            alert("CSVデータをクリップボードにコピーしました！Excel等に貼り付けられます。");
+        }).catch(() => {
+            alert("コピーに失敗しました。");
+        });
     }
 
     function applyZoom(idx) {
