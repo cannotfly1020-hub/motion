@@ -235,7 +235,6 @@
 
     let currentTorsionAngle = 0;
 
-    // ★ aiJoints: [shoulderL, shoulderR, hipL, hipR] の4点を管理
     const state = {
         1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
         2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" }
@@ -393,7 +392,6 @@
         }
     }
 
-    // ★修正: 4点（肩2点・股関節2点）から体幹傾斜と捻転差を計算する関数
     function calcAiResults(type = 'ai') {
         const s = state[1];
         if (s.aiJoints && s.aiJoints.length === 4) {
@@ -402,16 +400,13 @@
             const hipL = s.aiJoints[2];
             const hipR = s.aiJoints[3];
 
-            // 中心点の計算
             const midThorax = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
             const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
 
-            // 1. 体幹傾斜角（垂直に対する傾き）
             const dx = midThorax.x - midHip.x;
             const dy = midThorax.y - midHip.y;
             const angleDeg = Math.atan2(dx, -dy) * (180 / Math.PI);
 
-            // 2. 捻転差（X, Z座標から算出）
             const dxPelvis = hipR.x - hipL.x;
             const dzPelvis = (hipR.z || 0) - (hipL.z || 0);
             const pelvisAngleDeg = Math.atan2(dzPelvis, dxPelvis) * (180 / Math.PI);
@@ -652,7 +647,6 @@
         return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     }
 
-    // ★修正: AIモード時は4つの端点（左肩・右肩・左腰・右腰）の当たり判定を行う
     function findHitPoint(s, pos, mode) {
         const HIT_RADIUS = 22; 
         if (mode === 'ai') {
@@ -731,7 +725,6 @@
         const pt = s[draggingPoint.arrayName][draggingPoint.index];
         if (pt) {
             pt.x = pos.x; pt.y = pos.y;
-            // ★修正: 4点のいずれかを動かした時に、そのコマの4点全データを記憶
             if (currentMode === 'ai') {
                 const currentFrame = Math.round(video1.currentTime * currentFPS);
                 s.aiOverrides[currentFrame] = s.aiJoints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
@@ -754,7 +747,7 @@
     }
     function cancelScaleModal() { state[scaleTarget].scalePoints = []; scaleModalOverlay.style.display = 'none'; setMode('scale'); }
 
-    // ★修正: 4点すべてのキーフレーム線形補間
+    // ★修正: キーフレーム間隔を 60 から 120 (120fpsで約1秒間) に拡張
     function getInterpolatedAiPoints(currentFrame) {
         const s = state[1];
         if (s.aiOverrides[currentFrame]) return { joints: s.aiOverrides[currentFrame], type: 'manual' };
@@ -768,7 +761,8 @@
             if (frames[i] > currentFrame && next === -1) next = frames[i];
         }
 
-        if (prev !== -1 && next !== -1 && (next - prev) <= 60) {
+        // 120フレーム以内の区間なら自動補間を実行
+        if (prev !== -1 && next !== -1 && (next - prev) <= 120) {
             const ratio = (currentFrame - prev) / (next - prev);
             const joints = [];
             for (let j = 0; j < 4; j++) {
@@ -788,7 +782,6 @@
             const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
-            // ★修正: 4つの端点（オレンジ）と胸郭・骨盤・体幹軸を描画
             if (currentMode === 'ai') {
                 if (item.idx === 1 && s.aiJoints && s.aiJoints.length === 4) {
                     const shoulderL = s.aiJoints[0];
@@ -947,7 +940,6 @@
 
         const currentFrame = Math.round(video1.currentTime * currentFPS);
         
-        // ★修正: 補間・手動修正データがあれば4点まとめて適用
         const overrideData = getInterpolatedAiPoints(currentFrame);
         if (overrideData) {
             state[1].aiJoints = overrideData.joints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
@@ -964,7 +956,6 @@
         const landmarks = results.poseLandmarks;
         const getPos = (lm) => ({ x: lm.x * canvas1.width, y: lm.y * canvas1.height, z: lm.z || 0 });
         
-        // 4つの関節座標（左肩, 右肩, 左股関節, 右股関節）
         const shoulderL = getPos(landmarks[11]);
         const shoulderR = getPos(landmarks[12]);
         const hipL = getPos(landmarks[23]);
