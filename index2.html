@@ -128,7 +128,7 @@
         <button class="ctrl-btn" id="btn-mode-cog" onclick="setMode('cog')">📍 重心移動</button>
         <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">📏 物差し</button>
         <button class="ctrl-btn" id="btn-mode-zoom" onclick="setMode('zoom')">🔍 ズーム</button>
-        <button class="ctrl-btn" id="btn-mode-ai" onclick="setMode('ai')" style="grid-column: span 4; border: 1px solid #00ffcc; color: #00ffcc; background: rgba(0, 255, 204, 0.1);">🤖 AI自動解析 (体幹傾斜 & 骨盤回旋速度)</button>
+        <button class="ctrl-btn" id="btn-mode-ai" onclick="setMode('ai')" style="grid-column: span 4; border: 1px solid #00ffcc; color: #00ffcc; background: rgba(0, 255, 204, 0.1);">🤖 AI自動解析 (体幹傾斜 & 胸郭・骨盤捻転差)</button>
     </div>
     
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
@@ -233,10 +233,8 @@
     const fpsList = [30, 60, 120, 240];
     let fpsIdx = 0;
 
-    // 骨盤回旋の履歴管理用
-    let lastPelvisAngle = null;
-    let lastPelvisTime = null;
-    let currentPelvisVelocity = 0;
+    // 捻転差（X-Factor）の値を保持
+    let currentTorsionAngle = 0;
 
     const state = {
         1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiPoints: [], aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
@@ -395,12 +393,14 @@
         }
     }
 
-    // ★修正: 体幹の傾き ＋ 骨盤の回旋速度を同時に表示するUI更新関数
+    // ★修正: 体幹傾斜（胸郭中心・骨盤中心）と 捻転差（X-Factor）をリアルタイム表示
     function calcAiResults(type = 'ai') {
         const s = state[1];
         if (s.aiPoints.length === 2) {
-            const dx = s.aiPoints[1].x - s.aiPoints[0].x;
-            const dy = s.aiPoints[1].y - s.aiPoints[0].y;
+            const midHip = s.aiPoints[0];
+            const midThorax = s.aiPoints[1];
+            const dx = midThorax.x - midHip.x;
+            const dy = midThorax.y - midHip.y;
             const angleDeg = Math.atan2(dx, -dy) * (180 / Math.PI);
             
             let typeLabel = "🤖 AI";
@@ -408,12 +408,10 @@
             if (type === 'manual') { typeLabel = "✋ 手動"; color = "#ff9500"; }
             else if (type === 'interpolated') { typeLabel = "✨ 補間"; color = "#ffcc00"; }
             
-            const velText = Math.abs(currentPelvisVelocity) > 0 
-                ? `<span class="highlight-speed" style="font-size:13px;">${Math.abs(currentPelvisVelocity).toFixed(0)} deg/s</span>` 
-                : `<span style="color:#aaa;">0 deg/s</span>`;
+            const torsionText = `<span class="highlight-speed" style="font-size:13px;">${Math.abs(currentTorsionAngle).toFixed(1)}°</span>`;
 
-            mainResult.innerHTML = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 骨盤回旋速度: ${velText}`;
-            subResult.innerHTML = `胸郭・骨盤中心軸 ｜ 速度は1秒あたりの回旋角 (${currentFPS}fps)`;
+            mainResult.innerHTML = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差(X-Factor): ${torsionText}`;
+            subResult.innerHTML = `胸郭中心・骨盤中心軸 ｜ 捻転差は胸郭と骨盤の回旋角度差`;
         }
     }
 
@@ -540,7 +538,7 @@
         } else if (mode === 'ai') {
             btnModeAi.classList.add('mode-active');
             mainResult.innerHTML = "🤖 AI読込中..."; subResult.innerHTML = "動画を再生するかコマ送りして解析を開始してください";
-            lastPelvisAngle = null; lastPelvisTime = null; currentPelvisVelocity = 0;
+            currentTorsionAngle = 0;
             if (video1.readyState >= 2) pose.send({image: video1});
             redraw();
         } else {
@@ -563,7 +561,7 @@
     function clearCurrentPoints() {
         if (currentMode === 'ai') {
             state[1].aiOverrides = {};
-            lastPelvisAngle = null; lastPelvisTime = null; currentPelvisVelocity = 0;
+            currentTorsionAngle = 0;
             if (video1.readyState >= 2) pose.send({image: video1});
             return;
         }
@@ -767,7 +765,7 @@
             if (currentMode === 'ai') {
                 if (item.idx === 1 && s.aiPoints.length === 2) {
                     const midHip = s.aiPoints[0];
-                    const midShoulder = s.aiPoints[1];
+                    const midThorax = s.aiPoints[1];
                     const currentFrame = Math.round(video1.currentTime * currentFPS);
                     const overrideData = getInterpolatedAiPoints(currentFrame);
                     
@@ -777,13 +775,13 @@
 
                     item.ctx.beginPath();
                     item.ctx.moveTo(midHip.x, midHip.y);
-                    item.ctx.lineTo(midShoulder.x, midShoulder.y);
+                    item.ctx.lineTo(midThorax.x, midThorax.y);
                     item.ctx.strokeStyle = lineColor;
                     item.ctx.lineWidth = 4;
                     item.ctx.stroke();
 
                     item.ctx.fillStyle = '#ff9500';
-                    [midHip, midShoulder].forEach(pt => {
+                    [midHip, midThorax].forEach(pt => {
                         item.ctx.beginPath(); item.ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2); item.ctx.fill();
                         item.ctx.strokeStyle = '#fff'; item.ctx.lineWidth = 2; item.ctx.stroke();
                     });
@@ -896,8 +894,7 @@
     pose.onResults((results) => {
         if (currentMode !== 'ai') return; 
 
-        const currentTime = video1.currentTime;
-        const currentFrame = Math.round(currentTime * currentFPS);
+        const currentFrame = Math.round(video1.currentTime * currentFPS);
         
         const overrideData = getInterpolatedAiPoints(currentFrame);
         if (overrideData) {
@@ -918,6 +915,7 @@
         const landmarks = results.poseLandmarks;
         const getPos = (lm) => ({ x: lm.x * canvas1.width, y: lm.y * canvas1.height });
         
+        // 1. 胸郭の中心（左右の肩の中点）と 骨盤の中心（左右の股関節の中点）を算出
         const shoulderL = getPos(landmarks[11]);
         const shoulderR = getPos(landmarks[12]);
         const hipL = getPos(landmarks[23]);
@@ -926,28 +924,24 @@
         const thoraxCenter = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
         const pelvisCenter = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
 
-        // ★追加: 左右股関節のX, Z座標（奥行き）から骨盤の水平回旋角と回旋速度を算出
+        // 2. 骨盤の向き（角度）と 胸郭の向き（角度）から 捻転差（X-Factor）を算出
         const rawHipL = landmarks[23];
         const rawHipR = landmarks[24];
+        const rawShoulderL = landmarks[11];
+        const rawShoulderR = landmarks[12];
+
         const dxPelvis = rawHipR.x - rawHipL.x;
         const dzPelvis = (rawHipR.z || 0) - (rawHipL.z || 0);
         const pelvisAngleDeg = Math.atan2(dzPelvis, dxPelvis) * (180 / Math.PI);
 
-        if (lastPelvisAngle !== null && lastPelvisTime !== null) {
-            const dt = currentTime - lastPelvisTime;
-            if (dt > 0.001 && dt < 0.5) { // 適切な時間間隔の時のみ計算
-                let dAngle = pelvisAngleDeg - lastPelvisAngle;
-                // 180度またぎの補正
-                if (dAngle > 180) dAngle -= 360;
-                if (dAngle < -180) dAngle += 360;
-                
-                const rawVelocity = dAngle / dt;
-                // 急激なノイズを抑えるための移動平均フィルタ
-                currentPelvisVelocity = currentPelvisVelocity * 0.4 + rawVelocity * 0.6;
-            }
-        }
-        lastPelvisAngle = pelvisAngleDeg;
-        lastPelvisTime = currentTime;
+        const dxThorax = rawShoulderR.x - rawShoulderL.x;
+        const dzThorax = (rawShoulderR.z || 0) - (rawShoulderL.z || 0);
+        const thoraxAngleDeg = Math.atan2(dzThorax, dxThorax) * (180 / Math.PI);
+
+        let torsionDiff = thoraxAngleDeg - pelvisAngleDeg;
+        if (torsionDiff > 180) torsionDiff -= 360;
+        if (torsionDiff < -180) torsionDiff += 360;
+        currentTorsionAngle = torsionDiff;
 
         // 骨盤中心(0) -> 胸郭中心(1)
         state[1].aiPoints = [pelvisCenter, thoraxCenter];
@@ -963,11 +957,7 @@
     }
 
     video1.addEventListener('play', () => { 
-        if (currentMode === 'ai') {
-            lastPelvisAngle = null; 
-            lastPelvisTime = null; 
-            detectFrame(); 
-        }
+        if (currentMode === 'ai') detectFrame(); 
     });
     
     video1.addEventListener('seeked', async () => { 
