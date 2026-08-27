@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="動作分析Pro">
 <title>動作分析 Pro</title>
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<!-- 未使用の camera_utils.js を削除 -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 
 <style>
@@ -53,13 +53,12 @@
     button.ctrl-btn { -webkit-appearance: none; appearance: none; width: 100%; padding: 6px 0; background: #2c2c2e; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; }
     button.ctrl-btn:active { background: #444; }
     button.mode-active { background: #30d158; color: black; font-weight: bold; }
-    #btn-mode-acc.mode-active { background: #ff375f; color: white; font-weight: bold; }
-    #btn-mode-scale.mode-active { background: #ff9500; color: black; font-weight: bold; }
-    #btn-mode-zoom.mode-active { background: #007aff; color: white; font-weight: bold; }
-    #btn-mode-perp.mode-active { background: #ff2d55; color: white; font-weight: bold; }
-    #btn-mode-sim.mode-active { background: #30d158; color: black; font-weight: bold; }
-    #btn-mode-cog.mode-active { background: #5e5ce6; color: white; font-weight: bold; }
-    #btn-mode-ai.mode-active { background: #00ffcc; color: black; font-weight: bold; }
+    #btn-mode-acc.mode-active { background: #ff375f; color: white; }
+    #btn-mode-scale.mode-active { background: #ff9500; color: black; }
+    #btn-mode-zoom.mode-active { background: #007aff; color: white; }
+    #btn-mode-perp.mode-active { background: #ff2d55; color: white; }
+    #btn-mode-cog.mode-active { background: #5e5ce6; color: white; }
+    #btn-mode-ai.mode-active { background: #00ffcc; color: black; }
     .playback-row { width: 100%; display: grid; grid-template-columns: 1fr 1.3fr 1fr 0.9fr 1fr; gap: 4px; }
     #btn-play { background: #34c759; color: #000; font-weight: bold; }
     #btn-clear { background: #ff3b30; }
@@ -247,6 +246,8 @@
     let recordCtx = null;
     let recordAnimId = null;
 
+    let isAiDetecting = false; // ループの重複実行防止フラグ
+
     const state = {
         1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
         2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" }
@@ -260,7 +261,6 @@
     let scaleTarget = 1;
     let lastActiveTarget = 1;
     let tempDistPx = 0;
-    let historyData = []; 
     let draggingPoint = null;
 
     function toggleFPS() {
@@ -272,7 +272,7 @@
             if (s.points.length > 0) {
                 s.points.forEach(p => { if (p.frame !== undefined) p.time = p.frame / currentFPS; });
             }
-            calcResults(s, lastMeasureMode, false, idx);
+            calcResults(s, lastMeasureMode);
         });
         updateDisplayResult();
     }
@@ -290,7 +290,7 @@
         return { x: p2.x + rotatedX, y: p2.y + rotatedY };
     }
 
-    function calcResults(s, mode, isNewPoint = false, targetIdx = 1) {
+    function calcResults(s, mode) {
         if (mode === 'angle') {
             if (s.points.length === 3) {
                 const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
@@ -450,8 +450,8 @@
     }
     function resetZoom() { viewState[lastActiveTarget] = { scale: 1, x: 0, y: 0 }; document.getElementById('zoom-slider').value = 1; applyZoom(lastActiveTarget); }
     document.getElementById('zoom-slider').addEventListener('input', e => { viewState[lastActiveTarget].scale = parseFloat(e.target.value); applyZoom(lastActiveTarget); });
-    perpSlider.addEventListener('input', e => { [1, 2].forEach(idx => calcResults(state[idx], currentMode, false, idx)); updateDisplayResult(); redraw(); });
-    simSlider.addEventListener('input', e => { simDegVal.innerText = `${parseFloat(e.target.value) > 0 ? '+' : ''}${e.target.value}°`; [1, 2].forEach(idx => calcResults(state[idx], 'sim', false, idx)); updateDisplayResult(); redraw(); });
+    perpSlider.addEventListener('input', () => { [1, 2].forEach(idx => calcResults(state[idx], currentMode)); updateDisplayResult(); redraw(); });
+    simSlider.addEventListener('input', e => { simDegVal.innerText = `${parseFloat(e.target.value) > 0 ? '+' : ''}${e.target.value}°`; [1, 2].forEach(idx => calcResults(state[idx], 'sim')); updateDisplayResult(); redraw(); });
 
     function fitCanvases() {
         [ {c: canvas1, v: video1}, {c: canvas2, v: video2} ].forEach(item => {
@@ -469,25 +469,38 @@
 
     video1.addEventListener('loadedmetadata', () => { fitCanvases(); seekbar1.max = video1.duration; seekbar1.value = 0; setMode(currentMode); });
     video2.addEventListener('loadedmetadata', () => { fitCanvases(); seekbar2.max = video2.duration; seekbar2.value = 0; });
-    video1.addEventListener('timeupdate', () => { if (!seeking1) seekbar1.value = video1.currentTime; });
-    video2.addEventListener('timeupdate', () => { if (!seeking2) seekbar2.value = video2.currentTime; });
+    
+    // 動画終了時の処理
+    video1.addEventListener('ended', () => {
+        if (isRecording) stopRecording();
+        else if (isPlaying) togglePlay();
+    });
 
     function toggleCompareMode() {
-        compareMode = (compareMode + 1) % 3; btnToggleCompare.classList.remove('compare-parallel', 'compare-overlay');
+        compareMode = (compareMode + 1) % 3; 
+        btnToggleCompare.classList.remove('compare-parallel', 'compare-overlay');
+        
+        // 共通リセット
+        pane2.style.position = 'relative';
+        pane2.style.top = 'auto';
+        pane2.style.left = 'auto';
+        pane2.style.width = '100%';
+        pane2.style.height = '100%';
+        pane2.style.opacity = '1';
+        pane2.style.borderLeft = '2px solid #555';
+        pane2.style.pointerEvents = 'auto';
+
         if (compareMode === 1) {
-            pane2.style.display = 'flex'; pane2.style.position = 'relative'; pane2.style.opacity = '1';
-            pane2.style.borderLeft = '2px solid #555'; pane2.style.pointerEvents = 'auto'; 
+            pane2.style.display = 'flex';
             btnPick2.style.display = 'inline-block'; seekRow2.style.display = 'flex';
             btnToggleCompare.classList.add('compare-parallel'); btnToggleCompare.innerText = '並列表示';
         } else if (compareMode === 2) {
             pane2.style.display = 'flex'; pane2.style.position = 'absolute'; pane2.style.top = '0'; pane2.style.left = '0';
-            pane2.style.width = '100%'; pane2.style.height = '100%'; pane2.style.opacity = '0.5'; 
-            pane2.style.borderLeft = 'none'; pane2.style.pointerEvents = 'none'; 
+            pane2.style.opacity = '0.5'; pane2.style.borderLeft = 'none'; pane2.style.pointerEvents = 'none'; 
             btnPick2.style.display = 'inline-block'; seekRow2.style.display = 'flex';
             btnToggleCompare.classList.add('compare-overlay'); btnToggleCompare.innerText = '重ね透かし';
         } else {
-            pane2.style.display = 'none'; pane2.style.position = 'relative'; pane2.style.opacity = '1';
-            pane2.style.borderLeft = '2px solid #555'; pane2.style.pointerEvents = 'auto';
+            pane2.style.display = 'none';
             btnPick2.style.display = 'none'; seekRow2.style.display = 'none'; btnToggleCompare.innerText = '1画面のみ';
             if (video2) video2.pause();
         }
@@ -522,9 +535,13 @@
     let seeking1 = false;
     seekbar1.addEventListener('input', () => { seeking1 = true; video1.currentTime = seekbar1.value; });
     seekbar1.addEventListener('change', () => { seeking1 = false; });
+    video1.addEventListener('timeupdate', () => { if (!seeking1) seekbar1.value = video1.currentTime; });
+
     let seeking2 = false;
     seekbar2.addEventListener('input', () => { seeking2 = true; video2.currentTime = seekbar2.value; });
     seekbar2.addEventListener('change', () => { seeking2 = false; });
+    video2.addEventListener('timeupdate', () => { if (!seeking2) seekbar2.value = video2.currentTime; });
+
     function stepFrame(dir) {
         const stepSec = dir / currentFPS;
         if (video1.duration) video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
@@ -582,7 +599,7 @@
             state[1].resultMain = "物差し設定: 基準物の両端（2点）をタップ"; state[1].resultSub = "長さを設定したい画面で2箇所タップ";
             state[2].resultMain = ""; state[2].resultSub = "";
         } else if (mode !== 'zoom' && mode !== 'ai') {
-            [1, 2].forEach(idx => calcResults(state[idx], mode, false, idx));
+            [1, 2].forEach(idx => calcResults(state[idx], mode));
         }
         updateDisplayResult(); redraw();
     }
@@ -601,7 +618,7 @@
         } else {
             state[1].points = []; state[2].points = [];
         }
-        [1, 2].forEach(idx => calcResults(state[idx], currentMode, false, idx));
+        [1, 2].forEach(idx => calcResults(state[idx], currentMode));
         if (currentMode !== 'ai') updateDisplayResult();
         redraw();
     }
@@ -649,8 +666,8 @@
     [ {c: canvas1, v: video1, idx: 1}, {c: canvas2, v: video2, idx: 2} ].forEach(item => {
         item.c.addEventListener('pointerdown', (e) => handlePointerDown(e, item.c, item.v, item.idx));
         item.c.addEventListener('pointermove', (e) => handlePointerMove(e, item.c, item.idx));
-        item.c.addEventListener('pointerup', (e) => handlePointerUp(e, item.c, item.idx));
-        item.c.addEventListener('pointercancel', (e) => handlePointerUp(e, item.c, item.idx));
+        item.c.addEventListener('pointerup', (e) => handlePointerUp(e, item.c));
+        item.c.addEventListener('pointercancel', (e) => handlePointerUp(e, item.c));
     });
 
     function getCanvasCoords(e, cvs) {
@@ -716,19 +733,19 @@
         }
         if (currentMode === 'perp') {
             if (s.perpPoints.length >= 2) s.perpPoints = [];
-            s.perpPoints.push({ x: pos.x, y: pos.y }); calcResults(s, currentMode, true, targetIdx);
+            s.perpPoints.push({ x: pos.x, y: pos.y }); calcResults(s, currentMode);
             if (s.perpPoints.length === 2) document.getElementById('perp-controls').style.display = 'flex';
             updateDisplayResult(); redraw(); return;
         }
         if (currentMode === 'cog') {
             if (s.perpPoints.length < 2) { alert("先に「垂直線」モードで2点をタップし、基準線を設定してください。"); return; }
             s.cogPoints.push({ x: pos.x, y: pos.y, time: currentTime, frame: currentFrame });
-            calcResults(s, currentMode, true, targetIdx); updateDisplayResult(); redraw(); return;
+            calcResults(s, currentMode); updateDisplayResult(); redraw(); return;
         }
         const maxPoints = (currentMode === 'distance') ? 2 : 3;
         if (s.points.length >= maxPoints) s.points = [];
         s.points.push({ x: pos.x, y: pos.y, time: currentTime, frame: currentFrame });
-        calcResults(s, currentMode, true, targetIdx); updateDisplayResult(); redraw();
+        calcResults(s, currentMode); updateDisplayResult(); redraw();
     }
 
     function handlePointerMove(e, cvs, targetIdx) {
@@ -742,13 +759,13 @@
                 s.aiOverrides[currentFrame] = s.aiJoints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
                 calcAiResults('manual');
             } else {
-                calcResults(s, currentMode, false, targetIdx); updateDisplayResult();
+                calcResults(s, currentMode); updateDisplayResult();
             }
             redraw();
         }
     }
 
-    function handlePointerUp(e, cvs, targetIdx) {
+    function handlePointerUp(e, cvs) {
         if (draggingPoint) { try { cvs.releasePointerCapture(e.pointerId); } catch(err){} draggingPoint = null; }
     }
 
@@ -787,7 +804,6 @@
         return null;
     }
 
-    // ★修正: 左右で色分けして描画（左半身=水色、右半身=黄色）
     function redraw() {
         [ {idx: 1, c: canvas1, ctx: ctx1}, {idx: 2, c: canvas2, ctx: ctx2} ].forEach(item => {
             const s = state[item.idx];
@@ -795,14 +811,12 @@
 
             if (currentMode === 'ai') {
                 if (item.idx === 1) {
-                    // 1. 左右色分けされた四肢の骨格ラインを描画
                     if (s.limbsLandmarks) {
                         const lm = s.limbsLandmarks;
                         
-                        // 左半身ライン（水色 / #00ffcc）
                         const leftConnections = [
-                            [11, 13], [13, 15],                      // 左腕
-                            [23, 25], [25, 27], [27, 29], [29, 31]  // 左脚
+                            [11, 13], [13, 15],                      
+                            [23, 25], [25, 27], [27, 29], [29, 31]  
                         ];
                         item.ctx.save();
                         item.ctx.strokeStyle = 'rgba(0, 255, 204, 0.55)';
@@ -816,10 +830,9 @@
                             }
                         });
 
-                        // 右半身ライン（黄色 / #ffd60a）
                         const rightConnections = [
-                            [12, 14], [14, 16],                      // 右腕
-                            [24, 26], [26, 28], [28, 30], [30, 32]  // 右脚
+                            [12, 14], [14, 16],                      
+                            [24, 26], [26, 28], [28, 30], [30, 32]  
                         ];
                         item.ctx.strokeStyle = 'rgba(255, 214, 10, 0.65)';
                         rightConnections.forEach(([i, j]) => {
@@ -831,7 +844,6 @@
                             }
                         });
 
-                        // 左関節の点（水色）
                         const leftJoints = [13, 15, 25, 27, 29, 31];
                         item.ctx.fillStyle = '#00ffcc';
                         leftJoints.forEach(idx => {
@@ -842,7 +854,6 @@
                             }
                         });
 
-                        // 右関節の点（黄色）
                         const rightJoints = [14, 16, 26, 28, 30, 32];
                         item.ctx.fillStyle = '#ffd60a';
                         rightJoints.forEach(idx => {
@@ -855,7 +866,6 @@
                         item.ctx.restore();
                     }
 
-                    // 2. 体幹傾斜・捻転差のバーと中心軸を描画
                     if (s.aiJoints && s.aiJoints.length === 4) {
                         const shoulderL = s.aiJoints[0];
                         const shoulderR = s.aiJoints[1];
@@ -868,7 +878,6 @@
                         const currentFrame = Math.round(video1.currentTime * currentFPS);
                         const overrideData = getInterpolatedAiPoints(currentFrame);
                         
-                        // 胸郭バー（赤色）
                         item.ctx.beginPath();
                         item.ctx.moveTo(shoulderL.x, shoulderL.y);
                         item.ctx.lineTo(shoulderR.x, shoulderR.y);
@@ -876,7 +885,6 @@
                         item.ctx.lineWidth = 4;
                         item.ctx.stroke();
 
-                        // 骨盤バー（青色）
                         item.ctx.beginPath();
                         item.ctx.moveTo(hipL.x, hipL.y);
                         item.ctx.lineTo(hipR.x, hipR.y);
@@ -884,7 +892,6 @@
                         item.ctx.lineWidth = 4;
                         item.ctx.stroke();
 
-                        // 体幹の中心軸（緑色ライン）
                         let lineColor = '#00ffcc'; 
                         if (overrideData && overrideData.type === 'manual') lineColor = '#ff9500'; 
                         else if (overrideData && overrideData.type === 'interpolated') lineColor = '#ffcc00'; 
@@ -896,12 +903,11 @@
                         item.ctx.lineWidth = 4;
                         item.ctx.stroke();
 
-                        // 操作可能な4つの端点（左側＝水色、右側＝黄色）
                         [
-                            { pt: shoulderL, color: '#00ffcc' }, // 左肩
-                            { pt: shoulderR, color: '#ffd60a' }, // 右肩
-                            { pt: hipL, color: '#00ffcc' },      // 左腰
-                            { pt: hipR, color: '#ffd60a' }       // 右腰
+                            { pt: shoulderL, color: '#00ffcc' }, 
+                            { pt: shoulderR, color: '#ffd60a' }, 
+                            { pt: hipL, color: '#00ffcc' },      
+                            { pt: hipR, color: '#ffd60a' }       
                         ].forEach(({ pt, color }) => {
                             item.ctx.fillStyle = color;
                             item.ctx.beginPath();
@@ -1002,10 +1008,6 @@
         document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); document.getElementById('snapshot-modal-overlay').style.display = 'flex';
     }
     function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
-
-    // ==========================================
-    // ▼ 動画エクスポート（MP4優先） ▼
-    // ==========================================
 
     function toggleRecording() {
         if (isRecording) {
@@ -1116,10 +1118,7 @@
         setTimeout(() => URL.revokeObjectURL(url), 2000);
     }
 
-    // ==========================================
-    // ▼ MediaPipe (AI自動解析) のコード ▼
-    // ==========================================
-
+    // MediaPipe セットアップ
     const pose = new Pose({locateFile: (file) => {
         return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
     }});
@@ -1173,11 +1172,16 @@
         if (currentMode === 'ai' && !video1.paused && !video1.ended && video1.readyState >= 2) {
             await pose.send({image: video1});
             requestAnimationFrame(detectFrame);
+        } else {
+            isAiDetecting = false;
         }
     }
 
     video1.addEventListener('play', () => { 
-        if (currentMode === 'ai') detectFrame(); 
+        if (currentMode === 'ai' && !isAiDetecting) {
+            isAiDetecting = true;
+            detectFrame(); 
+        }
     });
     
     video1.addEventListener('seeked', async () => { 
@@ -1185,7 +1189,6 @@
             await pose.send({image: video1}); 
         }
     });
-
 </script>
 </body>
 </html>
