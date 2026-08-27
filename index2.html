@@ -233,12 +233,11 @@
     const fpsList = [30, 60, 120, 240];
     let fpsIdx = 0;
 
-    // 捻転差（X-Factor）の値を保持
     let currentTorsionAngle = 0;
 
     const state = {
-        1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiPoints: [], aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
-        2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiPoints: [], aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" }
+        1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiPoints: [], aiBars: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
+        2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiPoints: [], aiBars: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" }
     };
     
     const viewState = {
@@ -393,7 +392,6 @@
         }
     }
 
-    // ★修正: 体幹傾斜（胸郭中心・骨盤中心）と 捻転差（X-Factor）をリアルタイム表示
     function calcAiResults(type = 'ai') {
         const s = state[1];
         if (s.aiPoints.length === 2) {
@@ -411,7 +409,7 @@
             const torsionText = `<span class="highlight-speed" style="font-size:13px;">${Math.abs(currentTorsionAngle).toFixed(1)}°</span>`;
 
             mainResult.innerHTML = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差(X-Factor): ${torsionText}`;
-            subResult.innerHTML = `胸郭中心・骨盤中心軸 ｜ 捻転差は胸郭と骨盤の回旋角度差`;
+            subResult.innerHTML = `赤バー:胸郭 ｜ 青バー:骨盤 ｜ 緑線:体幹中心軸（ドラッグで微調整可能）`;
         }
     }
 
@@ -757,6 +755,7 @@
         return null;
     }
 
+    // ★修正: 画面の描画処理で「胸郭の向き（赤）」と「骨盤の向き（青）」を視覚化！
     function redraw() {
         [ {idx: 1, c: canvas1, ctx: ctx1}, {idx: 2, c: canvas2, ctx: ctx2} ].forEach(item => {
             const s = state[item.idx];
@@ -769,6 +768,26 @@
                     const currentFrame = Math.round(video1.currentTime * currentFPS);
                     const overrideData = getInterpolatedAiPoints(currentFrame);
                     
+                    // 1. 胸郭の向きバー（赤色）と 骨盤の向きバー（青色）を描画
+                    if (s.aiBars) {
+                        // 胸郭（赤色ライン）
+                        item.ctx.beginPath();
+                        item.ctx.moveTo(s.aiBars.shoulderL.x, s.aiBars.shoulderL.y);
+                        item.ctx.lineTo(s.aiBars.shoulderR.x, s.aiBars.shoulderR.y);
+                        item.ctx.strokeStyle = '#ff375f';
+                        item.ctx.lineWidth = 3;
+                        item.ctx.stroke();
+
+                        // 骨盤（青色ライン）
+                        item.ctx.beginPath();
+                        item.ctx.moveTo(s.aiBars.hipL.x, s.aiBars.hipL.y);
+                        item.ctx.lineTo(s.aiBars.hipR.x, s.aiBars.hipR.y);
+                        item.ctx.strokeStyle = '#007aff';
+                        item.ctx.lineWidth = 3;
+                        item.ctx.stroke();
+                    }
+
+                    // 2. 体幹の中心軸（緑色ライン）
                     let lineColor = '#00ffcc'; 
                     if (overrideData && overrideData.type === 'manual') lineColor = '#ff9500'; 
                     else if (overrideData && overrideData.type === 'interpolated') lineColor = '#ffcc00'; 
@@ -777,9 +796,10 @@
                     item.ctx.moveTo(midHip.x, midHip.y);
                     item.ctx.lineTo(midThorax.x, midThorax.y);
                     item.ctx.strokeStyle = lineColor;
-                    item.ctx.lineWidth = 4;
+                    item.ctx.lineWidth = 5;
                     item.ctx.stroke();
 
+                    // 3. 中心点（オレンジの操作ポイント）
                     item.ctx.fillStyle = '#ff9500';
                     [midHip, midThorax].forEach(pt => {
                         item.ctx.beginPath(); item.ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2); item.ctx.fill();
@@ -915,16 +935,20 @@
         const landmarks = results.poseLandmarks;
         const getPos = (lm) => ({ x: lm.x * canvas1.width, y: lm.y * canvas1.height });
         
-        // 1. 胸郭の中心（左右の肩の中点）と 骨盤の中心（左右の股関節の中点）を算出
+        // 左右の肩と股関節
         const shoulderL = getPos(landmarks[11]);
         const shoulderR = getPos(landmarks[12]);
         const hipL = getPos(landmarks[23]);
         const hipR = getPos(landmarks[24]);
 
+        // 胸郭中心と骨盤中心
         const thoraxCenter = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
         const pelvisCenter = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
 
-        // 2. 骨盤の向き（角度）と 胸郭の向き（角度）から 捻転差（X-Factor）を算出
+        // 描画用のバー情報を保持
+        state[1].aiBars = { shoulderL, shoulderR, hipL, hipR };
+
+        // 捻転差の算出（X, Z座標から角度を求める）
         const rawHipL = landmarks[23];
         const rawHipR = landmarks[24];
         const rawShoulderL = landmarks[11];
