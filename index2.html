@@ -7,6 +7,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="動作分析Pro">
 <title>動作分析 Pro</title>
+
+<!-- MediaPipe Pose の読み込み（追加部分） -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
 <style>
     * {
         box-sizing: border-box;
@@ -30,13 +35,13 @@
     #header {
         width: 100%;
         background: #1c1c1e;
-        padding-top: calc(8px + env(safe-area-inset-top));
-        padding-left: calc(10px + env(safe-area-inset-left));
-        padding-right: calc(10px + env(safe-area-inset-right));
-        padding-bottom: 8px;
+        padding-top: calc(6px + env(safe-area-inset-top));
+        padding-left: calc(8px + env(safe-area-inset-left));
+        padding-right: calc(8px + env(safe-area-inset-right));
+        padding-bottom: 6px;
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 4px;
         border-bottom: 1px solid #333;
         z-index: 10;
         flex-shrink: 0;
@@ -46,13 +51,19 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 6px;
+        gap: 4px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
     }
+    .header-top-row::-webkit-scrollbar { display: none; }
+
     .btn-group-header {
         display: flex;
         align-items: center;
         gap: 4px;
         flex-wrap: nowrap;
+        flex-shrink: 0;
     }
     .hdr-btn {
         -webkit-appearance: none;
@@ -60,31 +71,42 @@
         background: #007aff;
         color: white;
         border: none;
-        padding: 6px 8px;
+        padding: 5px 8px;
         border-radius: 6px;
         font-weight: bold;
         font-size: 11px;
         cursor: pointer;
         white-space: nowrap;
+        flex-shrink: 0;
     }
     .hdr-btn.secondary { background: #3a3a3c; }
     .hdr-btn.compare-parallel { background: #af52de; color: #fff; }
     .hdr-btn.compare-overlay { background: #ff2d55; color: #fff; }
     .hdr-btn.fps-badge { background: #30d158; color: #000; font-size: 10px; }
     
-    #scale-info-text { font-size: 10px; color: #ff9500; font-weight: 600; text-align: right; white-space: nowrap; }
+    #scale-info-text {
+        font-size: 10px;
+        color: #ff9500;
+        font-weight: 600;
+        white-space: nowrap;
+        margin-left: auto;
+        flex-shrink: 0;
+        padding-left: 4px;
+    }
     
     #result-box {
         width: 100%;
         background: #262629;
         border-radius: 6px;
-        padding: 6px 8px;
+        padding: 5px 8px;
         border: 1px solid #3a3a3c;
     }
-    #main-result { color: #00ffcc; font-size: 13px; font-weight: bold; line-height: 1.2; }
-    #sub-result { color: #aaa; font-size: 11px; margin-top: 2px; font-weight: 500; line-height: 1.2; }
+    #main-result { color: #00ffcc; font-size: 12px; font-weight: bold; line-height: 1.2; }
+    #sub-result { color: #aaa; font-size: 10px; margin-top: 2px; font-weight: 500; line-height: 1.2; }
     .highlight-acc { color: #ff375f; font-weight: bold; }
     .highlight-speed { color: #ffcc00; font-weight: bold; }
+    .highlight-sim { color: #30d158; font-weight: bold; }
+    .highlight-cog { color: #5e5ce6; font-weight: bold; }
 
     #stage {
         width: 100%;
@@ -119,36 +141,37 @@
     #controls {
         width: 100%;
         background: #1c1c1e;
-        padding-top: 6px;
-        padding-left: calc(10px + env(safe-area-inset-left));
-        padding-right: calc(10px + env(safe-area-inset-right));
-        padding-bottom: calc(8px + env(safe-area-inset-bottom));
+        padding-top: 5px;
+        padding-left: calc(8px + env(safe-area-inset-left));
+        padding-right: calc(8px + env(safe-area-inset-right));
+        padding-bottom: calc(6px + env(safe-area-inset-bottom));
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 5px;
         border-top: 1px solid #333;
         flex-shrink: 0;
     }
     
-    .seek-container { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+    .seek-container { display: flex; flex-direction: column; gap: 3px; width: 100%; }
     .seek-row { display: flex; align-items: center; gap: 6px; width: 100%; }
-    .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 16px; flex-shrink: 0; }
+    .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 14px; flex-shrink: 0; text-align: center; }
     .seek-label.v2 { color: #af52de; }
-    input[type=range] { flex: 1; height: 20px; accent-color: #007aff; }
+    input[type=range] { flex: 1; height: 18px; accent-color: #007aff; }
     #seekbar2 { accent-color: #af52de; }
     #perp-slider { accent-color: #ff2d55; }
+    #sim-slider { accent-color: #30d158; }
 
     .mode-grid {
         width: 100%;
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(4, 1fr);
         gap: 4px;
     }
     button.ctrl-btn {
         -webkit-appearance: none;
         appearance: none;
         width: 100%;
-        padding: 7px 0;
+        padding: 6px 0;
         background: #2c2c2e;
         color: white;
         border: none;
@@ -164,12 +187,15 @@
     #btn-mode-scale.mode-active { background: #ff9500; color: black; font-weight: bold; }
     #btn-mode-zoom.mode-active { background: #007aff; color: white; font-weight: bold; }
     #btn-mode-perp.mode-active { background: #ff2d55; color: white; font-weight: bold; }
+    #btn-mode-sim.mode-active { background: #30d158; color: black; font-weight: bold; }
+    #btn-mode-cog.mode-active { background: #5e5ce6; color: white; font-weight: bold; }
+    #btn-mode-ai.mode-active { background: #00ffcc; color: black; font-weight: bold; }
     
     .playback-row {
         width: 100%;
         display: grid;
         grid-template-columns: 1fr 1.3fr 1fr 0.9fr 1fr;
-        gap: 5px;
+        gap: 4px;
     }
     #btn-play { background: #34c759; color: #000; font-weight: bold; }
     #btn-clear { background: #ff3b30; }
@@ -206,7 +232,7 @@
         <div class="btn-group-header">
             <button class="hdr-btn" onclick="triggerPickVideo(1)">動画①</button>
             <button class="hdr-btn secondary" id="btn-pick2" style="display:none;" onclick="triggerPickVideo(2)">動画②</button>
-            <button class="hdr-btn secondary" id="btn-toggle-compare" onclick="toggleCompareMode()">1画面のみ</button>
+            <button class="hdr-btn secondary" id="btn-toggle-compare" onclick="toggleCompareMode()">1画面</button>
             <button class="hdr-btn fps-badge" id="btn-fps" onclick="toggleFPS()">30fps</button>
             <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 保存</button>
         </div>
@@ -251,20 +277,28 @@
         <button class="ctrl-btn mode-active" id="btn-mode-angle" onclick="setMode('angle')">角度(3点)</button>
         <button class="ctrl-btn" id="btn-mode-dist" onclick="setMode('distance')">速度(2点)</button>
         <button class="ctrl-btn" id="btn-mode-acc" onclick="setMode('accel')">加速(3点)</button>
-        <button class="ctrl-btn" id="btn-mode-perp" onclick="setMode('perp')">垂直線(2点)</button>
-        <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">基準</button>
-        <button class="ctrl-btn" id="btn-mode-zoom" onclick="setMode('zoom')">🔍移動</button>
+        <button class="ctrl-btn" id="btn-mode-perp" onclick="setMode('perp')">垂直線</button>
+        <button class="ctrl-btn" id="btn-mode-sim" onclick="setMode('sim')">🎯 予測(+10°)</button>
+        <button class="ctrl-btn" id="btn-mode-cog" onclick="setMode('cog')">📍 重心移動</button>
+        <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">📏 物差し</button>
+        <button class="ctrl-btn" id="btn-mode-zoom" onclick="setMode('zoom')">🔍 ズーム</button>
+        <button class="ctrl-btn" id="btn-mode-ai" onclick="setMode('ai')" style="grid-column: span 4; border: 1px solid #00ffcc; color: #00ffcc; background: rgba(0, 255, 204, 0.1);">🤖 AI自動解析 (体幹の傾き)</button>
     </div>
     
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
         <span style="font-size:11px; font-weight:bold; color:#007aff;">倍率(画面<span id="zoom-target-label">①</span>)</span>
         <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1">
-        <button class="ctrl-btn" style="width:auto; padding:5px 12px; background:#444;" onclick="resetZoom()">リセット</button>
+        <button class="ctrl-btn" style="width:auto; padding:4px 10px; background:#444;" onclick="resetZoom()">リセット</button>
     </div>
 
     <div id="perp-controls" style="display:none; width:100%; align-items:center; gap:8px;">
-        <span style="font-size:11px; font-weight:bold; color:#ff2d55;">垂直線移動</span>
+        <span style="font-size:11px; font-weight:bold; color:#ff2d55; white-space:nowrap;">垂直線移動</span>
         <input type="range" id="perp-slider" min="0" max="100" step="0.5" value="50">
+    </div>
+
+    <div id="sim-controls" style="display:none; width:100%; align-items:center; gap:8px;">
+        <span style="font-size:11px; font-weight:bold; color:#30d158; white-space:nowrap;">角度: <span id="sim-deg-val">+10°</span></span>
+        <input type="range" id="sim-slider" min="-30" max="30" step="1" value="10">
     </div>
 
     <div class="playback-row">
@@ -278,7 +312,7 @@
 
 <div id="scale-modal-overlay" class="modal-overlay">
     <div class="modal-card">
-        <h3 id="scale-modal-title">基準物の長さ設定 (動画①)</h3>
+        <h3 id="scale-modal-title">物差しの長さ設定 (動画①)</h3>
         <p>指定した2点間の実際の長さを入力</p>
         <div class="modal-input-row">
             <input type="number" id="scale-input-value" inputmode="decimal" placeholder="100" value="100">
@@ -333,7 +367,13 @@
     const btnModeScale = document.getElementById('btn-mode-scale');
     const btnModeZoom = document.getElementById('btn-mode-zoom');
     const btnModePerp = document.getElementById('btn-mode-perp');
+    const btnModeSim = document.getElementById('btn-mode-sim');
+    const btnModeCog = document.getElementById('btn-mode-cog');
+    const btnModeAi = document.getElementById('btn-mode-ai');
+    
     const perpSlider = document.getElementById('perp-slider');
+    const simSlider = document.getElementById('sim-slider');
+    const simDegVal = document.getElementById('sim-deg-val');
     
     const scaleModalOverlay = document.getElementById('scale-modal-overlay');
     const scaleModalTitle = document.getElementById('scale-modal-title');
@@ -367,8 +407,8 @@
     let currentRateIdx = 0;
 
     const state = {
-        1: { points: [], scalePoints: [], perpPoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
-        2: { points: [], scalePoints: [], perpPoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
+        1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
+        2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
     };
     
     const viewState = {
@@ -380,6 +420,20 @@
     let lastActiveTarget = 1;
     let tempDistPx = 0;
     let historyData = []; 
+
+    let draggingPoint = null;
+
+    function simulateJointAngle(p2, p3, deltaDeg) {
+        const rad = deltaDeg * (Math.PI / 180);
+        const dx = p3.x - p2.x;
+        const dy = p3.y - p2.y;
+        const rotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
+        const rotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
+        return {
+            x: p2.x + rotatedX,
+            y: p2.y + rotatedY
+        };
+    }
 
     function calcResults(s, mode, isNewPoint = false, targetIdx = 1) {
         if (mode === 'angle') {
@@ -398,6 +452,70 @@
             } else {
                 s.resultMain = s.points.length === 0 ? "角度モード: 3点をタップ" : `点 ${s.points.length}/3`;
                 s.resultSub = s.points.length === 1 ? "2点目(頂点)をタップ" : "頂点(2点目)を中心とした角度を測定";
+            }
+        } else if (mode === 'sim') {
+            if (s.points.length === 3) {
+                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
+                const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
+                const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
+                const dot = v1.x * v2.x + v1.y * v2.y;
+                const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
+                let curAngle = 0;
+                if (mag1 * mag2 !== 0) {
+                    let cosVal = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
+                    curAngle = Math.acos(cosVal) * (180 / Math.PI);
+                }
+                const deltaDeg = parseFloat(simSlider.value);
+                const simPt = simulateJointAngle(p2, p3, deltaDeg);
+                const diffPx = Math.hypot(simPt.x - p3.x, simPt.y - p3.y);
+                const shiftText = s.pxPerCm ? `(先端移動: ${(diffPx / s.pxPerCm).toFixed(1)}cm)` : `(先端移動: ${diffPx.toFixed(1)}px)`;
+                
+                s.resultMain = `<span class="highlight-sim">可動域予測: ${curAngle.toFixed(1)}° → ${(curAngle + deltaDeg).toFixed(1)}° (${deltaDeg > 0 ? '+' : ''}${deltaDeg}°)</span>`;
+                s.resultSub = `緑の破線が改善後の予測位置 ${shiftText}`;
+            } else {
+                s.resultMain = s.points.length === 0 ? "予測モード: 根元→関節中心→先端をタップ" : `点 ${s.points.length}/3`;
+                s.resultSub = "3点打つと、下のスライダーで角度改善シミュレーションが動きます";
+            }
+        } else if (mode === 'cog') {
+            if (s.perpPoints.length < 2) {
+                s.resultMain = "📍 基準エラー: 先に「垂直線」を設定してください";
+                s.resultSub = "垂直線モードで2点をタップし、基準線を引いてから測定します";
+            } else if (s.cogPoints.length === 0) {
+                s.resultMain = "基準線設定完了: 重心・頭の点をタップ";
+                s.resultSub = "コマ送りしながら、追跡したい重心の点を何個でもタップできます";
+            } else {
+                const p1 = s.perpPoints[0], p2 = s.perpPoints[1];
+                const t = perpSlider.value / 100;
+                const pmX = p1.x + (p2.x - p1.x) * t;
+                const pmY = p1.y + (p2.y - p1.y) * t;
+
+                const bx = p2.x - p1.x, by = p2.y - p1.y;
+                const bLen = Math.hypot(bx, by);
+                const ux = bx / bLen, uy = by / bLen;
+                const nx = -uy, ny = ux;
+
+                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                
+                s.cogPoints.forEach(p => {
+                    const vx = p.x - pmX, vy = p.y - pmY;
+                    p.par = vx * ux + vy * uy;   
+                    p.per = -(vx * nx + vy * ny); 
+                    
+                    if (p.par < minX) minX = p.par; if (p.par > maxX) maxX = p.par;
+                    if (p.per < minY) minY = p.per; if (p.per > maxY) maxY = p.per;
+                });
+                
+                const rangeX = maxX - minX;
+                const rangeY = maxY - minY;
+
+                const lastPt = s.cogPoints[s.cogPoints.length - 1];
+                const curXStr = formatDelta(lastPt.par, s.pxPerCm);
+                const curYStr = formatDelta(lastPt.per, s.pxPerCm);
+                const spanXStr = formatDistance(rangeX, s.pxPerCm);
+                const spanYStr = formatDistance(rangeY, s.pxPerCm);
+
+                s.resultMain = `<span class="highlight-cog">重心変位 [点${s.cogPoints.length}]: 左右 ${curXStr} ｜ 上下 ${curYStr}</span>`;
+                s.resultSub = `最大移動幅: 左右ブレ ${spanXStr} ｜ 上下ブレ ${spanYStr}`;
             }
         } else if (mode === 'distance') {
             if (s.points.length === 2) {
@@ -456,12 +574,27 @@
         applyZoom(lastActiveTarget);
     });
     
-    perpSlider.addEventListener('input', redraw);
+    perpSlider.addEventListener('input', e => {
+        [1, 2].forEach(idx => calcResults(state[idx], currentMode, false, idx));
+        updateDisplayResult();
+        redraw();
+    });
+    
+    simSlider.addEventListener('input', e => {
+        const deg = parseFloat(e.target.value);
+        simDegVal.innerText = `${deg > 0 ? '+' : ''}${deg}°`;
+        [1, 2].forEach(idx => calcResults(state[idx], 'sim', false, idx));
+        updateDisplayResult();
+        redraw();
+    });
 
     function fitCanvases() {
         [ {c: canvas1, v: video1}, {c: canvas2, v: video2} ].forEach(item => {
-            item.c.width = item.c.parentElement.clientWidth;
-            item.c.height = item.c.parentElement.clientHeight;
+            const rect = item.c.parentElement.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                item.c.width = rect.width;
+                item.c.height = rect.height;
+            }
         });
         redraw();
     }
@@ -588,7 +721,7 @@
     }
 
     function updateDisplayResult() {
-        if (currentMode === 'zoom') return; 
+        if (currentMode === 'zoom' || currentMode === 'ai') return; 
         if (compareMode === 0) {
             mainResult.innerHTML = state[1].resultMain || "測定したい点をタップしてください";
             subResult.innerHTML = state[1].resultSub || "";
@@ -605,39 +738,52 @@
     function updateScaleInfoText() {
         const s1 = state[1].pxPerCm ? `①${(state[1].pxPerCm).toFixed(1)}px/cm` : "①未設定";
         const s2 = state[2].pxPerCm ? `②${(state[2].pxPerCm).toFixed(1)}px/cm` : "②未設定";
-        scaleInfoText.innerText = (compareMode > 0) ? `物差し: ${s1} | ${s2}` : `物差し: ${s1}`;
+        scaleInfoText.innerText = (compareMode > 0) ? `物差し: ${s1}|${s2}` : `物差し: ${s1}`;
     }
 
     function setMode(mode) {
-        const mainModes = ['angle', 'distance', 'accel'];
+        const mainModes = ['angle', 'distance', 'accel', 'sim', 'cog'];
         if (mainModes.includes(mode) && mode !== lastMeasureMode) {
             state[1].points = [];
             state[2].points = [];
         }
         
-        if (mode !== 'zoom') {
+        if (mode !== 'zoom' && mode !== 'ai') {
             if (mainModes.includes(mode)) lastMeasureMode = mode;
             currentMode = mode;
         } else {
             currentMode = mode; 
         }
         
-        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModeZoom, btnModePerp].forEach(b => b.classList.remove('mode-active'));
+        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModeZoom, btnModePerp, btnModeSim, btnModeCog, btnModeAi].forEach(b => {
+            if (b) b.classList.remove('mode-active');
+        });
 
         document.getElementById('zoom-controls').style.display = (mode === 'zoom') ? 'flex' : 'none';
-        const showPerp = (mode === 'perp' || state[1].perpPoints.length === 2 || state[2].perpPoints.length === 2);
+        
+        const showPerp = (mode === 'perp' || mode === 'cog' || state[1].perpPoints.length === 2 || state[2].perpPoints.length === 2);
         document.getElementById('perp-controls').style.display = showPerp ? 'flex' : 'none';
+
+        const showSim = (mode === 'sim');
+        document.getElementById('sim-controls').style.display = showSim ? 'flex' : 'none';
 
         if (mode === 'zoom') {
             btnModeZoom.classList.add('mode-active');
             document.getElementById('zoom-target-label').innerText = lastActiveTarget === 1 ? '①' : '②';
             document.getElementById('zoom-slider').value = viewState[lastActiveTarget].scale;
+        } else if (mode === 'ai') {
+            btnModeAi.classList.add('mode-active');
+            mainResult.innerHTML = "🤖 AI読込中...";
+            subResult.innerHTML = "初回はAIモデルの読み込みに少し時間がかかります。動画を再生するかコマ送りしてください。";
+            if (video1.readyState >= 2) pose.send({image: video1});
         } else {
             if (mode === 'angle') btnModeAngle.classList.add('mode-active');
             else if (mode === 'distance') btnModeDist.classList.add('mode-active');
             else if (mode === 'accel') btnModeAcc.classList.add('mode-active');
             else if (mode === 'scale') btnModeScale.classList.add('mode-active');
             else if (mode === 'perp') btnModePerp.classList.add('mode-active');
+            else if (mode === 'sim') btnModeSim.classList.add('mode-active');
+            else if (mode === 'cog') btnModeCog.classList.add('mode-active');
         }
         
         if (mode === 'scale') {
@@ -648,12 +794,12 @@
             state[1].resultSub = "長さを設定したい画面で2箇所タップ";
             state[2].resultMain = "";
             state[2].resultSub = "";
-        } else if (mode !== 'zoom') {
+        } else if (mode !== 'zoom' && mode !== 'ai') {
             [1, 2].forEach(idx => calcResults(state[idx], mode, false, idx));
         }
         
         updateDisplayResult();
-        redraw();
+        if (mode !== 'ai') redraw();
     }
 
     function clearCurrentPoints() {
@@ -662,13 +808,18 @@
             state[2].perpPoints = [];
             perpSlider.value = 50;
             document.getElementById('perp-controls').style.display = 'none';
+        } else if (currentMode === 'cog') {
+            state[1].cogPoints = [];
+            state[2].cogPoints = [];
         } else {
             state[1].points = [];
             state[2].points = [];
         }
         [1, 2].forEach(idx => calcResults(state[idx], currentMode, false, idx));
-        updateDisplayResult();
-        redraw();
+        if (currentMode !== 'ai') {
+            updateDisplayResult();
+            redraw();
+        }
     }
 
     function formatDistance(px, pxPerCm) {
@@ -676,6 +827,11 @@
         const cm = px / pxPerCm;
         if (cm >= 100) return `${(cm / 100).toFixed(2)} m (${cm.toFixed(1)} cm)`;
         return `${cm.toFixed(1)} cm`;
+    }
+    function formatDelta(px, pxPerCm) {
+        if (!pxPerCm) return `${px > 0 ? '+' : ''}${px.toFixed(1)}px`;
+        const cm = px / pxPerCm;
+        return `${cm > 0 ? '+' : ''}${cm.toFixed(1)} cm`;
     }
 
     let isTouchPanning = false;
@@ -731,23 +887,86 @@
         if (e.touches.length === 0) isTouchPanning = false;
     }, {passive: false});
 
-    canvas1.addEventListener('pointerdown', (e) => { if (currentMode !== 'zoom') handleCanvasTap(e, canvas1, video1, 1); });
-    canvas2.addEventListener('pointerdown', (e) => { if (currentMode !== 'zoom') handleCanvasTap(e, canvas2, video2, 2); });
+    [ {c: canvas1, v: video1, idx: 1}, {c: canvas2, v: video2, idx: 2} ].forEach(item => {
+        item.c.addEventListener('pointerdown', (e) => handlePointerDown(e, item.c, item.v, item.idx));
+        item.c.addEventListener('pointermove', (e) => handlePointerMove(e, item.c, item.idx));
+        item.c.addEventListener('pointerup', (e) => handlePointerUp(e, item.c, item.idx));
+        item.c.addEventListener('pointercancel', (e) => handlePointerUp(e, item.c, item.idx));
+    });
 
-    function handleCanvasTap(e, cvs, vid, targetIdx) {
+    function getCanvasCoords(e, cvs) {
+        const rect = cvs.getBoundingClientRect();
+        if (cvs.width !== rect.width || cvs.height !== rect.height) {
+            cvs.width = rect.width;
+            cvs.height = rect.height;
+        }
+        return {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top
+        };
+    }
+
+    function findHitPoint(s, pos, mode) {
+        if (mode === 'cog') {
+            if (s.cogPoints.length > 0) {
+                for (let i = s.cogPoints.length - 1; i >= 0; i--) {
+                    if (Math.hypot(s.cogPoints[i].x - pos.x, s.cogPoints[i].y - pos.y) <= 18) {
+                        return { arrayName: 'cogPoints', index: i };
+                    }
+                }
+            }
+            if (s.perpPoints.length === 2) {
+                for (let i = 0; i < s.perpPoints.length; i++) {
+                    if (Math.hypot(s.perpPoints[i].x - pos.x, s.perpPoints[i].y - pos.y) <= 15) {
+                        return { arrayName: 'perpPoints', index: i };
+                    }
+                }
+            }
+            return null;
+        }
+        
+        const HIT_RADIUS = 15;
+        if (mode === 'scale') {
+            for (let i = 0; i < s.scalePoints.length; i++) {
+                if (Math.hypot(s.scalePoints[i].x - pos.x, s.scalePoints[i].y - pos.y) <= HIT_RADIUS) {
+                    return { arrayName: 'scalePoints', index: i };
+                }
+            }
+            return null;
+        }
+        if (mode === 'perp') {
+            for (let i = 0; i < s.perpPoints.length; i++) {
+                if (Math.hypot(s.perpPoints[i].x - pos.x, s.perpPoints[i].y - pos.y) <= HIT_RADIUS) {
+                    return { arrayName: 'perpPoints', index: i };
+                }
+            }
+            return null;
+        }
+        for (let i = 0; i < s.points.length; i++) {
+            if (Math.hypot(s.points[i].x - pos.x, s.points[i].y - pos.y) <= HIT_RADIUS) {
+                return { arrayName: 'points', index: i };
+            }
+        }
+        return null;
+    }
+
+    function handlePointerDown(e, cvs, vid, targetIdx) {
+        if (currentMode === 'zoom' || currentMode === 'ai') return;
         lastActiveTarget = targetIdx;
         const s = state[targetIdx];
-        
-        const rect = cvs.getBoundingClientRect();
-        const scaleX = cvs.width / rect.width;
-        const scaleY = cvs.height / rect.height;
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
+        const pos = getCanvasCoords(e, cvs);
         const currentTime = vid.currentTime;
         const currentFrame = Math.round(currentTime * currentFPS);
 
+        const hit = findHitPoint(s, pos, currentMode);
+        if (hit) {
+            draggingPoint = { targetIdx, arrayName: hit.arrayName, index: hit.index };
+            try { cvs.setPointerCapture(e.pointerId); } catch(err){}
+            return;
+        }
+
         if (currentMode === 'scale') {
-            s.scalePoints.push({x, y});
+            s.scalePoints.push({ x: pos.x, y: pos.y });
             if (s.scalePoints.length === 2) {
                 const p1 = s.scalePoints[0], p2 = s.scalePoints[1];
                 tempDistPx = Math.hypot(p2.x - p1.x, p2.y - p1.y);
@@ -763,7 +982,7 @@
 
         if (currentMode === 'perp') {
             if (s.perpPoints.length >= 2) s.perpPoints = [];
-            s.perpPoints.push({x, y});
+            s.perpPoints.push({ x: pos.x, y: pos.y });
             calcResults(s, currentMode, true, targetIdx);
             if (s.perpPoints.length === 2) {
                 document.getElementById('perp-controls').style.display = 'flex';
@@ -773,13 +992,47 @@
             return;
         }
 
+        if (currentMode === 'cog') {
+            if (s.perpPoints.length < 2) {
+                alert("先に「垂直線」モードで2点をタップし、基準線を設定してください。");
+                return;
+            }
+            s.cogPoints.push({ x: pos.x, y: pos.y, time: currentTime, frame: currentFrame });
+            calcResults(s, currentMode, true, targetIdx);
+            updateDisplayResult();
+            redraw();
+            return;
+        }
+
         const maxPoints = (currentMode === 'distance') ? 2 : 3;
         if (s.points.length >= maxPoints) s.points = [];
-        s.points.push({x, y, time: currentTime, frame: currentFrame});
+        s.points.push({ x: pos.x, y: pos.y, time: currentTime, frame: currentFrame });
 
         calcResults(s, currentMode, true, targetIdx);
         updateDisplayResult();
         redraw();
+    }
+
+    function handlePointerMove(e, cvs, targetIdx) {
+        if (!draggingPoint || draggingPoint.targetIdx !== targetIdx || currentMode === 'ai') return;
+        const s = state[targetIdx];
+        const pos = getCanvasCoords(e, cvs);
+
+        const pt = s[draggingPoint.arrayName][draggingPoint.index];
+        if (pt) {
+            pt.x = pos.x;
+            pt.y = pos.y;
+            calcResults(s, currentMode, false, targetIdx);
+            updateDisplayResult();
+            redraw();
+        }
+    }
+
+    function handlePointerUp(e, cvs, targetIdx) {
+        if (draggingPoint) {
+            try { cvs.releasePointerCapture(e.pointerId); } catch(err){}
+            draggingPoint = null;
+        }
     }
 
     function submitScaleModal() {
@@ -800,10 +1053,13 @@
     }
 
     function redraw() {
+        if (currentMode === 'ai') return; // AIモード中は手動の再描画をスキップ
+        
         [ {idx: 1, c: canvas1, ctx: ctx1}, {idx: 2, c: canvas2, ctx: ctx2} ].forEach(item => {
             const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
+            // 1. 物差し
             if (s.scalePoints.length === 2 && currentMode !== 'scale') {
                 item.ctx.save();
                 item.ctx.strokeStyle = 'rgba(255, 149, 0, 0.4)';
@@ -821,11 +1077,12 @@
                 return;
             }
 
+            // 2. 垂直線
             if (s.perpPoints.length > 0) {
                 if (s.perpPoints.length === 1) {
                     item.ctx.fillStyle = '#ff2d55';
                     item.ctx.beginPath();
-                    item.ctx.arc(s.perpPoints[0].x, s.perpPoints[0].y, 5, 0, Math.PI * 2);
+                    item.ctx.arc(s.perpPoints[0].x, s.perpPoints[0].y, 6, 0, Math.PI * 2);
                     item.ctx.fill();
                 } else if (s.perpPoints.length === 2) {
                     const p1 = s.perpPoints[0], p2 = s.perpPoints[1];
@@ -838,13 +1095,12 @@
 
                     item.ctx.fillStyle = '#ff2d55';
                     item.ctx.beginPath();
-                    item.ctx.arc(p2.x, p2.y, 5, 0, Math.PI * 2);
+                    item.ctx.arc(p2.x, p2.y, 6, 0, Math.PI * 2);
                     item.ctx.fill();
 
                     const t = perpSlider.value / 100;
                     const pmX = p1.x + (p2.x - p1.x) * t;
                     const pmY = p1.y + (p2.y - p1.y) * t;
-                    
                     const dx = p2.x - p1.x;
                     const dy = p2.y - p1.y;
                     const len = Math.hypot(dx, dy);
@@ -853,7 +1109,6 @@
                         const nx = -dy / len;
                         const ny = dx / len;
                         const perpLen = 2000;
-                        
                         item.ctx.strokeStyle = '#ff2d55';
                         item.ctx.lineWidth = 2;
                         item.ctx.setLineDash([4, 4]);
@@ -866,14 +1121,84 @@
                 }
             }
 
-            if (s.points.length > 0) {
+            // 3. 📍 重心移動（各点のデータ表示）
+            if (lastMeasureMode === 'cog') {
+                if (s.cogPoints.length > 0) {
+                    item.ctx.save();
+                    item.ctx.strokeStyle = 'rgba(255, 204, 0, 0.6)';
+                    item.ctx.lineWidth = 2;
+                    item.ctx.beginPath();
+                    for (let i = 0; i < s.cogPoints.length; i++) {
+                        if (i === 0) item.ctx.moveTo(s.cogPoints[i].x, s.cogPoints[i].y);
+                        else item.ctx.lineTo(s.cogPoints[i].x, s.cogPoints[i].y);
+                    }
+                    item.ctx.stroke();
+
+                    s.cogPoints.forEach((pt, i) => {
+                        const isLatest = (i === s.cogPoints.length - 1);
+                        item.ctx.fillStyle = isLatest ? '#ff375f' : '#ffcc00';
+                        item.ctx.beginPath();
+                        item.ctx.arc(pt.x, pt.y, isLatest ? 7 : 5, 0, Math.PI * 2);
+                        item.ctx.fill();
+
+                        item.ctx.fillStyle = '#fff';
+                        item.ctx.font = isLatest ? 'bold 12px sans-serif' : '10px sans-serif';
+                        item.ctx.fillText(`${i + 1}`, pt.x + 8, pt.y - 6);
+
+                        if (pt.par !== undefined && pt.per !== undefined) {
+                            const xVal = s.pxPerCm ? (pt.par / s.pxPerCm).toFixed(1) : pt.par.toFixed(1);
+                            const yVal = s.pxPerCm ? (pt.per / s.pxPerCm).toFixed(1) : pt.per.toFixed(1);
+                            
+                            item.ctx.fillStyle = '#00ffcc';
+                            item.ctx.font = '9px sans-serif';
+                            item.ctx.fillText(`左右 ${xVal > 0 ? '+' : ''}${xVal}`, pt.x + 8, pt.y + 6);
+                            item.ctx.fillStyle = '#ff9500';
+                            item.ctx.fillText(`上下 ${yVal > 0 ? '+' : ''}${yVal}`, pt.x + 8, pt.y + 16);
+                        }
+                    });
+                    item.ctx.restore();
+                }
+            }
+
+            // 4. 通常の測定ポイント / 予測シミュレーション
+            if (s.points.length > 0 && lastMeasureMode !== 'cog') {
                 if (lastMeasureMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
                 else if (lastMeasureMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
                 else if (lastMeasureMode === 'accel') item.ctx.strokeStyle = item.ctx.fillStyle = '#ff375f';
+                else if (lastMeasureMode === 'sim') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
                 item.ctx.lineWidth = 3;
 
-                let labels = lastMeasureMode === 'distance' ? ["始点", "終点"] : (lastMeasureMode === 'accel' ? ["点1", "点2", "点3"] : null);
+                let labels = lastMeasureMode === 'distance' ? ["始点", "終点"] : (lastMeasureMode === 'accel' ? ["点1", "点2", "点3"] : (lastMeasureMode === 'sim' ? ["根元", "関節", "先端"] : null));
                 drawPointList(item.ctx, s.points, labels);
+
+                // 🎯 予測モード時のシミュレーション線
+                if (lastMeasureMode === 'sim' && s.points.length === 3) {
+                    const p2 = s.points[1];
+                    const p3 = s.points[2];
+                    const deltaDeg = parseFloat(simSlider.value);
+                    const simP3 = simulateJointAngle(p2, p3, deltaDeg);
+
+                    item.ctx.save();
+                    item.ctx.strokeStyle = '#30d158';
+                    item.ctx.fillStyle = '#30d158';
+                    item.ctx.lineWidth = 3;
+                    item.ctx.setLineDash([5, 4]);
+
+                    item.ctx.beginPath();
+                    item.ctx.moveTo(p2.x, p2.y);
+                    item.ctx.lineTo(simP3.x, simP3.y);
+                    item.ctx.stroke();
+                    item.ctx.setLineDash([]);
+
+                    item.ctx.beginPath();
+                    item.ctx.arc(simP3.x, simP3.y, 6, 0, Math.PI * 2);
+                    item.ctx.fill();
+
+                    item.ctx.fillStyle = '#30d158';
+                    item.ctx.font = 'bold 11px sans-serif';
+                    item.ctx.fillText(`予測(${deltaDeg > 0 ? '+' : ''}${deltaDeg}°)`, simP3.x + 8, simP3.y - 4);
+                    item.ctx.restore();
+                }
             }
         });
     }
@@ -889,7 +1214,7 @@
 
         for (let i = 0; i < ptList.length; i++) {
             cContext.beginPath();
-            cContext.arc(ptList[i].x, ptList[i].y, 5, 0, Math.PI * 2);
+            cContext.arc(ptList[i].x, ptList[i].y, 6, 0, Math.PI * 2);
             cContext.fill();
             if (labels) {
                 const text = Array.isArray(labels) ? labels[i] : `${labels}${i + 1}`;
@@ -937,7 +1262,7 @@
         snapCtx.fillRect(0, h, snapCanvas.width, 60);
         snapCtx.fillStyle = '#00ffcc';
         snapCtx.font = 'bold 14px -apple-system, sans-serif';
-        snapCtx.fillText(mainResult.innerText, 15, h + 24);
+        snapCtx.fillText(mainResult.innerText.replace(/<[^>]*>?/gm, ''), 15, h + 24);
 
         snapCtx.fillStyle = '#ccc';
         snapCtx.font = '11px -apple-system, sans-serif';
@@ -948,6 +1273,92 @@
         document.getElementById('snapshot-modal-overlay').style.display = 'flex';
     }
     function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
+
+    // ==========================================
+    // ▼ ここから MediaPipe (AI自動解析) のコード ▼
+    // ==========================================
+
+    const pose = new Pose({locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+    }});
+
+    pose.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+
+    pose.onResults((results) => {
+        if (currentMode !== 'ai') return; 
+
+        ctx1.clearRect(0, 0, canvas1.width, canvas1.height);
+
+        if (!results.poseLandmarks) {
+            mainResult.innerHTML = `🤖 AI自動計測 ｜ 人物が検出できません`;
+            return;
+        }
+        
+        const landmarks = results.poseLandmarks;
+        const getPos = (lm) => ({ x: lm.x * canvas1.width, y: lm.y * canvas1.height });
+
+        // 両肩と両股関節の座標を取得
+        const shoulderL = getPos(landmarks[11]);
+        const shoulderR = getPos(landmarks[12]);
+        const hipL = getPos(landmarks[23]);
+        const hipR = getPos(landmarks[24]);
+
+        // 中点を計算
+        const midShoulder = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
+        const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
+
+        // 補助線（肩のライン、骨盤のライン）を描画
+        ctx1.beginPath();
+        ctx1.moveTo(shoulderL.x, shoulderL.y);
+        ctx1.lineTo(shoulderR.x, shoulderR.y);
+        ctx1.moveTo(hipL.x, hipL.y);
+        ctx1.lineTo(hipR.x, hipR.y);
+        ctx1.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx1.lineWidth = 2;
+        ctx1.stroke();
+
+        // 体幹の軸を描画（緑色の太線）
+        ctx1.beginPath();
+        ctx1.moveTo(midHip.x, midHip.y);
+        ctx1.lineTo(midShoulder.x, midShoulder.y);
+        ctx1.strokeStyle = '#00ffcc';
+        ctx1.lineWidth = 4;
+        ctx1.stroke();
+
+        // 傾きの角度を計算
+        const dx = midShoulder.x - midHip.x;
+        const dy = midShoulder.y - midHip.y;
+        const angleRad = Math.atan2(dx, -dy);
+        const angleDeg = angleRad * (180 / Math.PI);
+
+        mainResult.innerHTML = `🤖 AI自動計測 ｜ 体幹の傾き: <span style="color:#00ffcc;">${angleDeg.toFixed(1)}°</span>`;
+        subResult.innerHTML = "動画再生・コマ送りに合わせて自動解析中（動画①のみ）";
+    });
+
+    async function detectFrame() {
+        if (currentMode === 'ai' && !video1.paused && !video1.ended && video1.readyState >= 2) {
+            await pose.send({image: video1});
+            requestAnimationFrame(detectFrame);
+        }
+    }
+
+    video1.addEventListener('play', () => {
+        if (currentMode === 'ai') {
+            detectFrame();
+        }
+    });
+
+    video1.addEventListener('seeked', async () => {
+        if (currentMode === 'ai' && video1.readyState >= 2) {
+            await pose.send({image: video1});
+        }
+    });
+
 </script>
 </body>
 </html>
