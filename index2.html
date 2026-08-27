@@ -1,9 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head><link rel="apple-touch-icon" href="icon.png.JPG">
-<link rel="icon" type="image/jpeg" href="icon.png.JPG">
-
-
+<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -238,8 +235,6 @@
     const fpsList = [30, 60, 120, 240];
     let fpsIdx = 0;
 
-    let currentTorsionAngle = 0;
-
     let mediaRecorder = null;
     let recordedChunks = [];
     let isRecording = false;
@@ -250,7 +245,7 @@
     let isAiDetecting = false;
 
     const state = {
-        1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
+        1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], rawAiLandmarks: null, limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
         2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
     };
     
@@ -347,21 +342,23 @@
 
                 const bx = p2.x - p1.x, by = p2.y - p1.y;
                 const bLen = Math.hypot(bx, by);
-                const ux = bx / bLen, uy = by / bLen;
-                const nx = -uy, ny = ux;
+                if (bLen > 0) {
+                    const ux = bx / bLen, uy = by / bLen;
+                    const nx = -uy, ny = ux;
 
-                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-                s.cogPoints.forEach(p => {
-                    const vx = p.x - pmX, vy = p.y - pmY;
-                    p.par = vx * ux + vy * uy;   
-                    p.per = -(vx * nx + vy * ny); 
-                    if (p.par < minX) minX = p.par; if (p.par > maxX) maxX = p.par;
-                    if (p.per < minY) minY = p.per; if (p.per > maxY) maxY = p.per;
-                });
-                const rangeX = maxX - minX, rangeY = maxY - minY;
-                const lastPt = s.cogPoints[s.cogPoints.length - 1];
-                s.resultMain = `<span class="highlight-cog">重心変位 [点${s.cogPoints.length}]: 左右 ${formatDelta(lastPt.par, s.pxPerCm)} ｜ 上下 ${formatDelta(lastPt.per, s.pxPerCm)}</span>`;
-                s.resultSub = `最大移動幅: 左右ブレ ${formatDistance(rangeX, s.pxPerCm)} ｜ 上下ブレ ${formatDistance(rangeY, s.pxPerCm)}`;
+                    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                    s.cogPoints.forEach(p => {
+                        const vx = p.x - pmX, vy = p.y - pmY;
+                        p.par = vx * ux + vy * uy;   
+                        p.per = -(vx * nx + vy * ny); 
+                        if (p.par < minX) minX = p.par; if (p.par > maxX) maxX = p.par;
+                        if (p.per < minY) minY = p.per; if (p.per > maxY) maxY = p.per;
+                    });
+                    const rangeX = maxX - minX, rangeY = maxY - minY;
+                    const lastPt = s.cogPoints[s.cogPoints.length - 1];
+                    s.resultMain = `<span class="highlight-cog">重心変位 [点${s.cogPoints.length}]: 左右 ${formatDelta(lastPt.par, s.pxPerCm)} ｜ 上下 ${formatDelta(lastPt.per, s.pxPerCm)}</span>`;
+                    s.resultSub = `最大移動幅: 左右ブレ ${formatDistance(rangeX, s.pxPerCm)} ｜ 上下ブレ ${formatDistance(rangeY, s.pxPerCm)}`;
+                }
             }
         } else if (mode === 'distance') {
             if (s.points.length === 2) {
@@ -414,19 +411,23 @@
             const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
 
             const angleDeg = Math.atan2(midThorax.x - midHip.x, -(midThorax.y - midHip.y)) * (180 / Math.PI);
-            const pelvisAngleDeg = Math.atan2((hipR.z || 0) - (hipL.z || 0), hipR.x - hipL.x) * (180 / Math.PI);
-            const thoraxAngleDeg = Math.atan2((shoulderR.z || 0) - (shoulderL.z || 0), shoulderR.x - shoulderL.x) * (180 / Math.PI);
 
-            let torsionDiff = thoraxAngleDeg - pelvisAngleDeg;
-            if (torsionDiff > 180) torsionDiff -= 360;
-            if (torsionDiff < -180) torsionDiff += 360;
-            currentTorsionAngle = torsionDiff;
+            let torsionDiff = 0;
+            if (s.rawAiLandmarks) {
+                const sL = s.rawAiLandmarks[11], sR = s.rawAiLandmarks[12];
+                const hL = s.rawAiLandmarks[23], hR = s.rawAiLandmarks[24];
+                const pelvisAngleDeg = Math.atan2(hR.z - hL.z, hR.x - hL.x) * (180 / Math.PI);
+                const thoraxAngleDeg = Math.atan2(sR.z - sL.z, sR.x - sL.x) * (180 / Math.PI);
+                torsionDiff = thoraxAngleDeg - pelvisAngleDeg;
+                if (torsionDiff > 180) torsionDiff -= 360;
+                if (torsionDiff < -180) torsionDiff += 360;
+            }
             
             let typeLabel = "🤖 AI", color = "#00ffcc";
             if (type === 'manual') { typeLabel = "✋ 手動"; color = "#ff9500"; }
             else if (type === 'interpolated') { typeLabel = "✨ 補間"; color = "#ffcc00"; }
             
-            const torsionText = `<span class="highlight-speed" style="font-size:13px;">${Math.abs(currentTorsionAngle).toFixed(1)}°</span>`;
+            const torsionText = `<span class="highlight-speed" style="font-size:13px;">${Math.abs(torsionDiff).toFixed(1)}°</span>`;
             mainResult.innerHTML = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差(X-Factor): ${torsionText}`;
             subResult.innerHTML = `<span style="color:#00ffcc;">左半身:水色</span> / <span style="color:#ffd60a;">右半身:黄色</span> ｜ 端点ドラッグで修正可能`;
         }
@@ -462,10 +463,8 @@
     }
     window.addEventListener('resize', fitCanvases);
 
-    // 新しい動画を読み込んだ時にデータをリセットする関数
     function resetState(idx) {
-        state[idx] = { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" };
-        if (idx === 1) currentTorsionAngle = 0;
+        state[idx] = { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], rawAiLandmarks: null, limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" };
         updateScaleInfoText();
         updateDisplayResult();
         redraw();
@@ -475,7 +474,8 @@
     
     function loadVideoFile(file, vidElem, idx) { 
         if (file) { 
-            resetState(idx); // 新規読み込み時に前回のデータを消去
+            resetState(idx);
+            if (vidElem.src) URL.revokeObjectURL(vidElem.src);
             vidElem.src = URL.createObjectURL(file); 
             vidElem.load(); 
         } 
@@ -609,8 +609,9 @@
         } else if (mode === 'ai') {
             document.getElementById('btn-mode-ai').classList.add('mode-active');
             mainResult.innerHTML = "🤖 AI読込中..."; subResult.innerHTML = "動画を再生するかコマ送りして解析を開始してください";
-            currentTorsionAngle = 0;
-            if (video1.readyState >= 2) pose.send({image: video1});
+            if (video1.readyState >= 2) {
+                try { pose.send({image: video1}); } catch(e){}
+            }
             redraw();
         } else {
             const btnMap = { 'angle': 'btn-mode-angle', 'distance': 'btn-mode-dist', 'accel': 'btn-mode-acc', 'scale': 'btn-mode-scale', 'perp': 'btn-mode-perp', 'sim': 'btn-mode-sim', 'cog': 'btn-mode-cog' };
@@ -631,8 +632,9 @@
         if (currentMode === 'zoom') return;
         if (currentMode === 'ai') {
             state[1].aiOverrides = {};
-            currentTorsionAngle = 0;
-            if (video1.readyState >= 2) pose.send({image: video1});
+            if (video1.readyState >= 2) {
+                try { pose.send({image: video1}); } catch(e){}
+            }
             return;
         }
         if (currentMode === 'scale') {
@@ -702,11 +704,14 @@
         item.c.addEventListener('pointercancel', (e) => handlePointerUp(e, item.c));
     });
 
-    function getCanvasCoords(e, cvs) {
+    function getCanvasCoords(e, cvs, idx) {
         const rect = cvs.getBoundingClientRect();
-        return { 
-            x: (e.clientX - rect.left) * (cvs.width / rect.width), 
-            y: (e.clientY - rect.top) * (cvs.height / rect.height) 
+        const v = viewState[idx] || { scale: 1, x: 0, y: 0 };
+        const rawX = (e.clientX - rect.left) * (cvs.width / rect.width);
+        const rawY = (e.clientY - rect.top) * (cvs.height / rect.height);
+        return {
+            x: (rawX - v.x) / v.scale,
+            y: (rawY - v.y) / v.scale
         };
     }
 
@@ -740,7 +745,7 @@
     function handlePointerDown(e, cvs, vid, targetIdx) {
         if (currentMode === 'zoom') return; 
         lastActiveTarget = targetIdx;
-        const s = state[targetIdx], pos = getCanvasCoords(e, cvs);
+        const s = state[targetIdx], pos = getCanvasCoords(e, cvs, targetIdx);
         const currentTime = vid.currentTime, currentFrame = Math.round(currentTime * currentFPS);
         const hit = findHitPoint(s, pos, currentMode);
         if (hit) { draggingPoint = { targetIdx, arrayName: hit.arrayName, index: hit.index }; try { cvs.setPointerCapture(e.pointerId); } catch(err){} return; }
@@ -780,13 +785,13 @@
 
     function handlePointerMove(e, cvs, targetIdx) {
         if (!draggingPoint || draggingPoint.targetIdx !== targetIdx) return;
-        const s = state[targetIdx], pos = getCanvasCoords(e, cvs);
+        const s = state[targetIdx], pos = getCanvasCoords(e, cvs, targetIdx);
         const pt = s[draggingPoint.arrayName][draggingPoint.index];
         if (pt) {
             pt.x = pos.x; pt.y = pos.y;
             if (currentMode === 'ai') {
                 const currentFrame = Math.round(video1.currentTime * currentFPS);
-                s.aiOverrides[currentFrame] = s.aiJoints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
+                s.aiOverrides[currentFrame] = s.aiJoints.map(j => ({ x: j.x, y: j.y }));
                 if (s.limbsLandmarks) {
                     const jointMap = [11, 12, 23, 24];
                     const landmarkIdx = jointMap[draggingPoint.index];
@@ -857,8 +862,7 @@
             for (let j = 0; j < 4; j++) {
                 joints.push({
                     x: s.aiOverrides[prev][j].x + (s.aiOverrides[next][j].x - s.aiOverrides[prev][j].x) * ratio,
-                    y: s.aiOverrides[prev][j].y + (s.aiOverrides[next][j].y - s.aiOverrides[prev][j].y) * ratio,
-                    z: (s.aiOverrides[prev][j].z || 0) + ((s.aiOverrides[next][j].z || 0) - (s.aiOverrides[prev][j].z || 0)) * ratio
+                    y: s.aiOverrides[prev][j].y + (s.aiOverrides[next][j].y - s.aiOverrides[prev][j].y) * ratio
                 });
             }
             return { joints, type: 'interpolated' };
@@ -867,7 +871,7 @@
     }
 
     function getVideoRenderRect(vid, cvs) {
-        if (!vid.videoWidth) return { width: cvs.width, height: cvs.height, x: 0, y: 0 };
+        if (!vid.videoWidth || !vid.videoHeight) return { width: cvs.width, height: cvs.height, x: 0, y: 0 };
         const videoRatio = vid.videoWidth / vid.videoHeight;
         const canvasRatio = cvs.width / cvs.height;
         let renderWidth, renderHeight, offsetX = 0, offsetY = 0;
@@ -886,7 +890,7 @@
 
     function redraw() {
         [ {idx: 1, c: canvas1, ctx: ctx1, v: video1}, {idx: 2, c: canvas2, ctx: ctx2, v: video2} ].forEach(item => {
-            if (compareMode === 0 && item.idx === 2) return; // 1画面時はCanvas2の描画をスキップ
+            if (compareMode === 0 && item.idx === 2) return;
             const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
@@ -1027,7 +1031,7 @@
                     if (pt.par !== undefined && pt.per !== undefined) {
                         const xVal = s.pxPerCm ? (pt.par / s.pxPerCm).toFixed(1) : pt.par.toFixed(1), yVal = s.pxPerCm ? (pt.per / s.pxPerCm).toFixed(1) : pt.per.toFixed(1);
                         item.ctx.fillStyle = '#00ffcc'; item.ctx.font = '9px sans-serif'; item.ctx.fillText(`左右 ${xVal > 0 ? '+' : ''}${xVal}`, pt.x + 8, pt.y + 6);
-                        item.ctx.fillStyle = '#ff9500'; item.ctx.fillText(`上下 ${yVal > 0 ? '+' : ''}${yVal}`, pt.x + 8, pt.y + 16);
+                        item.ctx.fillStyle = '#ff9500'; item.fillText(`上下 ${yVal > 0 ? '+' : ''}${yVal}`, pt.x + 8, pt.y + 16);
                     }
                 });
                 item.ctx.restore();
@@ -1231,17 +1235,18 @@
         
         if (!results.poseLandmarks) {
             state[1].limbsLandmarks = null;
+            state[1].rawAiLandmarks = null;
             mainResult.innerHTML = `🤖 AI自動計測 ｜ 人物が検出できません`;
             return;
         }
 
         const landmarks = results.poseLandmarks;
+        state[1].rawAiLandmarks = landmarks;
         const rect = getVideoRenderRect(video1, canvas1);
         
         const getPos = (lm) => ({ 
             x: rect.x + lm.x * rect.width, 
-            y: rect.y + lm.y * rect.height, 
-            z: (lm.z || 0) * rect.width 
+            y: rect.y + lm.y * rect.height
         });
         
         const mappedLandmarks = {};
@@ -1252,7 +1257,7 @@
 
         const overrideData = getInterpolatedAiPoints(currentFrame);
         if (overrideData) {
-            state[1].aiJoints = overrideData.joints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
+            state[1].aiJoints = overrideData.joints.map(j => ({ x: j.x, y: j.y }));
             calcAiResults(overrideData.type);
             redraw();
             return;
@@ -1265,7 +1270,9 @@
 
     async function detectFrame() {
         if (currentMode === 'ai' && !video1.paused && !video1.ended && video1.readyState >= 2) {
-            await pose.send({image: video1});
+            try {
+                await pose.send({image: video1});
+            } catch(e) {}
             requestAnimationFrame(detectFrame);
         } else {
             isAiDetecting = false;
@@ -1282,7 +1289,9 @@
     video1.addEventListener('seeked', async () => { 
         if (currentMode === 'ai' && video1.readyState >= 2 && !isAiDetecting) {
             isAiDetecting = true;
-            await pose.send({image: video1}); 
+            try {
+                await pose.send({image: video1}); 
+            } catch(e) {}
             isAiDetecting = false;
         }
     });
