@@ -8,7 +8,6 @@
 <meta name="apple-mobile-web-app-title" content="動作分析Pro">
 <title>動作分析 Pro</title>
 
-<!-- MediaPipe Pose の読み込み -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 
@@ -796,7 +795,7 @@
 
             if (currentMode === 'ai') {
                 if (item.idx === 1) {
-                    // 1. 顔・手先を除いた四肢の骨格ラインを描画
+                    // 1. 四肢の骨格ラインを描画
                     if (s.limbsLandmarks) {
                         const lm = s.limbsLandmarks;
                         const limbConnections = [
@@ -971,7 +970,7 @@
     function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
 
     // ==========================================
-    // ▼ 動画エクスポート（録画）機能 ▼
+    // ▼ 動画エクスポート（MP4優先・写真アプリ対応） ▼
     // ==========================================
 
     function toggleRecording() {
@@ -998,7 +997,6 @@
             recordCtx.fillStyle = '#000';
             recordCtx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
 
-            // 映像とオーバーレイを描画
             if (video1.videoWidth) {
                 recordCtx.drawImage(video1, 0, 0, canvas1.width, h);
                 recordCtx.drawImage(canvas1, 0, 0);
@@ -1013,7 +1011,6 @@
                 recordCtx.globalAlpha = 1.0;
             }
 
-            // 下部にリアルタイム計測バーを焼き込み
             recordCtx.fillStyle = '#1c1c1e';
             recordCtx.fillRect(0, h, recordCanvas.width, 50);
             recordCtx.fillStyle = '#00ffcc';
@@ -1028,16 +1025,21 @@
 
         const stream = recordCanvas.captureStream(currentFPS);
         
-        let mimeType = 'video/webm;codecs=vp9';
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = 'video/webm';
-            if (!MediaRecorder.isTypeSupported(mimeType)) {
-                mimeType = 'video/mp4';
-            }
-        }
+        // ★修正: iOS Safari対応のMP4 (H.264) を最優先
+        const candidateTypes = [
+            'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+            'video/mp4;codecs=avc1',
+            'video/mp4',
+            'video/webm;codecs=h264',
+            'video/webm;codecs=vp9',
+            'video/webm'
+        ];
+        let selectedMimeType = candidateTypes.find(t => MediaRecorder.isTypeSupported(t)) || '';
 
         try {
-            mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5000000 });
+            mediaRecorder = selectedMimeType 
+                ? new MediaRecorder(stream, { mimeType: selectedMimeType, videoBitsPerSecond: 6000000 })
+                : new MediaRecorder(stream);
         } catch (e) {
             mediaRecorder = new MediaRecorder(stream);
         }
@@ -1052,7 +1054,6 @@
 
         drawRecordFrame();
 
-        // 録画開始に合わせて動画も自動再生
         if (video1.paused) togglePlay();
     }
 
@@ -1067,16 +1068,20 @@
     }
 
     function exportRecordedVideo() {
-        const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+        // ★修正: MP4形式でBlobを生成して確実に写真アプリへ保存可能にする
+        const isMp4 = mediaRecorder.mimeType && mediaRecorder.mimeType.includes('mp4');
+        const finalType = isMp4 ? 'video/mp4' : (mediaRecorder.mimeType || 'video/webm');
+        const ext = isMp4 ? 'mp4' : 'webm';
+
+        const blob = new Blob(recordedChunks, { type: finalType });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        const ext = (mediaRecorder.mimeType && mediaRecorder.mimeType.includes('mp4')) ? 'mp4' : 'webm';
         a.download = `動作分析_${new Date().toISOString().slice(0, 10)}_${Date.now()}.${ext}`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
     }
 
     // ==========================================
