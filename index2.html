@@ -8,7 +8,6 @@
 <meta name="apple-mobile-web-app-title" content="動作分析Pro">
 <title>動作分析 Pro</title>
 
-<!-- 未使用の camera_utils.js を削除 -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 
 <style>
@@ -27,9 +26,14 @@
     .hdr-btn.rec-active { background: #ff453a; animation: blink 1s infinite; }
     @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
     #scale-info-text { font-size: 10px; color: #ff9500; font-weight: 600; white-space: nowrap; margin-left: auto; flex-shrink: 0; padding-left: 4px; }
-    #result-box { width: 100%; background: #262629; border-radius: 6px; padding: 5px 8px; border: 1px solid #3a3a3c; }
+    
+    #result-box { width: 100%; background: #262629; border-radius: 6px; padding: 5px 8px; border: 1px solid #3a3a3c; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .result-text-area { flex: 1; min-width: 0; }
     #main-result { color: #00ffcc; font-size: 12px; font-weight: bold; line-height: 1.2; }
     #sub-result { color: #aaa; font-size: 10px; margin-top: 2px; font-weight: 500; line-height: 1.2; }
+    #btn-confirm-scale { display: none; background: #ff9500; color: #000; font-size: 11px; font-weight: bold; padding: 5px 10px; border: none; border-radius: 6px; cursor: pointer; flex-shrink: 0; white-space: nowrap; }
+    #btn-confirm-scale:active { background: #e08500; }
+
     .highlight-acc { color: #ff375f; font-weight: bold; }
     .highlight-speed { color: #ffcc00; font-weight: bold; }
     .highlight-sim { color: #30d158; font-weight: bold; }
@@ -90,8 +94,11 @@
         <input type="file" id="file-input-2" accept="video/*" style="display:none">
     </div>
     <div id="result-box">
-        <div id="main-result">動画①を選択してください</div>
-        <div id="sub-result"></div>
+        <div class="result-text-area">
+            <div id="main-result">動画①を選択してください</div>
+            <div id="sub-result"></div>
+        </div>
+        <button id="btn-confirm-scale" onclick="openScaleModal()">📏 長さ確定</button>
     </div>
 </div>
 
@@ -204,6 +211,7 @@
     const seekRow2 = document.getElementById('seek-row-2');
     const mainResult = document.getElementById('main-result');
     const subResult = document.getElementById('sub-result');
+    const btnConfirmScale = document.getElementById('btn-confirm-scale');
     const scaleInfoText = document.getElementById('scale-info-text');
     const btnPlay = document.getElementById('btn-play');
     const btnSpeed = document.getElementById('btn-speed');
@@ -246,7 +254,7 @@
     let recordCtx = null;
     let recordAnimId = null;
 
-    let isAiDetecting = false; // ループの重複実行防止フラグ
+    let isAiDetecting = false;
 
     const state = {
         1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
@@ -470,7 +478,6 @@
     video1.addEventListener('loadedmetadata', () => { fitCanvases(); seekbar1.max = video1.duration; seekbar1.value = 0; setMode(currentMode); });
     video2.addEventListener('loadedmetadata', () => { fitCanvases(); seekbar2.max = video2.duration; seekbar2.value = 0; });
     
-    // 動画終了時の処理
     video1.addEventListener('ended', () => {
         if (isRecording) stopRecording();
         else if (isPlaying) togglePlay();
@@ -480,7 +487,6 @@
         compareMode = (compareMode + 1) % 3; 
         btnToggleCompare.classList.remove('compare-parallel', 'compare-overlay');
         
-        // 共通リセット
         pane2.style.position = 'relative';
         pane2.style.top = 'auto';
         pane2.style.left = 'auto';
@@ -544,12 +550,26 @@
 
     function stepFrame(dir) {
         const stepSec = dir / currentFPS;
-        if (video1.duration) video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
-        if (compareMode > 0 && video2.duration) video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
+        if (video1 && !isNaN(video1.duration) && video1.duration > 0) {
+            video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
+        }
+        if (compareMode > 0 && video2 && !isNaN(video2.duration) && video2.duration > 0) {
+            video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
+        }
     }
 
     function updateDisplayResult() {
-        if (currentMode === 'zoom' || currentMode === 'ai') return; 
+        if (currentMode === 'zoom' || currentMode === 'ai') {
+            btnConfirmScale.style.display = 'none';
+            return; 
+        }
+        if (currentMode === 'scale') {
+            const hasTwoPoints = state[1].scalePoints.length === 2 || state[2].scalePoints.length === 2;
+            btnConfirmScale.style.display = hasTwoPoints ? 'inline-block' : 'none';
+        } else {
+            btnConfirmScale.style.display = 'none';
+        }
+
         if (compareMode === 0) {
             mainResult.innerHTML = state[1].resultMain || "測定したい点をタップしてください"; subResult.innerHTML = state[1].resultSub || "";
         } else {
@@ -595,8 +615,8 @@
         }
         
         if (mode === 'scale') {
-            state[1].scalePoints = []; state[2].scalePoints = []; updateScaleInfoText();
-            state[1].resultMain = "物差し設定: 基準物の両端（2点）をタップ"; state[1].resultSub = "長さを設定したい画面で2箇所タップ";
+            state[1].scalePoints = []; state[2].scalePoints = [];
+            state[1].resultMain = "物差し設定: 基準物の両端（2点）をタップ"; state[1].resultSub = "タップ後、点をドラッグして微調整できます";
             state[2].resultMain = ""; state[2].resultSub = "";
         } else if (mode !== 'zoom' && mode !== 'ai') {
             [1, 2].forEach(idx => calcResults(state[idx], mode));
@@ -605,14 +625,21 @@
     }
 
     function clearCurrentPoints() {
+        if (currentMode === 'zoom') return;
         if (currentMode === 'ai') {
             state[1].aiOverrides = {};
             currentTorsionAngle = 0;
             if (video1.readyState >= 2) pose.send({image: video1});
             return;
         }
-        if (currentMode === 'perp') {
-            state[1].perpPoints = []; state[2].perpPoints = []; perpSlider.value = 50; document.getElementById('perp-controls').style.display = 'none';
+        if (currentMode === 'scale') {
+            state[1].scalePoints = []; state[2].scalePoints = [];
+            state[1].resultMain = "物差し設定: 基準物の両端（2点）をタップ"; state[1].resultSub = "タップ後、点をドラッグして微調整できます";
+            state[2].resultMain = ""; state[2].resultSub = "";
+        } else if (currentMode === 'perp') {
+            state[1].perpPoints = []; state[2].perpPoints = []; 
+            perpSlider.value = 50; 
+            document.getElementById('perp-controls').style.display = 'none';
         } else if (currentMode === 'cog') {
             state[1].cogPoints = []; state[2].cogPoints = [];
         } else {
@@ -677,7 +704,7 @@
     }
 
     function findHitPoint(s, pos, mode) {
-        const HIT_RADIUS = 22; 
+        const HIT_RADIUS = 26; // 指でドラッグしやすいように少し広めに設定
         if (mode === 'ai') {
             if (s.aiJoints && s.aiJoints.length === 4) {
                 for (let i = 0; i < s.aiJoints.length; i++) {
@@ -685,6 +712,12 @@
                         return { arrayName: 'aiJoints', index: i };
                     }
                 }
+            }
+            return null;
+        }
+        if (mode === 'scale') {
+            for (let i = 0; i < s.scalePoints.length; i++) { 
+                if (Math.hypot(s.scalePoints[i].x - pos.x, s.scalePoints[i].y - pos.y) <= HIT_RADIUS) return { arrayName: 'scalePoints', index: i }; 
             }
             return null;
         }
@@ -699,10 +732,6 @@
                     if (Math.hypot(s.perpPoints[i].x - pos.x, s.perpPoints[i].y - pos.y) <= HIT_RADIUS) return { arrayName: 'perpPoints', index: i };
                 }
             }
-            return null;
-        }
-        if (mode === 'scale') {
-            for (let i = 0; i < s.scalePoints.length; i++) { if (Math.hypot(s.scalePoints[i].x - pos.x, s.scalePoints[i].y - pos.y) <= HIT_RADIUS) return { arrayName: 'scalePoints', index: i }; }
             return null;
         }
         if (mode === 'perp') {
@@ -723,13 +752,19 @@
         if (currentMode === 'ai') return; 
         
         if (currentMode === 'scale') {
+            if (s.scalePoints.length >= 2) s.scalePoints = [];
             s.scalePoints.push({ x: pos.x, y: pos.y });
-            if (s.scalePoints.length === 2) {
-                tempDistPx = Math.hypot(s.scalePoints[1].x - s.scalePoints[0].x, s.scalePoints[1].y - s.scalePoints[0].y);
-                scaleTarget = targetIdx; scaleModalTitle.innerText = `基準物の長さ設定 (動画${targetIdx === 1 ? '①' : '②'})`;
-                scaleModalOverlay.style.display = 'flex'; scaleInputValue.focus(); scaleInputValue.select();
+            scaleTarget = targetIdx;
+            if (s.scalePoints.length === 1) {
+                s.resultMain = "物差し設定: 2点目をタップ";
+                s.resultSub = "タップ後、点をドラッグして位置を微調整できます";
+            } else if (s.scalePoints.length === 2) {
+                s.resultMain = "2点指定完了: 点をドラッグして微調整";
+                s.resultSub = "位置が決まったら右上の「📏長さ確定」ボタンを押してください";
             }
-            redraw(); return;
+            updateDisplayResult();
+            redraw(); 
+            return;
         }
         if (currentMode === 'perp') {
             if (s.perpPoints.length >= 2) s.perpPoints = [];
@@ -758,6 +793,8 @@
                 const currentFrame = Math.round(video1.currentTime * currentFPS);
                 s.aiOverrides[currentFrame] = s.aiJoints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
                 calcAiResults('manual');
+            } else if (currentMode === 'scale') {
+                // 微調整中は何もしない（座標更新のみ）
             } else {
                 calcResults(s, currentMode); updateDisplayResult();
             }
@@ -769,12 +806,35 @@
         if (draggingPoint) { try { cvs.releasePointerCapture(e.pointerId); } catch(err){} draggingPoint = null; }
     }
 
+    // パターンB: 専用ボタンを押したときにモーダルを開く
+    function openScaleModal() {
+        const s = state[scaleTarget];
+        if (!s || s.scalePoints.length !== 2) {
+            alert("物差しの2点を画面上でタップして設定してください。");
+            return;
+        }
+        tempDistPx = Math.hypot(s.scalePoints[1].x - s.scalePoints[0].x, s.scalePoints[1].y - s.scalePoints[0].y);
+        scaleModalTitle.innerText = `基準物の長さ設定 (動画${scaleTarget === 1 ? '①' : '②'})`;
+        scaleModalOverlay.style.display = 'flex';
+        scaleInputValue.focus();
+        scaleInputValue.select();
+    }
+
     function submitScaleModal() {
         const realCm = parseFloat(scaleInputValue.value);
-        if (realCm && realCm > 0) { state[scaleTarget].pxPerCm = tempDistPx / realCm; updateScaleInfoText(); scaleModalOverlay.style.display = 'none'; setMode('distance'); } 
-        else { alert("有効な数値を入力してください"); }
+        if (realCm && realCm > 0) { 
+            state[scaleTarget].pxPerCm = tempDistPx / realCm; 
+            updateScaleInfoText(); 
+            scaleModalOverlay.style.display = 'none'; 
+            setMode('distance'); 
+        } else { 
+            alert("有効な数値を入力してください"); 
+        }
     }
-    function cancelScaleModal() { state[scaleTarget].scalePoints = []; scaleModalOverlay.style.display = 'none'; setMode('scale'); }
+    
+    function cancelScaleModal() { 
+        scaleModalOverlay.style.display = 'none'; 
+    }
 
     function getInterpolatedAiPoints(currentFrame) {
         const s = state[1];
@@ -927,7 +987,9 @@
                 item.ctx.beginPath(); item.ctx.moveTo(s.scalePoints[0].x, s.scalePoints[0].y); item.ctx.lineTo(s.scalePoints[1].x, s.scalePoints[1].y); item.ctx.stroke(); item.ctx.restore();
             }
             if (currentMode === 'scale') {
-                item.ctx.strokeStyle = '#ff9500'; item.ctx.fillStyle = '#ff9500'; item.ctx.lineWidth = 3; drawPointList(item.ctx, s.scalePoints, "基準"); return;
+                item.ctx.strokeStyle = '#ff9500'; item.ctx.fillStyle = '#ff9500'; item.ctx.lineWidth = 3; 
+                drawPointList(item.ctx, s.scalePoints, ["点1", "点2"]); 
+                return;
             }
             if (s.perpPoints.length > 0) {
                 if (s.perpPoints.length === 1) {
@@ -1118,7 +1180,6 @@
         setTimeout(() => URL.revokeObjectURL(url), 2000);
     }
 
-    // MediaPipe セットアップ
     const pose = new Pose({locateFile: (file) => {
         return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
     }});
