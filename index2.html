@@ -128,7 +128,7 @@
         <button class="ctrl-btn" id="btn-mode-cog" onclick="setMode('cog')">📍 重心移動</button>
         <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">📏 物差し</button>
         <button class="ctrl-btn" id="btn-mode-zoom" onclick="setMode('zoom')">🔍 ズーム</button>
-        <button class="ctrl-btn" id="btn-mode-ai" onclick="setMode('ai')" style="grid-column: span 4; border: 1px solid #00ffcc; color: #00ffcc; background: rgba(0, 255, 204, 0.1);">🤖 AI自動解析 (体幹の傾き)</button>
+        <button class="ctrl-btn" id="btn-mode-ai" onclick="setMode('ai')" style="grid-column: span 4; border: 1px solid #00ffcc; color: #00ffcc; background: rgba(0, 255, 204, 0.1);">🤖 AI自動解析 (体幹傾斜 & 骨盤回旋速度)</button>
     </div>
     
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
@@ -233,7 +233,11 @@
     const fpsList = [30, 60, 120, 240];
     let fpsIdx = 0;
 
-    // ★追加: aiOverrides (手動修正の記憶箱) を state に追加
+    // 骨盤回旋の履歴管理用
+    let lastPelvisAngle = null;
+    let lastPelvisTime = null;
+    let currentPelvisVelocity = 0;
+
     const state = {
         1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiPoints: [], aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
         2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiPoints: [], aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" }
@@ -248,7 +252,6 @@
     let lastActiveTarget = 1;
     let tempDistPx = 0;
     let historyData = []; 
-
     let draggingPoint = null;
 
     function toggleFPS() {
@@ -357,6 +360,10 @@
                 if (dt > 0 && s.pxPerCm) {
                     const speedKMH = ((dist / s.pxPerCm) / 100) / dt * 3.6;
                     s.resultSub = `速度: <span class="highlight-speed">${speedKMH.toFixed(1)}km/h</span> (${currentFPS}fps)`;
+                } else if (!s.pxPerCm) {
+                    s.resultSub = "⚠️速度計算には「📏物差し」の設定が必要です";
+                } else {
+                    s.resultSub = "⚠️速度計算には動画のコマ送りが必要です";
                 }
             } else {
                 s.resultMain = s.points.length === 0 ? "速度モード: 始点→終点をタップ" : "始点を記録";
@@ -367,7 +374,13 @@
                 const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
                 const dt1 = Math.abs(p2.time - p1.time), dt2 = Math.abs(p3.time - p2.time);
                 const dist1 = Math.hypot(p2.x - p1.x, p2.y - p1.y), dist2 = Math.hypot(p3.x - p2.x, p3.y - p2.y);
-                if (dt1 > 0 && dt2 > 0 && s.pxPerCm) {
+                if (!s.pxPerCm) {
+                    s.resultMain = `<span style="color:#ff9500;">⚠️物差し未設定</span>`;
+                    s.resultSub = "先に「📏物差し」モードで長さを設定してください";
+                } else if (dt1 === 0 || dt2 === 0) {
+                    s.resultMain = `<span style="color:#ff9500;">⚠️時間が経過していません</span>`;
+                    s.resultSub = "コマ送りをして、違う時間の3点をタップしてください";
+                } else {
                     const v1 = ((dist1 / s.pxPerCm) / 100) / dt1, v2 = ((dist2 / s.pxPerCm) / 100) / dt2;
                     const accel = (v2 - v1) / ((dt1 + dt2) / 2), gForce = accel / 9.80665;
                     s.resultMain = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)}m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)}G)</span>`;
@@ -382,7 +395,7 @@
         }
     }
 
-    // ★追加: AIモードの手動/補間/AI自動の状態を表示するUI関数
+    // ★修正: 体幹の傾き ＋ 骨盤の回旋速度を同時に表示するUI更新関数
     function calcAiResults(type = 'ai') {
         const s = state[1];
         if (s.aiPoints.length === 2) {
@@ -390,13 +403,17 @@
             const dy = s.aiPoints[1].y - s.aiPoints[0].y;
             const angleDeg = Math.atan2(dx, -dy) * (180 / Math.PI);
             
-            let typeLabel = "🤖 AI自動";
+            let typeLabel = "🤖 AI";
             let color = "#00ffcc";
-            if (type === 'manual') { typeLabel = "✋ 手動修正"; color = "#ff9500"; }
-            else if (type === 'interpolated') { typeLabel = "✨ 自動補間"; color = "#ffcc00"; }
+            if (type === 'manual') { typeLabel = "✋ 手動"; color = "#ff9500"; }
+            else if (type === 'interpolated') { typeLabel = "✨ 補間"; color = "#ffcc00"; }
             
-            mainResult.innerHTML = `${typeLabel}計測 ｜ 体幹の傾き: <span style="color:${color};">${angleDeg.toFixed(1)}°</span>`;
-            subResult.innerHTML = "オレンジの点をドラッグして微調整可能（2箇所直すと間を自動補間）";
+            const velText = Math.abs(currentPelvisVelocity) > 0 
+                ? `<span class="highlight-speed" style="font-size:13px;">${Math.abs(currentPelvisVelocity).toFixed(0)} deg/s</span>` 
+                : `<span style="color:#aaa;">0 deg/s</span>`;
+
+            mainResult.innerHTML = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 骨盤回旋速度: ${velText}`;
+            subResult.innerHTML = `胸郭・骨盤中心軸 ｜ 速度は1秒あたりの回旋角 (${currentFPS}fps)`;
         }
     }
 
@@ -523,6 +540,7 @@
         } else if (mode === 'ai') {
             btnModeAi.classList.add('mode-active');
             mainResult.innerHTML = "🤖 AI読込中..."; subResult.innerHTML = "動画を再生するかコマ送りして解析を開始してください";
+            lastPelvisAngle = null; lastPelvisTime = null; currentPelvisVelocity = 0;
             if (video1.readyState >= 2) pose.send({image: video1});
             redraw();
         } else {
@@ -543,13 +561,12 @@
     }
 
     function clearCurrentPoints() {
-        // ★修正: AIモードの時は手動修正の記憶だけをリセットする
         if (currentMode === 'ai') {
             state[1].aiOverrides = {};
+            lastPelvisAngle = null; lastPelvisTime = null; currentPelvisVelocity = 0;
             if (video1.readyState >= 2) pose.send({image: video1});
             return;
         }
-        
         if (currentMode === 'perp') {
             state[1].perpPoints = []; state[2].perpPoints = []; perpSlider.value = 50; document.getElementById('perp-controls').style.display = 'none';
         } else if (currentMode === 'cog') {
@@ -689,7 +706,6 @@
         const pt = s[draggingPoint.arrayName][draggingPoint.index];
         if (pt) {
             pt.x = pos.x; pt.y = pos.y;
-            // ★修正: AIモードでドラッグした時にフレーム番号をキーにして座標を記憶する
             if (currentMode === 'ai') {
                 const currentFrame = Math.round(video1.currentTime * currentFPS);
                 s.aiOverrides[currentFrame] = [
@@ -715,7 +731,6 @@
     }
     function cancelScaleModal() { state[scaleTarget].scalePoints = []; scaleModalOverlay.style.display = 'none'; setMode('scale'); }
 
-    // ★追加: 前後の手動修正データを探して、間を滑らかに繋ぐ（線形補間）関数
     function getInterpolatedAiPoints(currentFrame) {
         const s = state[1];
         if (s.aiOverrides[currentFrame]) return { points: s.aiOverrides[currentFrame], type: 'manual' };
@@ -729,7 +744,6 @@
             if (frames[i] > currentFrame && next === -1) next = frames[i];
         }
 
-        // 修正箇所の間隔が60フレーム（約2秒）以内なら、間の座標を自動計算して埋める
         if (prev !== -1 && next !== -1 && (next - prev) <= 60) {
             const ratio = (currentFrame - prev) / (next - prev);
             const pt0 = {
@@ -750,7 +764,6 @@
             const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
-            // ★修正: AIモードの描画で状態（色）を変える
             if (currentMode === 'ai') {
                 if (item.idx === 1 && s.aiPoints.length === 2) {
                     const midHip = s.aiPoints[0];
@@ -758,9 +771,9 @@
                     const currentFrame = Math.round(video1.currentTime * currentFPS);
                     const overrideData = getInterpolatedAiPoints(currentFrame);
                     
-                    let lineColor = '#00ffcc'; // 基本は緑
-                    if (overrideData && overrideData.type === 'manual') lineColor = '#ff9500'; // 手動はオレンジ
-                    else if (overrideData && overrideData.type === 'interpolated') lineColor = '#ffcc00'; // 自動補間は黄色
+                    let lineColor = '#00ffcc'; 
+                    if (overrideData && overrideData.type === 'manual') lineColor = '#ff9500'; 
+                    else if (overrideData && overrideData.type === 'interpolated') lineColor = '#ffcc00'; 
 
                     item.ctx.beginPath();
                     item.ctx.moveTo(midHip.x, midHip.y);
@@ -778,7 +791,6 @@
                 return; 
             }
 
-            // (これ以降の通常の描画は変更なし)
             if (s.scalePoints.length === 2 && currentMode !== 'scale') {
                 item.ctx.save(); item.ctx.strokeStyle = 'rgba(255, 149, 0, 0.4)'; item.ctx.lineWidth = 2; item.ctx.setLineDash([4, 4]);
                 item.ctx.beginPath(); item.ctx.moveTo(s.scalePoints[0].x, s.scalePoints[0].y); item.ctx.lineTo(s.scalePoints[1].x, s.scalePoints[1].y); item.ctx.stroke(); item.ctx.restore();
@@ -884,9 +896,9 @@
     pose.onResults((results) => {
         if (currentMode !== 'ai') return; 
 
-        const currentFrame = Math.round(video1.currentTime * currentFPS);
+        const currentTime = video1.currentTime;
+        const currentFrame = Math.round(currentTime * currentFPS);
         
-        // ★修正: AIの処理前に、手動修正や補間のデータがないかチェックする
         const overrideData = getInterpolatedAiPoints(currentFrame);
         if (overrideData) {
             state[1].aiPoints = [
@@ -905,11 +917,40 @@
         
         const landmarks = results.poseLandmarks;
         const getPos = (lm) => ({ x: lm.x * canvas1.width, y: lm.y * canvas1.height });
-        const shoulderL = getPos(landmarks[11]), shoulderR = getPos(landmarks[12]), hipL = getPos(landmarks[23]), hipR = getPos(landmarks[24]);
-        const midShoulder = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
-        const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
+        
+        const shoulderL = getPos(landmarks[11]);
+        const shoulderR = getPos(landmarks[12]);
+        const hipL = getPos(landmarks[23]);
+        const hipR = getPos(landmarks[24]);
 
-        state[1].aiPoints = [midHip, midShoulder];
+        const thoraxCenter = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
+        const pelvisCenter = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
+
+        // ★追加: 左右股関節のX, Z座標（奥行き）から骨盤の水平回旋角と回旋速度を算出
+        const rawHipL = landmarks[23];
+        const rawHipR = landmarks[24];
+        const dxPelvis = rawHipR.x - rawHipL.x;
+        const dzPelvis = (rawHipR.z || 0) - (rawHipL.z || 0);
+        const pelvisAngleDeg = Math.atan2(dzPelvis, dxPelvis) * (180 / Math.PI);
+
+        if (lastPelvisAngle !== null && lastPelvisTime !== null) {
+            const dt = currentTime - lastPelvisTime;
+            if (dt > 0.001 && dt < 0.5) { // 適切な時間間隔の時のみ計算
+                let dAngle = pelvisAngleDeg - lastPelvisAngle;
+                // 180度またぎの補正
+                if (dAngle > 180) dAngle -= 360;
+                if (dAngle < -180) dAngle += 360;
+                
+                const rawVelocity = dAngle / dt;
+                // 急激なノイズを抑えるための移動平均フィルタ
+                currentPelvisVelocity = currentPelvisVelocity * 0.4 + rawVelocity * 0.6;
+            }
+        }
+        lastPelvisAngle = pelvisAngleDeg;
+        lastPelvisTime = currentTime;
+
+        // 骨盤中心(0) -> 胸郭中心(1)
+        state[1].aiPoints = [pelvisCenter, thoraxCenter];
         calcAiResults('ai');
         redraw();
     });
@@ -921,8 +962,19 @@
         }
     }
 
-    video1.addEventListener('play', () => { if (currentMode === 'ai') detectFrame(); });
-    video1.addEventListener('seeked', async () => { if (currentMode === 'ai' && video1.readyState >= 2) await pose.send({image: video1}); });
+    video1.addEventListener('play', () => { 
+        if (currentMode === 'ai') {
+            lastPelvisAngle = null; 
+            lastPelvisTime = null; 
+            detectFrame(); 
+        }
+    });
+    
+    video1.addEventListener('seeked', async () => { 
+        if (currentMode === 'ai' && video1.readyState >= 2) {
+            await pose.send({image: video1}); 
+        }
+    });
 
 </script>
 </body>
