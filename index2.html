@@ -235,9 +235,10 @@
 
     let currentTorsionAngle = 0;
 
+    // ★ aiJoints: [shoulderL, shoulderR, hipL, hipR] の4点を管理
     const state = {
-        1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiPoints: [], aiBars: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
-        2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiPoints: [], aiBars: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" }
+        1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
+        2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" }
     };
     
     const viewState = {
@@ -392,14 +393,37 @@
         }
     }
 
+    // ★修正: 4点（肩2点・股関節2点）から体幹傾斜と捻転差を計算する関数
     function calcAiResults(type = 'ai') {
         const s = state[1];
-        if (s.aiPoints.length === 2) {
-            const midHip = s.aiPoints[0];
-            const midThorax = s.aiPoints[1];
+        if (s.aiJoints && s.aiJoints.length === 4) {
+            const shoulderL = s.aiJoints[0];
+            const shoulderR = s.aiJoints[1];
+            const hipL = s.aiJoints[2];
+            const hipR = s.aiJoints[3];
+
+            // 中心点の計算
+            const midThorax = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
+            const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
+
+            // 1. 体幹傾斜角（垂直に対する傾き）
             const dx = midThorax.x - midHip.x;
             const dy = midThorax.y - midHip.y;
             const angleDeg = Math.atan2(dx, -dy) * (180 / Math.PI);
+
+            // 2. 捻転差（X, Z座標から算出）
+            const dxPelvis = hipR.x - hipL.x;
+            const dzPelvis = (hipR.z || 0) - (hipL.z || 0);
+            const pelvisAngleDeg = Math.atan2(dzPelvis, dxPelvis) * (180 / Math.PI);
+
+            const dxThorax = shoulderR.x - shoulderL.x;
+            const dzThorax = (shoulderR.z || 0) - (shoulderL.z || 0);
+            const thoraxAngleDeg = Math.atan2(dzThorax, dxThorax) * (180 / Math.PI);
+
+            let torsionDiff = thoraxAngleDeg - pelvisAngleDeg;
+            if (torsionDiff > 180) torsionDiff -= 360;
+            if (torsionDiff < -180) torsionDiff += 360;
+            currentTorsionAngle = torsionDiff;
             
             let typeLabel = "🤖 AI";
             let color = "#00ffcc";
@@ -409,7 +433,7 @@
             const torsionText = `<span class="highlight-speed" style="font-size:13px;">${Math.abs(currentTorsionAngle).toFixed(1)}°</span>`;
 
             mainResult.innerHTML = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差(X-Factor): ${torsionText}`;
-            subResult.innerHTML = `赤バー:胸郭 ｜ 青バー:骨盤 ｜ 緑線:体幹中心軸（ドラッグで微調整可能）`;
+            subResult.innerHTML = `赤バー:胸郭 ｜ 青バー:骨盤 ｜ <span style="color:#ff9500;">4つの端点</span>を直接ドラッグして修正可能`;
         }
     }
 
@@ -628,11 +652,16 @@
         return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     }
 
+    // ★修正: AIモード時は4つの端点（左肩・右肩・左腰・右腰）の当たり判定を行う
     function findHitPoint(s, pos, mode) {
-        const HIT_RADIUS = 20; 
+        const HIT_RADIUS = 22; 
         if (mode === 'ai') {
-            for (let i = 0; i < s.aiPoints.length; i++) {
-                if (Math.hypot(s.aiPoints[i].x - pos.x, s.aiPoints[i].y - pos.y) <= HIT_RADIUS) return { arrayName: 'aiPoints', index: i };
+            if (s.aiJoints && s.aiJoints.length === 4) {
+                for (let i = 0; i < s.aiJoints.length; i++) {
+                    if (Math.hypot(s.aiJoints[i].x - pos.x, s.aiJoints[i].y - pos.y) <= HIT_RADIUS) {
+                        return { arrayName: 'aiJoints', index: i };
+                    }
+                }
             }
             return null;
         }
@@ -702,12 +731,10 @@
         const pt = s[draggingPoint.arrayName][draggingPoint.index];
         if (pt) {
             pt.x = pos.x; pt.y = pos.y;
+            // ★修正: 4点のいずれかを動かした時に、そのコマの4点全データを記憶
             if (currentMode === 'ai') {
                 const currentFrame = Math.round(video1.currentTime * currentFPS);
-                s.aiOverrides[currentFrame] = [
-                    { x: s.aiPoints[0].x, y: s.aiPoints[0].y },
-                    { x: s.aiPoints[1].x, y: s.aiPoints[1].y }
-                ];
+                s.aiOverrides[currentFrame] = s.aiJoints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
                 calcAiResults('manual');
             } else {
                 calcResults(s, currentMode, false, targetIdx); updateDisplayResult();
@@ -727,9 +754,10 @@
     }
     function cancelScaleModal() { state[scaleTarget].scalePoints = []; scaleModalOverlay.style.display = 'none'; setMode('scale'); }
 
+    // ★修正: 4点すべてのキーフレーム線形補間
     function getInterpolatedAiPoints(currentFrame) {
         const s = state[1];
-        if (s.aiOverrides[currentFrame]) return { points: s.aiOverrides[currentFrame], type: 'manual' };
+        if (s.aiOverrides[currentFrame]) return { joints: s.aiOverrides[currentFrame], type: 'manual' };
 
         const frames = Object.keys(s.aiOverrides).map(Number).sort((a, b) => a - b);
         if (frames.length < 2) return null;
@@ -742,52 +770,55 @@
 
         if (prev !== -1 && next !== -1 && (next - prev) <= 60) {
             const ratio = (currentFrame - prev) / (next - prev);
-            const pt0 = {
-                x: s.aiOverrides[prev][0].x + (s.aiOverrides[next][0].x - s.aiOverrides[prev][0].x) * ratio,
-                y: s.aiOverrides[prev][0].y + (s.aiOverrides[next][0].y - s.aiOverrides[prev][0].y) * ratio
-            };
-            const pt1 = {
-                x: s.aiOverrides[prev][1].x + (s.aiOverrides[next][1].x - s.aiOverrides[prev][1].x) * ratio,
-                y: s.aiOverrides[prev][1].y + (s.aiOverrides[next][1].y - s.aiOverrides[prev][1].y) * ratio
-            };
-            return { points: [pt0, pt1], type: 'interpolated' };
+            const joints = [];
+            for (let j = 0; j < 4; j++) {
+                joints.push({
+                    x: s.aiOverrides[prev][j].x + (s.aiOverrides[next][j].x - s.aiOverrides[prev][j].x) * ratio,
+                    y: s.aiOverrides[prev][j].y + (s.aiOverrides[next][j].y - s.aiOverrides[prev][j].y) * ratio,
+                    z: (s.aiOverrides[prev][j].z || 0) + ((s.aiOverrides[next][j].z || 0) - (s.aiOverrides[prev][j].z || 0)) * ratio
+                });
+            }
+            return { joints, type: 'interpolated' };
         }
         return null;
     }
 
-    // ★修正: 画面の描画処理で「胸郭の向き（赤）」と「骨盤の向き（青）」を視覚化！
     function redraw() {
         [ {idx: 1, c: canvas1, ctx: ctx1}, {idx: 2, c: canvas2, ctx: ctx2} ].forEach(item => {
             const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
+            // ★修正: 4つの端点（オレンジ）と胸郭・骨盤・体幹軸を描画
             if (currentMode === 'ai') {
-                if (item.idx === 1 && s.aiPoints.length === 2) {
-                    const midHip = s.aiPoints[0];
-                    const midThorax = s.aiPoints[1];
+                if (item.idx === 1 && s.aiJoints && s.aiJoints.length === 4) {
+                    const shoulderL = s.aiJoints[0];
+                    const shoulderR = s.aiJoints[1];
+                    const hipL = s.aiJoints[2];
+                    const hipR = s.aiJoints[3];
+
+                    const midThorax = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
+                    const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
+
                     const currentFrame = Math.round(video1.currentTime * currentFPS);
                     const overrideData = getInterpolatedAiPoints(currentFrame);
                     
-                    // 1. 胸郭の向きバー（赤色）と 骨盤の向きバー（青色）を描画
-                    if (s.aiBars) {
-                        // 胸郭（赤色ライン）
-                        item.ctx.beginPath();
-                        item.ctx.moveTo(s.aiBars.shoulderL.x, s.aiBars.shoulderL.y);
-                        item.ctx.lineTo(s.aiBars.shoulderR.x, s.aiBars.shoulderR.y);
-                        item.ctx.strokeStyle = '#ff375f';
-                        item.ctx.lineWidth = 3;
-                        item.ctx.stroke();
+                    // 1. 胸郭の向きバー（赤色）
+                    item.ctx.beginPath();
+                    item.ctx.moveTo(shoulderL.x, shoulderL.y);
+                    item.ctx.lineTo(shoulderR.x, shoulderR.y);
+                    item.ctx.strokeStyle = '#ff375f';
+                    item.ctx.lineWidth = 4;
+                    item.ctx.stroke();
 
-                        // 骨盤（青色ライン）
-                        item.ctx.beginPath();
-                        item.ctx.moveTo(s.aiBars.hipL.x, s.aiBars.hipL.y);
-                        item.ctx.lineTo(s.aiBars.hipR.x, s.aiBars.hipR.y);
-                        item.ctx.strokeStyle = '#007aff';
-                        item.ctx.lineWidth = 3;
-                        item.ctx.stroke();
-                    }
+                    // 2. 骨盤の向きバー（青色）
+                    item.ctx.beginPath();
+                    item.ctx.moveTo(hipL.x, hipL.y);
+                    item.ctx.lineTo(hipR.x, hipR.y);
+                    item.ctx.strokeStyle = '#007aff';
+                    item.ctx.lineWidth = 4;
+                    item.ctx.stroke();
 
-                    // 2. 体幹の中心軸（緑色ライン）
+                    // 3. 体幹の中心軸（緑色ライン）
                     let lineColor = '#00ffcc'; 
                     if (overrideData && overrideData.type === 'manual') lineColor = '#ff9500'; 
                     else if (overrideData && overrideData.type === 'interpolated') lineColor = '#ffcc00'; 
@@ -796,12 +827,12 @@
                     item.ctx.moveTo(midHip.x, midHip.y);
                     item.ctx.lineTo(midThorax.x, midThorax.y);
                     item.ctx.strokeStyle = lineColor;
-                    item.ctx.lineWidth = 5;
+                    item.ctx.lineWidth = 4;
                     item.ctx.stroke();
 
-                    // 3. 中心点（オレンジの操作ポイント）
+                    // 4. 操作可能な4つの端点（オレンジの丸）
                     item.ctx.fillStyle = '#ff9500';
-                    [midHip, midThorax].forEach(pt => {
+                    s.aiJoints.forEach(pt => {
                         item.ctx.beginPath(); item.ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2); item.ctx.fill();
                         item.ctx.strokeStyle = '#fff'; item.ctx.lineWidth = 2; item.ctx.stroke();
                     });
@@ -916,12 +947,10 @@
 
         const currentFrame = Math.round(video1.currentTime * currentFPS);
         
+        // ★修正: 補間・手動修正データがあれば4点まとめて適用
         const overrideData = getInterpolatedAiPoints(currentFrame);
         if (overrideData) {
-            state[1].aiPoints = [
-                { x: overrideData.points[0].x, y: overrideData.points[0].y },
-                { x: overrideData.points[1].x, y: overrideData.points[1].y }
-            ];
+            state[1].aiJoints = overrideData.joints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
             calcAiResults(overrideData.type);
             redraw();
             return;
@@ -933,42 +962,15 @@
         }
         
         const landmarks = results.poseLandmarks;
-        const getPos = (lm) => ({ x: lm.x * canvas1.width, y: lm.y * canvas1.height });
+        const getPos = (lm) => ({ x: lm.x * canvas1.width, y: lm.y * canvas1.height, z: lm.z || 0 });
         
-        // 左右の肩と股関節
+        // 4つの関節座標（左肩, 右肩, 左股関節, 右股関節）
         const shoulderL = getPos(landmarks[11]);
         const shoulderR = getPos(landmarks[12]);
         const hipL = getPos(landmarks[23]);
         const hipR = getPos(landmarks[24]);
 
-        // 胸郭中心と骨盤中心
-        const thoraxCenter = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
-        const pelvisCenter = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
-
-        // 描画用のバー情報を保持
-        state[1].aiBars = { shoulderL, shoulderR, hipL, hipR };
-
-        // 捻転差の算出（X, Z座標から角度を求める）
-        const rawHipL = landmarks[23];
-        const rawHipR = landmarks[24];
-        const rawShoulderL = landmarks[11];
-        const rawShoulderR = landmarks[12];
-
-        const dxPelvis = rawHipR.x - rawHipL.x;
-        const dzPelvis = (rawHipR.z || 0) - (rawHipL.z || 0);
-        const pelvisAngleDeg = Math.atan2(dzPelvis, dxPelvis) * (180 / Math.PI);
-
-        const dxThorax = rawShoulderR.x - rawShoulderL.x;
-        const dzThorax = (rawShoulderR.z || 0) - (rawShoulderL.z || 0);
-        const thoraxAngleDeg = Math.atan2(dzThorax, dxThorax) * (180 / Math.PI);
-
-        let torsionDiff = thoraxAngleDeg - pelvisAngleDeg;
-        if (torsionDiff > 180) torsionDiff -= 360;
-        if (torsionDiff < -180) torsionDiff += 360;
-        currentTorsionAngle = torsionDiff;
-
-        // 骨盤中心(0) -> 胸郭中心(1)
-        state[1].aiPoints = [pelvisCenter, thoraxCenter];
+        state[1].aiJoints = [shoulderL, shoulderR, hipL, hipR];
         calcAiResults('ai');
         redraw();
     });
