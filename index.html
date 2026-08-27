@@ -46,8 +46,13 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 6px;
+        gap: 4px;
+        overflow-x: auto;
+        white-space: nowrap;
+        scrollbar-width: none;
     }
+    .header-top-row::-webkit-scrollbar { display: none; }
+    
     .btn-group-header {
         display: flex;
         align-items: center;
@@ -66,15 +71,18 @@
         font-size: 11px;
         cursor: pointer;
         white-space: nowrap;
+        flex-shrink: 0;
     }
     .hdr-btn.secondary { background: #3a3a3c; }
     .hdr-btn.compare-parallel { background: #af52de; color: #fff; }
     .hdr-btn.compare-overlay { background: #ff2d55; color: #fff; }
     .hdr-btn.fps-badge { background: #30d158; color: #000; font-size: 10px; }
+    .hdr-btn.scale-badge { background: #ff9500; color: #000; font-size: 10px; }
+    .hdr-btn.scale-active { background: #ffcc00; color: #000; outline: 2px solid #fff; }
     .hdr-btn.zoom-badge { background: #5856d6; color: #fff; font-size: 10px; }
     .hdr-btn.zoom-active { background: #ff9500; color: #000; font-weight: bold; }
     
-    #scale-info-text { font-size: 10px; color: #ff9500; font-weight: 600; text-align: right; white-space: nowrap; }
+    #scale-info-text { font-size: 10px; color: #ff9500; font-weight: 600; text-align: right; white-space: nowrap; flex-shrink: 0; }
     
     #result-box {
         width: 100%;
@@ -146,14 +154,14 @@
     .mode-grid {
         width: 100%;
         display: grid;
-        grid-template-columns: repeat(3, 1fr) 1fr 1fr 1fr;
+        grid-template-columns: repeat(5, 1fr);
         gap: 4px;
     }
     button.ctrl-btn {
         -webkit-appearance: none;
         appearance: none;
         width: 100%;
-        padding: 7px 0;
+        padding: 8px 0;
         background: #2c2c2e;
         color: white;
         border: none;
@@ -166,7 +174,6 @@
     button.ctrl-btn:active { background: #444; }
     button.mode-active { background: #30d158; color: black; font-weight: bold; }
     #btn-mode-acc.mode-active { background: #ff375f; color: white; font-weight: bold; }
-    #btn-mode-scale.mode-active { background: #ff9500; color: black; font-weight: bold; }
     #btn-mode-perp.mode-active { background: #ff2d55; color: white; font-weight: bold; }
     #btn-mode-sim.mode-active { background: #30d158; color: black; font-weight: bold; }
     #btn-mode-cog.mode-active { background: #5e5ce6; color: white; font-weight: bold; }
@@ -214,6 +221,7 @@
             <button class="hdr-btn secondary" id="btn-pick2" style="display:none;" onclick="triggerPickVideo(2)">動画②</button>
             <button class="hdr-btn secondary" id="btn-toggle-compare" onclick="toggleCompareMode()">1画面のみ</button>
             <button class="hdr-btn fps-badge" id="btn-fps" onclick="toggleFPS()">30fps</button>
+            <button class="hdr-btn scale-badge" id="btn-scale-toggle" onclick="setMode('scale')">📏 物差し</button>
             <button class="hdr-btn zoom-badge" id="btn-zoom-toggle" onclick="toggleZoomMode()">🔍 ズーム</button>
             <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 保存</button>
         </div>
@@ -260,8 +268,6 @@
         <button class="ctrl-btn" id="btn-mode-acc" onclick="setMode('accel')">加速(3点)</button>
         <button class="ctrl-btn" id="btn-mode-perp" onclick="setMode('perp')">垂直線(基準)</button>
         <button class="ctrl-btn" id="btn-mode-cog" onclick="setMode('cog')">📍 重心移動</button>
-        <button class="ctrl-btn" id="btn-mode-sim" onclick="setMode('sim')">🎯 予測(+10°)</button>
-        <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">物差し</button>
     </div>
     
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
@@ -328,6 +334,7 @@
     const btnPick2 = document.getElementById('btn-pick2');
     const btnToggleCompare = document.getElementById('btn-toggle-compare');
     const btnFps = document.getElementById('btn-fps');
+    const btnScaleToggle = document.getElementById('btn-scale-toggle');
     const btnZoomToggle = document.getElementById('btn-zoom-toggle');
     const seekbar1 = document.getElementById('seekbar1');
     const seekbar2 = document.getElementById('seekbar2');
@@ -344,9 +351,7 @@
     const btnModeAngle = document.getElementById('btn-mode-angle');
     const btnModeDist = document.getElementById('btn-mode-dist');
     const btnModeAcc = document.getElementById('btn-mode-acc');
-    const btnModeScale = document.getElementById('btn-mode-scale');
     const btnModePerp = document.getElementById('btn-mode-perp');
-    const btnModeSim = document.getElementById('btn-mode-sim');
     const btnModeCog = document.getElementById('btn-mode-cog');
     const perpSlider = document.getElementById('perp-slider');
     const simSlider = document.getElementById('sim-slider');
@@ -416,18 +421,6 @@
 
     let draggingPoint = null;
 
-    function simulateJointAngle(p2, p3, deltaDeg) {
-        const rad = deltaDeg * (Math.PI / 180);
-        const dx = p3.x - p2.x;
-        const dy = p3.y - p2.y;
-        const rotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
-        const rotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
-        return {
-            x: p2.x + rotatedX,
-            y: p2.y + rotatedY
-        };
-    }
-
     function calcResults(s, mode, isNewPoint = false, targetIdx = 1) {
         if (mode === 'angle') {
             if (s.points.length === 3) {
@@ -446,29 +439,6 @@
                 s.resultMain = s.points.length === 0 ? "角度モード: 3点をタップ" : `点 ${s.points.length}/3`;
                 s.resultSub = s.points.length === 1 ? "2点目(頂点)をタップ" : "頂点(2点目)を中心とした角度を測定";
             }
-        } else if (mode === 'sim') {
-            if (s.points.length === 3) {
-                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
-                const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
-                const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
-                const dot = v1.x * v2.x + v1.y * v2.y;
-                const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
-                let curAngle = 0;
-                if (mag1 * mag2 !== 0) {
-                    let cosVal = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
-                    curAngle = Math.acos(cosVal) * (180 / Math.PI);
-                }
-                const deltaDeg = parseFloat(simSlider.value);
-                const simPt = simulateJointAngle(p2, p3, deltaDeg);
-                const diffPx = Math.hypot(simPt.x - p3.x, simPt.y - p3.y);
-                const shiftText = s.pxPerCm ? `(先端移動: ${(diffPx / s.pxPerCm).toFixed(1)}cm)` : `(先端移動: ${diffPx.toFixed(1)}px)`;
-                
-                s.resultMain = `<span class="highlight-sim">可動域予測: ${curAngle.toFixed(1)}° → ${(curAngle + deltaDeg).toFixed(1)}° (${deltaDeg > 0 ? '+' : ''}${deltaDeg}°)</span>`;
-                s.resultSub = `緑の破線が改善後の予測位置 ${shiftText}`;
-            } else {
-                s.resultMain = s.points.length === 0 ? "予測モード: 根元→関節中心→先端をタップ" : `点 ${s.points.length}/3`;
-                s.resultSub = "3点打つと、下のスライダーで角度改善シミュレーションが動きます";
-            }
         } else if (mode === 'cog') {
             if (s.perpPoints.length < 2) {
                 s.resultMain = "先に「垂直線(基準)」で基準線を2点引いてください";
@@ -484,13 +454,13 @@
 
                 const dx = p2.x - p1.x, dy = p2.y - p1.y;
                 const len = Math.hypot(dx, dy);
-                const ux = dx / len, uy = dy / len; // 基準線方向（左右）
-                const nx = -uy, ny = ux;            // 垂直線方向（上下）
+                const ux = dx / len, uy = dy / len;
+                const nx = -uy, ny = ux;
 
                 const lastPt = s.cogPoints[s.cogPoints.length - 1];
                 const rx = lastPt.x - originX, ry = lastPt.y - originY;
-                const curLateral = rx * ux + ry * uy;       // 垂直線からの左右変位
-                const curVertical = -(rx * nx + ry * ny);   // 基準線からの上下変位（上向き正）
+                const curLateral = rx * ux + ry * uy;
+                const curVertical = -(rx * nx + ry * ny);
 
                 let minL = Infinity, maxL = -Infinity, minV = Infinity, maxV = -Infinity;
                 s.cogPoints.forEach(p => {
@@ -570,14 +540,6 @@
 
     perpSlider.addEventListener('input', () => {
         [1, 2].forEach(idx => calcResults(state[idx], currentMode, false, idx));
-        updateDisplayResult();
-        redraw();
-    });
-    
-    simSlider.addEventListener('input', e => {
-        const deg = parseFloat(e.target.value);
-        simDegVal.innerText = `${deg > 0 ? '+' : ''}${deg}°`;
-        [1, 2].forEach(idx => calcResults(state[idx], 'sim', false, idx));
         updateDisplayResult();
         redraw();
     });
@@ -735,7 +697,7 @@
     }
 
     function setMode(mode) {
-        const mainModes = ['angle', 'distance', 'accel', 'sim', 'perp', 'cog'];
+        const mainModes = ['angle', 'distance', 'accel', 'perp', 'cog'];
         if (mainModes.includes(mode) && mode !== lastMeasureMode) {
             if (mode !== 'cog' && mode !== 'perp' && lastMeasureMode !== 'cog' && lastMeasureMode !== 'perp') {
                 state[1].points = [];
@@ -743,24 +705,23 @@
             }
         }
         
-        lastMeasureMode = mode;
+        if (mode !== 'scale') {
+            lastMeasureMode = mode;
+        }
         currentMode = mode;
         
-        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModePerp, btnModeSim, btnModeCog].forEach(b => b.classList.remove('mode-active'));
+        [btnModeAngle, btnModeDist, btnModeAcc, btnModePerp, btnModeCog].forEach(b => b.classList.remove('mode-active'));
+        btnScaleToggle.classList.remove('scale-active');
 
         const showPerp = (mode === 'perp' || mode === 'cog' || state[1].perpPoints.length === 2 || state[2].perpPoints.length === 2);
         document.getElementById('perp-controls').style.display = showPerp ? 'flex' : 'none';
 
-        const showSim = (mode === 'sim');
-        document.getElementById('sim-controls').style.display = showSim ? 'flex' : 'none';
-
         if (mode === 'angle') btnModeAngle.classList.add('mode-active');
         else if (mode === 'distance') btnModeDist.classList.add('mode-active');
         else if (mode === 'accel') btnModeAcc.classList.add('mode-active');
-        else if (mode === 'scale') btnModeScale.classList.add('mode-active');
         else if (mode === 'perp') btnModePerp.classList.add('mode-active');
-        else if (mode === 'sim') btnModeSim.classList.add('mode-active');
         else if (mode === 'cog') btnModeCog.classList.add('mode-active');
+        else if (mode === 'scale') btnScaleToggle.classList.add('scale-active');
         
         if (mode === 'scale') {
             state[1].scalePoints = [];
@@ -1004,7 +965,7 @@
             state[scaleTarget].pxPerCm = tempDistPx / realCm;
             updateScaleInfoText();
             scaleModalOverlay.style.display = 'none';
-            setMode('distance');
+            setMode(lastMeasureMode);
         } else {
             alert("有効な数値を入力してください");
         }
@@ -1012,7 +973,7 @@
     function cancelScaleModal() {
         state[scaleTarget].scalePoints = [];
         scaleModalOverlay.style.display = 'none';
-        setMode('scale');
+        setMode(lastMeasureMode);
     }
 
     function redraw() {
@@ -1038,7 +999,7 @@
                 return;
             }
 
-            // 2. 垂直線（＝重心の直交座標基準軸）
+            // 2. 垂直線（重心移動の基準軸）
             if (s.perpPoints.length > 0) {
                 if (s.perpPoints.length === 1) {
                     item.ctx.fillStyle = '#ff2d55';
@@ -1075,7 +1036,6 @@
                         item.ctx.setLineDash([]);
                     }
 
-                    // 垂直線の足元（原点）
                     item.ctx.fillStyle = '#ff2d55';
                     item.ctx.beginPath();
                     item.ctx.arc(pmX, pmY, 6, 0, Math.PI * 2);
@@ -1083,7 +1043,7 @@
                 }
             }
 
-            // 3. 📍 重心移動（軌跡＆ラベル）
+            // 3. 📍 重心移動
             if (s.cogPoints.length > 0) {
                 item.ctx.save();
                 item.ctx.strokeStyle = 'rgba(255, 204, 0, 0.6)';
@@ -1109,45 +1069,15 @@
                 item.ctx.restore();
             }
 
-            // 4. 通常の測定ポイント / 予測シミュレーション
+            // 4. 通常の測定ポイント
             if (s.points.length > 0 && lastMeasureMode !== 'cog' && lastMeasureMode !== 'perp') {
                 if (lastMeasureMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
                 else if (lastMeasureMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
                 else if (lastMeasureMode === 'accel') item.ctx.strokeStyle = item.ctx.fillStyle = '#ff375f';
-                else if (lastMeasureMode === 'sim') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
                 item.ctx.lineWidth = 3;
 
-                let labels = lastMeasureMode === 'distance' ? ["始点", "終点"] : (lastMeasureMode === 'accel' ? ["点1", "点2", "点3"] : (lastMeasureMode === 'sim' ? ["根元", "関節", "先端"] : null));
+                let labels = lastMeasureMode === 'distance' ? ["始点", "終点"] : (lastMeasureMode === 'accel' ? ["点1", "点2", "点3"] : null);
                 drawPointList(item.ctx, s.points, labels);
-
-                // 🎯 予測モード時のシミュレーション線
-                if (lastMeasureMode === 'sim' && s.points.length === 3) {
-                    const p2 = s.points[1];
-                    const p3 = s.points[2];
-                    const deltaDeg = parseFloat(simSlider.value);
-                    const simP3 = simulateJointAngle(p2, p3, deltaDeg);
-
-                    item.ctx.save();
-                    item.ctx.strokeStyle = '#30d158';
-                    item.ctx.fillStyle = '#30d158';
-                    item.ctx.lineWidth = 3;
-                    item.ctx.setLineDash([5, 4]);
-
-                    item.ctx.beginPath();
-                    item.ctx.moveTo(p2.x, p2.y);
-                    item.ctx.lineTo(simP3.x, simP3.y);
-                    item.ctx.stroke();
-                    item.ctx.setLineDash([]);
-
-                    item.ctx.beginPath();
-                    item.ctx.arc(simP3.x, simP3.y, 6, 0, Math.PI * 2);
-                    item.ctx.fill();
-
-                    item.ctx.fillStyle = '#30d158';
-                    item.ctx.font = 'bold 11px sans-serif';
-                    item.ctx.fillText(`予測(${deltaDeg > 0 ? '+' : ''}${deltaDeg}°)`, simP3.x + 8, simP3.y - 4);
-                    item.ctx.restore();
-                }
             }
         });
     }
