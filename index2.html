@@ -175,7 +175,7 @@
             <span style="font-weight:bold; font-size:15px;">cm</span>
         </div>
         <div class="modal-btn-row">
-            <button style="background:#444; color:#fff;" onclick="cancelScaleModal()">キャンセル</button>
+            <button style="background:#444; color:#fff;" onclick="closeScaleModal()">キャンセル</button>
             <button style="background:#ff9500; color:#000;" onclick="submitScaleModal()">確定</button>
         </div>
     </div>
@@ -256,9 +256,10 @@
 
     let isAiDetecting = false;
 
+    // state[2]の不要なAIプロパティを整理
     const state = {
         1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
-        2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" }
+        2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
     };
     
     const viewState = {
@@ -268,7 +269,6 @@
 
     let scaleTarget = 1;
     let lastActiveTarget = 1;
-    let tempDistPx = 0;
     let draggingPoint = null;
 
     function toggleFPS() {
@@ -286,16 +286,17 @@
     }
 
     let isPlaying = false;
-    let playbackRates = [1.0, 0.5, 0.25];
+    const playbackRates = [1.0, 0.5, 0.25];
     let currentRateIdx = 0;
 
     function simulateJointAngle(p2, p3, deltaDeg) {
         const rad = deltaDeg * (Math.PI / 180);
         const dx = p3.x - p2.x;
         const dy = p3.y - p2.y;
-        const rotatedX = dx * Math.cos(rad) - dy * Math.sin(rad);
-        const rotatedY = dx * Math.sin(rad) + dy * Math.cos(rad);
-        return { x: p2.x + rotatedX, y: p2.y + rotatedY };
+        return {
+            x: p2.x + (dx * Math.cos(rad) - dy * Math.sin(rad)),
+            y: p2.y + (dx * Math.sin(rad) + dy * Math.cos(rad))
+        };
     }
 
     function calcResults(s, mode) {
@@ -305,10 +306,9 @@
                 const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
                 const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
                 const dot = v1.x * v2.x + v1.y * v2.y;
-                const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
-                if (mag1 * mag2 !== 0) {
-                    let cosVal = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
-                    let angle = Math.acos(cosVal) * (180 / Math.PI);
+                const mag = Math.hypot(v1.x, v1.y) * Math.hypot(v2.x, v2.y);
+                if (mag !== 0) {
+                    const angle = Math.acos(Math.max(-1.0, Math.min(1.0, dot / mag))) * (180 / Math.PI);
                     s.resultMain = `関節角度: ${angle.toFixed(1)}°`;
                     s.resultSub = `頂点(2点目)を中心とした角度`;
                 }
@@ -322,11 +322,10 @@
                 const v1 = {x: p1.x - p2.x, y: p1.y - p2.y};
                 const v2 = {x: p3.x - p2.x, y: p3.y - p2.y};
                 const dot = v1.x * v2.x + v1.y * v2.y;
-                const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
+                const mag = Math.hypot(v1.x, v1.y) * Math.hypot(v2.x, v2.y);
                 let curAngle = 0;
-                if (mag1 * mag2 !== 0) {
-                    let cosVal = Math.max(-1.0, Math.min(1.0, dot / (mag1 * mag2)));
-                    curAngle = Math.acos(cosVal) * (180 / Math.PI);
+                if (mag !== 0) {
+                    curAngle = Math.acos(Math.max(-1.0, Math.min(1.0, dot / mag))) * (180 / Math.PI);
                 }
                 const deltaDeg = parseFloat(simSlider.value);
                 const simPt = simulateJointAngle(p2, p3, deltaDeg);
@@ -347,7 +346,7 @@
                 s.resultSub = "コマ送りしながら、追跡したい重心の点を何個でもタップできます";
             } else {
                 const p1 = s.perpPoints[0], p2 = s.perpPoints[1];
-                const t = perpSlider.value / 100;
+                const t = parseFloat(perpSlider.value) / 100;
                 const pmX = p1.x + (p2.x - p1.x) * t;
                 const pmY = p1.y + (p2.y - p1.y) * t;
 
@@ -371,8 +370,8 @@
             }
         } else if (mode === 'distance') {
             if (s.points.length === 2) {
-                const p1 = s.points[0], p2 = s.points[1], dx = p2.x - p1.x, dy = -(p2.y - p1.y);
-                const dist = Math.hypot(dx, dy), dt = Math.abs(p2.time - p1.time);
+                const dist = Math.hypot(s.points[1].x - s.points[0].x, s.points[1].y - s.points[0].y);
+                const dt = Math.abs(s.points[1].time - s.points[0].time);
                 s.resultMain = `距離: ${formatDistance(dist, s.pxPerCm)}`;
                 if (dt > 0 && s.pxPerCm) {
                     const speedKMH = ((dist / s.pxPerCm) / 100) / dt * 3.6;
@@ -415,38 +414,24 @@
     function calcAiResults(type = 'ai') {
         const s = state[1];
         if (s.aiJoints && s.aiJoints.length === 4) {
-            const shoulderL = s.aiJoints[0];
-            const shoulderR = s.aiJoints[1];
-            const hipL = s.aiJoints[2];
-            const hipR = s.aiJoints[3];
-
+            const [shoulderL, shoulderR, hipL, hipR] = s.aiJoints;
             const midThorax = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
             const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
 
-            const dx = midThorax.x - midHip.x;
-            const dy = midThorax.y - midHip.y;
-            const angleDeg = Math.atan2(dx, -dy) * (180 / Math.PI);
-
-            const dxPelvis = hipR.x - hipL.x;
-            const dzPelvis = (hipR.z || 0) - (hipL.z || 0);
-            const pelvisAngleDeg = Math.atan2(dzPelvis, dxPelvis) * (180 / Math.PI);
-
-            const dxThorax = shoulderR.x - shoulderL.x;
-            const dzThorax = (shoulderR.z || 0) - (shoulderL.z || 0);
-            const thoraxAngleDeg = Math.atan2(dzThorax, dxThorax) * (180 / Math.PI);
+            const angleDeg = Math.atan2(midThorax.x - midHip.x, -(midThorax.y - midHip.y)) * (180 / Math.PI);
+            const pelvisAngleDeg = Math.atan2((hipR.z || 0) - (hipL.z || 0), hipR.x - hipL.x) * (180 / Math.PI);
+            const thoraxAngleDeg = Math.atan2((shoulderR.z || 0) - (shoulderL.z || 0), shoulderR.x - shoulderL.x) * (180 / Math.PI);
 
             let torsionDiff = thoraxAngleDeg - pelvisAngleDeg;
             if (torsionDiff > 180) torsionDiff -= 360;
             if (torsionDiff < -180) torsionDiff += 360;
             currentTorsionAngle = torsionDiff;
             
-            let typeLabel = "🤖 AI";
-            let color = "#00ffcc";
+            let typeLabel = "🤖 AI", color = "#00ffcc";
             if (type === 'manual') { typeLabel = "✋ 手動"; color = "#ff9500"; }
             else if (type === 'interpolated') { typeLabel = "✨ 補間"; color = "#ffcc00"; }
             
             const torsionText = `<span class="highlight-speed" style="font-size:13px;">${Math.abs(currentTorsionAngle).toFixed(1)}°</span>`;
-
             mainResult.innerHTML = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差(X-Factor): ${torsionText}`;
             subResult.innerHTML = `<span style="color:#00ffcc;">左半身:水色</span> / <span style="color:#ffd60a;">右半身:黄色</span> ｜ 端点ドラッグで修正可能`;
         }
@@ -456,13 +441,25 @@
         const target = document.getElementById(`zoom-target-${idx}`);
         target.style.transform = `translate(${viewState[idx].x}px, ${viewState[idx].y}px) scale(${viewState[idx].scale})`;
     }
-    function resetZoom() { viewState[lastActiveTarget] = { scale: 1, x: 0, y: 0 }; document.getElementById('zoom-slider').value = 1; applyZoom(lastActiveTarget); }
-    document.getElementById('zoom-slider').addEventListener('input', e => { viewState[lastActiveTarget].scale = parseFloat(e.target.value); applyZoom(lastActiveTarget); });
+    function resetZoom() { 
+        viewState[lastActiveTarget] = { scale: 1, x: 0, y: 0 }; 
+        document.getElementById('zoom-slider').value = 1; 
+        applyZoom(lastActiveTarget); 
+    }
+    document.getElementById('zoom-slider').addEventListener('input', e => { 
+        viewState[lastActiveTarget].scale = parseFloat(e.target.value); 
+        applyZoom(lastActiveTarget); 
+    });
     perpSlider.addEventListener('input', () => { [1, 2].forEach(idx => calcResults(state[idx], currentMode)); updateDisplayResult(); redraw(); });
-    simSlider.addEventListener('input', e => { simDegVal.innerText = `${parseFloat(e.target.value) > 0 ? '+' : ''}${e.target.value}°`; [1, 2].forEach(idx => calcResults(state[idx], 'sim')); updateDisplayResult(); redraw(); });
+    simSlider.addEventListener('input', e => { 
+        simDegVal.innerText = `${parseFloat(e.target.value) > 0 ? '+' : ''}${e.target.value}°`; 
+        [1, 2].forEach(idx => calcResults(state[idx], 'sim')); 
+        updateDisplayResult(); 
+        redraw(); 
+    });
 
     function fitCanvases() {
-        [ {c: canvas1, v: video1}, {c: canvas2, v: video2} ].forEach(item => {
+        [ {c: canvas1}, {c: canvas2} ].forEach(item => {
             const rect = item.c.parentElement.getBoundingClientRect();
             if (rect.width > 0 && rect.height > 0) { item.c.width = rect.width; item.c.height = rect.height; }
         });
@@ -559,16 +556,12 @@
     }
 
     function updateDisplayResult() {
-        if (currentMode === 'zoom' || currentMode === 'ai') {
-            btnConfirmScale.style.display = 'none';
-            return; 
+        if (btnConfirmScale) {
+            const s = state[scaleTarget];
+            btnConfirmScale.style.display = (currentMode === 'scale' && s && s.scalePoints.length === 2) ? 'inline-block' : 'none';
         }
-        if (currentMode === 'scale') {
-            const hasTwoPoints = state[1].scalePoints.length === 2 || state[2].scalePoints.length === 2;
-            btnConfirmScale.style.display = hasTwoPoints ? 'inline-block' : 'none';
-        } else {
-            btnConfirmScale.style.display = 'none';
-        }
+
+        if (currentMode === 'zoom' || currentMode === 'ai') return; 
 
         if (compareMode === 0) {
             mainResult.innerHTML = state[1].resultMain || "測定したい点をタップしてください"; subResult.innerHTML = state[1].resultSub || "";
@@ -651,11 +644,13 @@
     }
 
     function formatDistance(px, pxPerCm) {
-        if (!pxPerCm) return `${px.toFixed(1)} px`; const cm = px / pxPerCm;
-        if (cm >= 100) return `${(cm / 100).toFixed(2)} m (${cm.toFixed(1)} cm)`; return `${cm.toFixed(1)} cm`;
+        if (!pxPerCm) return `${px.toFixed(1)} px`; 
+        const cm = px / pxPerCm;
+        return cm >= 100 ? `${(cm / 100).toFixed(2)} m (${cm.toFixed(1)} cm)` : `${cm.toFixed(1)} cm`;
     }
     function formatDelta(px, pxPerCm) {
-        if (!pxPerCm) return `${px > 0 ? '+' : ''}${px.toFixed(1)}px`; const cm = px / pxPerCm;
+        if (!pxPerCm) return `${px > 0 ? '+' : ''}${px.toFixed(1)}px`; 
+        const cm = px / pxPerCm;
         return `${cm > 0 ? '+' : ''}${cm.toFixed(1)} cm`;
     }
 
@@ -697,14 +692,17 @@
         item.c.addEventListener('pointercancel', (e) => handlePointerUp(e, item.c));
     });
 
+    // ズーム時のCanvas解像度破壊を防ぐ正確な座標逆算
     function getCanvasCoords(e, cvs) {
         const rect = cvs.getBoundingClientRect();
-        if (cvs.width !== rect.width || cvs.height !== rect.height) { cvs.width = rect.width; cvs.height = rect.height; }
-        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        return { 
+            x: (e.clientX - rect.left) * (cvs.width / rect.width), 
+            y: (e.clientY - rect.top) * (cvs.height / rect.height) 
+        };
     }
 
     function findHitPoint(s, pos, mode) {
-        const HIT_RADIUS = 26; // 指でドラッグしやすいように少し広めに設定
+        const HIT_RADIUS = 26;
         if (mode === 'ai') {
             if (s.aiJoints && s.aiJoints.length === 4) {
                 for (let i = 0; i < s.aiJoints.length; i++) {
@@ -721,17 +719,8 @@
             }
             return null;
         }
+        // 重心モードではプロット追加を優先するため既存ポイントのドラッグ吸着を無効化
         if (mode === 'cog') {
-            if (s.cogPoints.length > 0) {
-                for (let i = s.cogPoints.length - 1; i >= 0; i--) {
-                    if (Math.hypot(s.cogPoints[i].x - pos.x, s.cogPoints[i].y - pos.y) <= HIT_RADIUS) return { arrayName: 'cogPoints', index: i };
-                }
-            }
-            if (s.perpPoints.length === 2) {
-                for (let i = 0; i < s.perpPoints.length; i++) {
-                    if (Math.hypot(s.perpPoints[i].x - pos.x, s.perpPoints[i].y - pos.y) <= HIT_RADIUS) return { arrayName: 'perpPoints', index: i };
-                }
-            }
             return null;
         }
         if (mode === 'perp') {
@@ -752,9 +741,9 @@
         if (currentMode === 'ai') return; 
         
         if (currentMode === 'scale') {
+            scaleTarget = targetIdx;
             if (s.scalePoints.length >= 2) s.scalePoints = [];
             s.scalePoints.push({ x: pos.x, y: pos.y });
-            scaleTarget = targetIdx;
             if (s.scalePoints.length === 1) {
                 s.resultMain = "物差し設定: 2点目をタップ";
                 s.resultSub = "タップ後、点をドラッグして位置を微調整できます";
@@ -792,10 +781,17 @@
             if (currentMode === 'ai') {
                 const currentFrame = Math.round(video1.currentTime * currentFPS);
                 s.aiOverrides[currentFrame] = s.aiJoints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
+                // 四肢ラインの根本ランドマークも同期更新
+                if (s.limbsLandmarks) {
+                    const jointMap = [11, 12, 23, 24];
+                    const landmarkIdx = jointMap[draggingPoint.index];
+                    if (s.limbsLandmarks[landmarkIdx]) {
+                        s.limbsLandmarks[landmarkIdx].x = pos.x;
+                        s.limbsLandmarks[landmarkIdx].y = pos.y;
+                    }
+                }
                 calcAiResults('manual');
-            } else if (currentMode === 'scale') {
-                // 微調整中は何もしない（座標更新のみ）
-            } else {
+            } else if (currentMode !== 'scale') {
                 calcResults(s, currentMode); updateDisplayResult();
             }
             redraw();
@@ -806,14 +802,12 @@
         if (draggingPoint) { try { cvs.releasePointerCapture(e.pointerId); } catch(err){} draggingPoint = null; }
     }
 
-    // パターンB: 専用ボタンを押したときにモーダルを開く
     function openScaleModal() {
         const s = state[scaleTarget];
         if (!s || s.scalePoints.length !== 2) {
             alert("物差しの2点を画面上でタップして設定してください。");
             return;
         }
-        tempDistPx = Math.hypot(s.scalePoints[1].x - s.scalePoints[0].x, s.scalePoints[1].y - s.scalePoints[0].y);
         scaleModalTitle.innerText = `基準物の長さ設定 (動画${scaleTarget === 1 ? '①' : '②'})`;
         scaleModalOverlay.style.display = 'flex';
         scaleInputValue.focus();
@@ -821,9 +815,12 @@
     }
 
     function submitScaleModal() {
+        const s = state[scaleTarget];
+        if (!s || s.scalePoints.length !== 2) return;
         const realCm = parseFloat(scaleInputValue.value);
         if (realCm && realCm > 0) { 
-            state[scaleTarget].pxPerCm = tempDistPx / realCm; 
+            const distPx = Math.hypot(s.scalePoints[1].x - s.scalePoints[0].x, s.scalePoints[1].y - s.scalePoints[0].y);
+            s.pxPerCm = distPx / realCm; 
             updateScaleInfoText(); 
             scaleModalOverlay.style.display = 'none'; 
             setMode('distance'); 
@@ -832,7 +829,7 @@
         }
     }
     
-    function cancelScaleModal() { 
+    function closeScaleModal() { 
         scaleModalOverlay.style.display = 'none'; 
     }
 
@@ -873,11 +870,7 @@
                 if (item.idx === 1) {
                     if (s.limbsLandmarks) {
                         const lm = s.limbsLandmarks;
-                        
-                        const leftConnections = [
-                            [11, 13], [13, 15],                      
-                            [23, 25], [25, 27], [27, 29], [29, 31]  
-                        ];
+                        const leftConnections = [[11, 13], [13, 15], [23, 25], [25, 27], [27, 29], [29, 31]];
                         item.ctx.save();
                         item.ctx.strokeStyle = 'rgba(0, 255, 204, 0.55)';
                         item.ctx.lineWidth = 3;
@@ -890,10 +883,7 @@
                             }
                         });
 
-                        const rightConnections = [
-                            [12, 14], [14, 16],                      
-                            [24, 26], [26, 28], [28, 30], [30, 32]  
-                        ];
+                        const rightConnections = [[12, 14], [14, 16], [24, 26], [26, 28], [28, 30], [30, 32]];
                         item.ctx.strokeStyle = 'rgba(255, 214, 10, 0.65)';
                         rightConnections.forEach(([i, j]) => {
                             if (lm[i] && lm[j]) {
@@ -927,11 +917,7 @@
                     }
 
                     if (s.aiJoints && s.aiJoints.length === 4) {
-                        const shoulderL = s.aiJoints[0];
-                        const shoulderR = s.aiJoints[1];
-                        const hipL = s.aiJoints[2];
-                        const hipR = s.aiJoints[3];
-
+                        const [shoulderL, shoulderR, hipL, hipR] = s.aiJoints;
                         const midThorax = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
                         const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
 
@@ -998,7 +984,7 @@
                     const p1 = s.perpPoints[0], p2 = s.perpPoints[1];
                     item.ctx.strokeStyle = '#00ffcc'; item.ctx.lineWidth = 2; item.ctx.beginPath(); item.ctx.moveTo(p1.x, p1.y); item.ctx.lineTo(p2.x, p2.y); item.ctx.stroke();
                     item.ctx.fillStyle = '#ff2d55'; item.ctx.beginPath(); item.ctx.arc(p2.x, p2.y, 6, 0, Math.PI * 2); item.ctx.fill();
-                    const t = perpSlider.value / 100, pmX = p1.x + (p2.x - p1.x) * t, pmY = p1.y + (p2.y - p1.y) * t, dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.hypot(dx, dy);
+                    const t = parseFloat(perpSlider.value) / 100, pmX = p1.x + (p2.x - p1.x) * t, pmY = p1.y + (p2.y - p1.y) * t, dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.hypot(dx, dy);
                     if (len > 0) {
                         const nx = -dy / len, ny = dx / len, perpLen = 2000;
                         item.ctx.strokeStyle = '#ff2d55'; item.ctx.lineWidth = 2; item.ctx.setLineDash([4, 4]);
@@ -1059,6 +1045,7 @@
         if (!video1.videoWidth && !video2.videoWidth) { alert("動画が読み込まれていません"); return; }
         const snapCanvas = document.createElement('canvas'), snapCtx = snapCanvas.getContext('2d');
         const w = (compareMode === 1) ? canvas1.width * 2 : canvas1.width, h = canvas1.height;
+        if (w === 0 || h === 0) return;
         snapCanvas.width = w; snapCanvas.height = h + 60;
         snapCtx.fillStyle = '#000'; snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
         if (video1.videoWidth) { snapCtx.drawImage(video1, 0, 0, canvas1.width, h); snapCtx.drawImage(canvas1, 0, 0); }
@@ -1086,6 +1073,7 @@
         recordCanvas = document.createElement('canvas');
         const w = (compareMode === 1) ? canvas1.width * 2 : canvas1.width;
         const h = canvas1.height;
+        if (w === 0 || h === 0) return;
         recordCanvas.width = w;
         recordCanvas.height = h + 50;
         recordCtx = recordCanvas.getContext('2d');
@@ -1122,7 +1110,6 @@
         }
 
         const stream = recordCanvas.captureStream(currentFPS);
-        
         const candidateTypes = [
             'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
             'video/mp4;codecs=avc1',
@@ -1150,7 +1137,6 @@
         btnRecord.classList.add('rec-active');
 
         drawRecordFrame();
-
         if (video1.paused) togglePlay();
     }
 
@@ -1219,12 +1205,7 @@
             return;
         }
         
-        const shoulderL = mappedLandmarks[11];
-        const shoulderR = mappedLandmarks[12];
-        const hipL = mappedLandmarks[23];
-        const hipR = mappedLandmarks[24];
-
-        state[1].aiJoints = [shoulderL, shoulderR, hipL, hipR];
+        state[1].aiJoints = [mappedLandmarks[11], mappedLandmarks[12], mappedLandmarks[23], mappedLandmarks[24]];
         calcAiResults('ai');
         redraw();
     });
