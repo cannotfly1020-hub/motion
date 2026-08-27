@@ -8,7 +8,9 @@
 <meta name="apple-mobile-web-app-title" content="動作分析Pro">
 <title>動作分析 Pro</title>
 
+<!-- MediaPipe Pose & Drawing Utils の読み込み -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 
 <style>
@@ -128,7 +130,7 @@
         <button class="ctrl-btn" id="btn-mode-cog" onclick="setMode('cog')">📍 重心移動</button>
         <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">📏 物差し</button>
         <button class="ctrl-btn" id="btn-mode-zoom" onclick="setMode('zoom')">🔍 ズーム</button>
-        <button class="ctrl-btn" id="btn-mode-ai" onclick="setMode('ai')" style="grid-column: span 4; border: 1px solid #00ffcc; color: #00ffcc; background: rgba(0, 255, 204, 0.1);">🤖 AI自動解析 (体幹傾斜 & 胸郭・骨盤捻転差)</button>
+        <button class="ctrl-btn" id="btn-mode-ai" onclick="setMode('ai')" style="grid-column: span 4; border: 1px solid #00ffcc; color: #00ffcc; background: rgba(0, 255, 204, 0.1);">🤖 AI全身骨格表示 (体幹傾斜 & 捻転差)</button>
     </div>
     
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
@@ -235,9 +237,10 @@
 
     let currentTorsionAngle = 0;
 
+    // rawLandmarks: 全身33点の描画用データ
     const state = {
-        1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
-        2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" }
+        1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], rawLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
+        2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], rawLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" }
     };
     
     const viewState = {
@@ -428,7 +431,7 @@
             const torsionText = `<span class="highlight-speed" style="font-size:13px;">${Math.abs(currentTorsionAngle).toFixed(1)}°</span>`;
 
             mainResult.innerHTML = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差(X-Factor): ${torsionText}`;
-            subResult.innerHTML = `赤バー:胸郭 ｜ 青バー:骨盤 ｜ <span style="color:#ff9500;">4つの端点</span>を直接ドラッグして修正可能`;
+            subResult.innerHTML = `全33点骨格表示 ｜ 赤:胸郭 / 青:骨盤 / 緑:体幹軸（端点ドラッグで修正可能）`;
         }
     }
 
@@ -747,7 +750,6 @@
     }
     function cancelScaleModal() { state[scaleTarget].scalePoints = []; scaleModalOverlay.style.display = 'none'; setMode('scale'); }
 
-    // ★修正: キーフレーム間隔を 60 から 120 (120fpsで約1秒間) に拡張
     function getInterpolatedAiPoints(currentFrame) {
         const s = state[1];
         if (s.aiOverrides[currentFrame]) return { joints: s.aiOverrides[currentFrame], type: 'manual' };
@@ -761,7 +763,6 @@
             if (frames[i] > currentFrame && next === -1) next = frames[i];
         }
 
-        // 120フレーム以内の区間なら自動補間を実行
         if (prev !== -1 && next !== -1 && (next - prev) <= 120) {
             const ratio = (currentFrame - prev) / (next - prev);
             const joints = [];
@@ -777,58 +778,78 @@
         return null;
     }
 
+    // ★修正: 全身33点の骨格ワイヤーフレーム ＋ 体幹中心軸・胸郭・骨盤バーを描画
     function redraw() {
         [ {idx: 1, c: canvas1, ctx: ctx1}, {idx: 2, c: canvas2, ctx: ctx2} ].forEach(item => {
             const s = state[item.idx];
             item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
             if (currentMode === 'ai') {
-                if (item.idx === 1 && s.aiJoints && s.aiJoints.length === 4) {
-                    const shoulderL = s.aiJoints[0];
-                    const shoulderR = s.aiJoints[1];
-                    const hipL = s.aiJoints[2];
-                    const hipR = s.aiJoints[3];
+                if (item.idx === 1) {
+                    // 1. 全身33箇所の骨格ワイヤーフレームを描画
+                    if (s.rawLandmarks) {
+                        item.ctx.save();
+                        drawConnectors(item.ctx, s.rawLandmarks, POSE_CONNECTIONS, {
+                            color: 'rgba(0, 255, 204, 0.45)', 
+                            lineWidth: 2 
+                        });
+                        drawLandmarks(item.ctx, s.rawLandmarks, {
+                            color: '#ff9500', 
+                            fillColor: '#ffffff', 
+                            lineWidth: 1.5, 
+                            radius: 3 
+                        });
+                        item.ctx.restore();
+                    }
 
-                    const midThorax = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
-                    const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
+                    // 2. 体幹傾斜・捻転差のバーと中心軸を描画
+                    if (s.aiJoints && s.aiJoints.length === 4) {
+                        const shoulderL = s.aiJoints[0];
+                        const shoulderR = s.aiJoints[1];
+                        const hipL = s.aiJoints[2];
+                        const hipR = s.aiJoints[3];
 
-                    const currentFrame = Math.round(video1.currentTime * currentFPS);
-                    const overrideData = getInterpolatedAiPoints(currentFrame);
-                    
-                    // 1. 胸郭の向きバー（赤色）
-                    item.ctx.beginPath();
-                    item.ctx.moveTo(shoulderL.x, shoulderL.y);
-                    item.ctx.lineTo(shoulderR.x, shoulderR.y);
-                    item.ctx.strokeStyle = '#ff375f';
-                    item.ctx.lineWidth = 4;
-                    item.ctx.stroke();
+                        const midThorax = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
+                        const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
 
-                    // 2. 骨盤の向きバー（青色）
-                    item.ctx.beginPath();
-                    item.ctx.moveTo(hipL.x, hipL.y);
-                    item.ctx.lineTo(hipR.x, hipR.y);
-                    item.ctx.strokeStyle = '#007aff';
-                    item.ctx.lineWidth = 4;
-                    item.ctx.stroke();
+                        const currentFrame = Math.round(video1.currentTime * currentFPS);
+                        const overrideData = getInterpolatedAiPoints(currentFrame);
+                        
+                        // 胸郭バー（赤色）
+                        item.ctx.beginPath();
+                        item.ctx.moveTo(shoulderL.x, shoulderL.y);
+                        item.ctx.lineTo(shoulderR.x, shoulderR.y);
+                        item.ctx.strokeStyle = '#ff375f';
+                        item.ctx.lineWidth = 4;
+                        item.ctx.stroke();
 
-                    // 3. 体幹の中心軸（緑色ライン）
-                    let lineColor = '#00ffcc'; 
-                    if (overrideData && overrideData.type === 'manual') lineColor = '#ff9500'; 
-                    else if (overrideData && overrideData.type === 'interpolated') lineColor = '#ffcc00'; 
+                        // 骨盤バー（青色）
+                        item.ctx.beginPath();
+                        item.ctx.moveTo(hipL.x, hipL.y);
+                        item.ctx.lineTo(hipR.x, hipR.y);
+                        item.ctx.strokeStyle = '#007aff';
+                        item.ctx.lineWidth = 4;
+                        item.ctx.stroke();
 
-                    item.ctx.beginPath();
-                    item.ctx.moveTo(midHip.x, midHip.y);
-                    item.ctx.lineTo(midThorax.x, midThorax.y);
-                    item.ctx.strokeStyle = lineColor;
-                    item.ctx.lineWidth = 4;
-                    item.ctx.stroke();
+                        // 体幹の中心軸（緑色ライン）
+                        let lineColor = '#00ffcc'; 
+                        if (overrideData && overrideData.type === 'manual') lineColor = '#ff9500'; 
+                        else if (overrideData && overrideData.type === 'interpolated') lineColor = '#ffcc00'; 
 
-                    // 4. 操作可能な4つの端点（オレンジの丸）
-                    item.ctx.fillStyle = '#ff9500';
-                    s.aiJoints.forEach(pt => {
-                        item.ctx.beginPath(); item.ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2); item.ctx.fill();
-                        item.ctx.strokeStyle = '#fff'; item.ctx.lineWidth = 2; item.ctx.stroke();
-                    });
+                        item.ctx.beginPath();
+                        item.ctx.moveTo(midHip.x, midHip.y);
+                        item.ctx.lineTo(midThorax.x, midThorax.y);
+                        item.ctx.strokeStyle = lineColor;
+                        item.ctx.lineWidth = 4;
+                        item.ctx.stroke();
+
+                        // 操作可能な4つの端点（大きめのオレンジ丸）
+                        item.ctx.fillStyle = '#ff9500';
+                        s.aiJoints.forEach(pt => {
+                            item.ctx.beginPath(); item.ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2); item.ctx.fill();
+                            item.ctx.strokeStyle = '#fff'; item.ctx.lineWidth = 2; item.ctx.stroke();
+                        });
+                    }
                 }
                 return; 
             }
@@ -940,6 +961,9 @@
 
         const currentFrame = Math.round(video1.currentTime * currentFPS);
         
+        // 全身33点のランドマークデータを保持
+        state[1].rawLandmarks = results.poseLandmarks || null;
+
         const overrideData = getInterpolatedAiPoints(currentFrame);
         if (overrideData) {
             state[1].aiJoints = overrideData.joints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
