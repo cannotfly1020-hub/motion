@@ -71,6 +71,8 @@
     .hdr-btn.compare-parallel { background: #af52de; color: #fff; }
     .hdr-btn.compare-overlay { background: #ff2d55; color: #fff; }
     .hdr-btn.fps-badge { background: #30d158; color: #000; font-size: 10px; }
+    .hdr-btn.zoom-badge { background: #5856d6; color: #fff; font-size: 10px; }
+    .hdr-btn.zoom-active { background: #ff9500; color: #000; font-weight: bold; }
     
     #scale-info-text { font-size: 10px; color: #ff9500; font-weight: 600; text-align: right; white-space: nowrap; }
     
@@ -165,7 +167,6 @@
     button.mode-active { background: #30d158; color: black; font-weight: bold; }
     #btn-mode-acc.mode-active { background: #ff375f; color: white; font-weight: bold; }
     #btn-mode-scale.mode-active { background: #ff9500; color: black; font-weight: bold; }
-    #btn-mode-zoom.mode-active { background: #007aff; color: white; font-weight: bold; }
     #btn-mode-perp.mode-active { background: #ff2d55; color: white; font-weight: bold; }
     #btn-mode-sim.mode-active { background: #30d158; color: black; font-weight: bold; }
     #btn-mode-cogbase.mode-active { background: #af52de; color: white; font-weight: bold; }
@@ -214,6 +215,7 @@
             <button class="hdr-btn secondary" id="btn-pick2" style="display:none;" onclick="triggerPickVideo(2)">動画②</button>
             <button class="hdr-btn secondary" id="btn-toggle-compare" onclick="toggleCompareMode()">1画面のみ</button>
             <button class="hdr-btn fps-badge" id="btn-fps" onclick="toggleFPS()">30fps</button>
+            <button class="hdr-btn zoom-badge" id="btn-zoom-toggle" onclick="toggleZoomMode()">🔍 ズーム</button>
             <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 保存</button>
         </div>
         <span id="scale-info-text">物差し: 未設定</span>
@@ -261,11 +263,11 @@
         <button class="ctrl-btn" id="btn-mode-sim" onclick="setMode('sim')">🎯 予測(+10°)</button>
         <button class="ctrl-btn" id="btn-mode-cogbase" onclick="setMode('cogbase')">📏 重心基準</button>
         <button class="ctrl-btn" id="btn-mode-cog" onclick="setMode('cog')">📍 重心移動</button>
-        <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">基準</button>
+        <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">物差し</button>
     </div>
     
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
-        <span style="font-size:11px; font-weight:bold; color:#007aff;">倍率(画面<span id="zoom-target-label">①</span>)</span>
+        <span style="font-size:11px; font-weight:bold; color:#ff9500;">倍率(画面<span id="zoom-target-label">①</span>)</span>
         <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1">
         <button class="ctrl-btn" style="width:auto; padding:5px 12px; background:#444;" onclick="resetZoom()">リセット</button>
     </div>
@@ -328,6 +330,7 @@
     const btnPick2 = document.getElementById('btn-pick2');
     const btnToggleCompare = document.getElementById('btn-toggle-compare');
     const btnFps = document.getElementById('btn-fps');
+    const btnZoomToggle = document.getElementById('btn-zoom-toggle');
     const seekbar1 = document.getElementById('seekbar1');
     const seekbar2 = document.getElementById('seekbar2');
     const seekRow2 = document.getElementById('seek-row-2');
@@ -359,6 +362,7 @@
     let compareMode = 0; 
     let currentMode = 'angle';
     let lastMeasureMode = 'angle';
+    let isZoomMode = false;
     
     let currentFPS = 30.0;
     const fpsList = [30, 60, 120, 240];
@@ -377,6 +381,21 @@
             calcResults(s, lastMeasureMode, false, idx);
         });
         updateDisplayResult();
+    }
+
+    function toggleZoomMode() {
+        isZoomMode = !isZoomMode;
+        if (isZoomMode) {
+            btnZoomToggle.classList.add('zoom-active');
+            btnZoomToggle.innerText = '🔍 ズーム中';
+            document.getElementById('zoom-controls').style.display = 'flex';
+            document.getElementById('zoom-target-label').innerText = lastActiveTarget === 1 ? '①' : '②';
+            document.getElementById('zoom-slider').value = viewState[lastActiveTarget].scale;
+        } else {
+            btnZoomToggle.classList.remove('zoom-active');
+            btnZoomToggle.innerText = '🔍 ズーム';
+            document.getElementById('zoom-controls').style.display = 'none';
+        }
     }
 
     let isPlaying = false;
@@ -535,6 +554,22 @@
             s.resultSub = `下のスライダーで垂直線を動かせます`;
         }
     }
+
+    function applyZoom(idx) {
+        const target = document.getElementById(`zoom-target-${idx}`);
+        target.style.transform = `translate(${viewState[idx].x}px, ${viewState[idx].y}px) scale(${viewState[idx].scale})`;
+    }
+
+    function resetZoom() {
+        viewState[lastActiveTarget] = { scale: 1, x: 0, y: 0 };
+        document.getElementById('zoom-slider').value = 1;
+        applyZoom(lastActiveTarget);
+    }
+
+    document.getElementById('zoom-slider').addEventListener('input', e => {
+        viewState[lastActiveTarget].scale = parseFloat(e.target.value);
+        applyZoom(lastActiveTarget);
+    });
 
     perpSlider.addEventListener('input', redraw);
     
@@ -776,6 +811,59 @@
         return `${cm > 0 ? '+' : ''}${cm.toFixed(1)} cm`;
     }
 
+    let isTouchPanning = false;
+    let panStartX = 0, panStartY = 0;
+    let panStartOffsetX = 0, panStartOffsetY = 0;
+    let pinchInitialDist = 0;
+    let pinchInitialScale = 1;
+    let pinchTarget = 1;
+
+    document.getElementById('stage').addEventListener('touchstart', e => {
+        if (!isZoomMode) return;
+        const targetIdx = e.target.closest('#pane2') ? 2 : 1;
+        lastActiveTarget = targetIdx;
+        document.getElementById('zoom-target-label').innerText = targetIdx === 1 ? '①' : '②';
+        document.getElementById('zoom-slider').value = viewState[targetIdx].scale;
+
+        if (e.touches.length === 1) {
+            isTouchPanning = true;
+            panStartX = e.touches[0].clientX;
+            panStartY = e.touches[0].clientY;
+            panStartOffsetX = viewState[targetIdx].x;
+            panStartOffsetY = viewState[targetIdx].y;
+        } else if (e.touches.length === 2) {
+            isTouchPanning = false;
+            e.preventDefault();
+            pinchTarget = targetIdx;
+            pinchInitialDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            pinchInitialScale = viewState[targetIdx].scale;
+        }
+    }, {passive: false});
+
+    document.getElementById('stage').addEventListener('touchmove', e => {
+        if (!isZoomMode) return;
+        e.preventDefault(); 
+        if (isTouchPanning && e.touches.length === 1) {
+            const scale = viewState[lastActiveTarget].scale;
+            const dx = (e.touches[0].clientX - panStartX) / scale;
+            const dy = (e.touches[0].clientY - panStartY) / scale;
+            viewState[lastActiveTarget].x = panStartOffsetX + dx;
+            viewState[lastActiveTarget].y = panStartOffsetY + dy;
+            applyZoom(lastActiveTarget);
+        } else if (e.touches.length === 2) {
+            const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            let newScale = pinchInitialScale * (dist / pinchInitialDist);
+            newScale = Math.max(1, Math.min(newScale, 5));
+            viewState[pinchTarget].scale = newScale;
+            applyZoom(pinchTarget);
+            document.getElementById('zoom-slider').value = newScale;
+        }
+    }, {passive: false});
+
+    document.getElementById('stage').addEventListener('touchend', e => {
+        if (e.touches.length === 0) isTouchPanning = false;
+    }, {passive: false});
+
     [ {c: canvas1, v: video1, idx: 1}, {c: canvas2, v: video2, idx: 2} ].forEach(item => {
         item.c.addEventListener('pointerdown', (e) => handlePointerDown(e, item.c, item.v, item.idx));
         item.c.addEventListener('pointermove', (e) => handlePointerMove(e, item.c, item.idx));
@@ -798,7 +886,6 @@
     function findHitPoint(s, pos, mode) {
         const HIT_RADIUS = 20;
 
-        // 1. 基準線専用モード：基準点（紫）のみドラッグ対象
         if (mode === 'cogbase') {
             for (let i = 0; i < s.cogBase.length; i++) {
                 if (Math.hypot(s.cogBase[i].x - pos.x, s.cogBase[i].y - pos.y) <= HIT_RADIUS) {
@@ -808,7 +895,6 @@
             return null;
         }
 
-        // 2. 重心移動モード：重心点（点1, 点2...）のみドラッグ対象（基準線は完全無視・干渉ゼロ）
         if (mode === 'cog') {
             for (let i = s.cogPoints.length - 1; i >= 0; i--) {
                 if (Math.hypot(s.cogPoints[i].x - pos.x, s.cogPoints[i].y - pos.y) <= 15) {
@@ -843,6 +929,7 @@
     }
 
     function handlePointerDown(e, cvs, vid, targetIdx) {
+        if (isZoomMode) return;
         lastActiveTarget = targetIdx;
         const s = state[targetIdx];
         const pos = getCanvasCoords(e, cvs);
@@ -883,7 +970,6 @@
             return;
         }
 
-        // 📏 重心基準モード：2点打点
         if (currentMode === 'cogbase') {
             if (s.cogBase.length >= 2) s.cogBase = [];
             s.cogBase.push({ x: pos.x, y: pos.y });
@@ -893,7 +979,6 @@
             return;
         }
 
-        // 📍 重心移動モード：何点でも連続打点（基準線に吸い込まれない）
         if (currentMode === 'cog') {
             s.cogPoints.push({ x: pos.x, y: pos.y, time: currentTime, frame: currentFrame });
             calcResults(s, currentMode, true, targetIdx);
