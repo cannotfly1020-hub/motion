@@ -146,7 +146,7 @@
     .mode-grid {
         width: 100%;
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(3, 1fr) 1fr 1fr 1fr;
         gap: 4px;
     }
     button.ctrl-btn {
@@ -169,7 +169,6 @@
     #btn-mode-scale.mode-active { background: #ff9500; color: black; font-weight: bold; }
     #btn-mode-perp.mode-active { background: #ff2d55; color: white; font-weight: bold; }
     #btn-mode-sim.mode-active { background: #30d158; color: black; font-weight: bold; }
-    #btn-mode-cogbase.mode-active { background: #af52de; color: white; font-weight: bold; }
     #btn-mode-cog.mode-active { background: #5e5ce6; color: white; font-weight: bold; }
     
     .playback-row {
@@ -259,10 +258,9 @@
         <button class="ctrl-btn mode-active" id="btn-mode-angle" onclick="setMode('angle')">角度(3点)</button>
         <button class="ctrl-btn" id="btn-mode-dist" onclick="setMode('distance')">速度(2点)</button>
         <button class="ctrl-btn" id="btn-mode-acc" onclick="setMode('accel')">加速(3点)</button>
-        <button class="ctrl-btn" id="btn-mode-perp" onclick="setMode('perp')">垂直線</button>
-        <button class="ctrl-btn" id="btn-mode-sim" onclick="setMode('sim')">🎯 予測(+10°)</button>
-        <button class="ctrl-btn" id="btn-mode-cogbase" onclick="setMode('cogbase')">📏 重心基準</button>
+        <button class="ctrl-btn" id="btn-mode-perp" onclick="setMode('perp')">垂直線(基準)</button>
         <button class="ctrl-btn" id="btn-mode-cog" onclick="setMode('cog')">📍 重心移動</button>
+        <button class="ctrl-btn" id="btn-mode-sim" onclick="setMode('sim')">🎯 予測(+10°)</button>
         <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">物差し</button>
     </div>
     
@@ -349,7 +347,6 @@
     const btnModeScale = document.getElementById('btn-mode-scale');
     const btnModePerp = document.getElementById('btn-mode-perp');
     const btnModeSim = document.getElementById('btn-mode-sim');
-    const btnModeCogBase = document.getElementById('btn-mode-cogbase');
     const btnModeCog = document.getElementById('btn-mode-cog');
     const perpSlider = document.getElementById('perp-slider');
     const simSlider = document.getElementById('sim-slider');
@@ -403,8 +400,8 @@
     let currentRateIdx = 0;
 
     const state = {
-        1: { points: [], scalePoints: [], perpPoints: [], cogBase: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
-        2: { points: [], scalePoints: [], perpPoints: [], cogBase: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
+        1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" },
+        2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
     };
     
     const viewState = {
@@ -472,47 +469,47 @@
                 s.resultMain = s.points.length === 0 ? "予測モード: 根元→関節中心→先端をタップ" : `点 ${s.points.length}/3`;
                 s.resultSub = "3点打つと、下のスライダーで角度改善シミュレーションが動きます";
             }
-        } else if (mode === 'cogbase') {
-            s.resultMain = s.cogBase.length === 2 ? "📏 基準線設定完了（スライドで微調整可能）" : `基準線の点 ${s.cogBase.length}/2 をタップ`;
-            s.resultSub = "地面や体軸など、基準となる2点を設定してください。完了したら「📍重心移動」へ";
         } else if (mode === 'cog') {
-            if (s.cogBase.length < 2) {
-                s.resultMain = "先に「📏 重心基準」で基準線を2点引いてください";
-                s.resultSub = "基準線が設定されると、上下左右の移動量が正確に計算されます";
+            if (s.perpPoints.length < 2) {
+                s.resultMain = "先に「垂直線(基準)」で基準線を2点引いてください";
+                s.resultSub = "垂直線が設定されると、そこを原点に上下左右の変位が計算されます";
             } else if (s.cogPoints.length === 0) {
                 s.resultMain = "重心移動: 追跡したい点をタップ";
                 s.resultSub = "コマ送りしながら、頭や骨盤の点を何個でもタップできます";
             } else {
-                const b1 = s.cogBase[0], b2 = s.cogBase[1];
+                const p1 = s.perpPoints[0], p2 = s.perpPoints[1];
+                const t = perpSlider.value / 100;
+                const originX = p1.x + (p2.x - p1.x) * t;
+                const originY = p1.y + (p2.y - p1.y) * t;
+
+                const dx = p2.x - p1.x, dy = p2.y - p1.y;
+                const len = Math.hypot(dx, dy);
+                const ux = dx / len, uy = dy / len; // 基準線方向（左右）
+                const nx = -uy, ny = ux;            // 垂直線方向（上下）
+
                 const lastPt = s.cogPoints[s.cogPoints.length - 1];
-                
-                const bx = b2.x - b1.x, by = b2.y - b1.y;
-                const bLen = Math.hypot(bx, by);
-                const ux = bx / bLen, uy = by / bLen;
-                const nx = -uy, ny = ux;
+                const rx = lastPt.x - originX, ry = lastPt.y - originY;
+                const curLateral = rx * ux + ry * uy;       // 垂直線からの左右変位
+                const curVertical = -(rx * nx + ry * ny);   // 基準線からの上下変位（上向き正）
 
-                const px = lastPt.x - b1.x, py = lastPt.y - b1.y;
-                const parallelDist = px * ux + py * uy;
-                const perpDist = -(px * nx + py * ny);
-
-                let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                let minL = Infinity, maxL = -Infinity, minV = Infinity, maxV = -Infinity;
                 s.cogPoints.forEach(p => {
-                    const vx = p.x - b1.x, vy = p.y - b1.y;
-                    const par = vx * ux + vy * uy;
-                    const per = -(vx * nx + vy * ny);
-                    if (par < minX) minX = par; if (par > maxX) maxX = par;
-                    if (per < minY) minY = per; if (per > maxY) maxY = per;
+                    const vx = p.x - originX, vy = p.y - originY;
+                    const lat = vx * ux + vy * uy;
+                    const ver = -(vx * nx + vy * ny);
+                    if (lat < minL) minL = lat; if (lat > maxL) maxL = lat;
+                    if (ver < minV) minV = ver; if (ver > maxV) maxV = ver;
                 });
-                const rangeX = maxX - minX;
-                const rangeY = maxY - minY;
+                const rangeL = maxL - minL;
+                const rangeV = maxV - minV;
 
-                const curXStr = formatDelta(parallelDist, s.pxPerCm);
-                const curYStr = formatDelta(perpDist, s.pxPerCm);
-                const spanXStr = formatDistance(rangeX, s.pxPerCm);
-                const spanYStr = formatDistance(rangeY, s.pxPerCm);
+                const curLStr = formatDelta(curLateral, s.pxPerCm);
+                const curVStr = formatDelta(curVertical, s.pxPerCm);
+                const spanLStr = formatDistance(rangeL, s.pxPerCm);
+                const spanVStr = formatDistance(rangeV, s.pxPerCm);
 
-                s.resultMain = `<span class="highlight-cog">重心変位 [点${s.cogPoints.length}]: 左右 ${curXStr} ｜ 上下 ${curYStr}</span>`;
-                s.resultSub = `最大移動幅: 左右ブレ ${spanXStr} ｜ 上下ブレ ${spanYStr}`;
+                s.resultMain = `<span class="highlight-cog">重心 [点${s.cogPoints.length}]: 垂直線から左右 ${curLStr} ｜ 上下 ${curVStr}</span>`;
+                s.resultSub = `最大移動幅: 左右ブレ ${spanLStr} ｜ 上下ブレ ${spanVStr}`;
             }
         } else if (mode === 'distance') {
             if (s.points.length === 2) {
@@ -550,8 +547,8 @@
                 s.resultSub = "コマ送りしながら 始点 → 中間 → 終点 をタップ";
             }
         } else if (mode === 'perp') {
-            s.resultMain = `垂直線モード`;
-            s.resultSub = `下のスライダーで垂直線を動かせます`;
+            s.resultMain = s.perpPoints.length === 2 ? `垂直線(基準) 設定完了` : `基準線となる2点をタップ`;
+            s.resultSub = `スライダーで垂直線を動かせます。設定後は「📍重心移動」で測定可能`;
         }
     }
 
@@ -571,7 +568,11 @@
         applyZoom(lastActiveTarget);
     });
 
-    perpSlider.addEventListener('input', redraw);
+    perpSlider.addEventListener('input', () => {
+        [1, 2].forEach(idx => calcResults(state[idx], currentMode, false, idx));
+        updateDisplayResult();
+        redraw();
+    });
     
     simSlider.addEventListener('input', e => {
         const deg = parseFloat(e.target.value);
@@ -734,9 +735,9 @@
     }
 
     function setMode(mode) {
-        const mainModes = ['angle', 'distance', 'accel', 'sim', 'cogbase', 'cog'];
+        const mainModes = ['angle', 'distance', 'accel', 'sim', 'perp', 'cog'];
         if (mainModes.includes(mode) && mode !== lastMeasureMode) {
-            if (mode !== 'cog' && mode !== 'cogbase' && lastMeasureMode !== 'cog' && lastMeasureMode !== 'cogbase') {
+            if (mode !== 'cog' && mode !== 'perp' && lastMeasureMode !== 'cog' && lastMeasureMode !== 'perp') {
                 state[1].points = [];
                 state[2].points = [];
             }
@@ -745,9 +746,9 @@
         lastMeasureMode = mode;
         currentMode = mode;
         
-        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModePerp, btnModeSim, btnModeCogBase, btnModeCog].forEach(b => b.classList.remove('mode-active'));
+        [btnModeAngle, btnModeDist, btnModeAcc, btnModeScale, btnModePerp, btnModeSim, btnModeCog].forEach(b => b.classList.remove('mode-active'));
 
-        const showPerp = (mode === 'perp' || state[1].perpPoints.length === 2 || state[2].perpPoints.length === 2);
+        const showPerp = (mode === 'perp' || mode === 'cog' || state[1].perpPoints.length === 2 || state[2].perpPoints.length === 2);
         document.getElementById('perp-controls').style.display = showPerp ? 'flex' : 'none';
 
         const showSim = (mode === 'sim');
@@ -759,7 +760,6 @@
         else if (mode === 'scale') btnModeScale.classList.add('mode-active');
         else if (mode === 'perp') btnModePerp.classList.add('mode-active');
         else if (mode === 'sim') btnModeSim.classList.add('mode-active');
-        else if (mode === 'cogbase') btnModeCogBase.classList.add('mode-active');
         else if (mode === 'cog') btnModeCog.classList.add('mode-active');
         
         if (mode === 'scale') {
@@ -784,9 +784,6 @@
             state[2].perpPoints = [];
             perpSlider.value = 50;
             document.getElementById('perp-controls').style.display = 'none';
-        } else if (currentMode === 'cogbase') {
-            state[1].cogBase = [];
-            state[2].cogBase = [];
         } else if (currentMode === 'cog') {
             state[1].cogPoints = [];
             state[2].cogPoints = [];
@@ -886,10 +883,10 @@
     function findHitPoint(s, pos, mode) {
         const HIT_RADIUS = 20;
 
-        if (mode === 'cogbase') {
-            for (let i = 0; i < s.cogBase.length; i++) {
-                if (Math.hypot(s.cogBase[i].x - pos.x, s.cogBase[i].y - pos.y) <= HIT_RADIUS) {
-                    return { arrayName: 'cogBase', index: i };
+        if (mode === 'perp') {
+            for (let i = 0; i < s.perpPoints.length; i++) {
+                if (Math.hypot(s.perpPoints[i].x - pos.x, s.perpPoints[i].y - pos.y) <= HIT_RADIUS) {
+                    return { arrayName: 'perpPoints', index: i };
                 }
             }
             return null;
@@ -897,7 +894,7 @@
 
         if (mode === 'cog') {
             for (let i = s.cogPoints.length - 1; i >= 0; i--) {
-                if (Math.hypot(s.cogPoints[i].x - pos.x, s.cogPoints[i].y - pos.y) <= 15) {
+                if (Math.hypot(s.cogPoints[i].x - pos.x, s.cogPoints[i].y - pos.y) <= 16) {
                     return { arrayName: 'cogPoints', index: i };
                 }
             }
@@ -908,14 +905,6 @@
             for (let i = 0; i < s.scalePoints.length; i++) {
                 if (Math.hypot(s.scalePoints[i].x - pos.x, s.scalePoints[i].y - pos.y) <= HIT_RADIUS) {
                     return { arrayName: 'scalePoints', index: i };
-                }
-            }
-            return null;
-        }
-        if (mode === 'perp') {
-            for (let i = 0; i < s.perpPoints.length; i++) {
-                if (Math.hypot(s.perpPoints[i].x - pos.x, s.perpPoints[i].y - pos.y) <= HIT_RADIUS) {
-                    return { arrayName: 'perpPoints', index: i };
                 }
             }
             return null;
@@ -965,15 +954,6 @@
             if (s.perpPoints.length === 2) {
                 document.getElementById('perp-controls').style.display = 'flex';
             }
-            updateDisplayResult();
-            redraw();
-            return;
-        }
-
-        if (currentMode === 'cogbase') {
-            if (s.cogBase.length >= 2) s.cogBase = [];
-            s.cogBase.push({ x: pos.x, y: pos.y });
-            calcResults(s, currentMode, true, targetIdx);
             updateDisplayResult();
             redraw();
             return;
@@ -1058,7 +1038,7 @@
                 return;
             }
 
-            // 2. 垂直線
+            // 2. 垂直線（＝重心の直交座標基準軸）
             if (s.perpPoints.length > 0) {
                 if (s.perpPoints.length === 1) {
                     item.ctx.fillStyle = '#ff2d55';
@@ -1073,11 +1053,6 @@
                     item.ctx.moveTo(p1.x, p1.y);
                     item.ctx.lineTo(p2.x, p2.y);
                     item.ctx.stroke();
-
-                    item.ctx.fillStyle = '#ff2d55';
-                    item.ctx.beginPath();
-                    item.ctx.arc(p2.x, p2.y, 6, 0, Math.PI * 2);
-                    item.ctx.fill();
 
                     const t = perpSlider.value / 100;
                     const pmX = p1.x + (p2.x - p1.x) * t;
@@ -1099,69 +1074,43 @@
                         item.ctx.stroke();
                         item.ctx.setLineDash([]);
                     }
+
+                    // 垂直線の足元（原点）
+                    item.ctx.fillStyle = '#ff2d55';
+                    item.ctx.beginPath();
+                    item.ctx.arc(pmX, pmY, 6, 0, Math.PI * 2);
+                    item.ctx.fill();
                 }
             }
 
-            // 3. 📏 重心基準 ＆ 📍 重心移動
-            if (lastMeasureMode === 'cog' || lastMeasureMode === 'cogbase') {
-                if (s.cogBase.length > 0) {
-                    item.ctx.save();
-                    item.ctx.strokeStyle = '#af52de';
-                    item.ctx.fillStyle = '#af52de';
-                    item.ctx.lineWidth = 3;
-
-                    if (s.cogBase.length === 1) {
-                        item.ctx.beginPath();
-                        item.ctx.arc(s.cogBase[0].x, s.cogBase[0].y, 7, 0, Math.PI * 2);
-                        item.ctx.fill();
-                    } else if (s.cogBase.length === 2) {
-                        const b1 = s.cogBase[0], b2 = s.cogBase[1];
-                        item.ctx.beginPath();
-                        item.ctx.moveTo(b1.x, b1.y);
-                        item.ctx.lineTo(b2.x, b2.y);
-                        item.ctx.stroke();
-
-                        item.ctx.beginPath();
-                        item.ctx.arc(b1.x, b1.y, 7, 0, Math.PI * 2);
-                        item.ctx.arc(b2.x, b2.y, 7, 0, Math.PI * 2);
-                        item.ctx.fill();
-
-                        item.ctx.fillStyle = '#fff';
-                        item.ctx.font = 'bold 10px sans-serif';
-                        item.ctx.fillText("基準始点", b1.x + 8, b1.y - 4);
-                        item.ctx.fillText("基準終点", b2.x + 8, b2.y - 4);
-                    }
-                    item.ctx.restore();
+            // 3. 📍 重心移動（軌跡＆ラベル）
+            if (s.cogPoints.length > 0) {
+                item.ctx.save();
+                item.ctx.strokeStyle = 'rgba(255, 204, 0, 0.6)';
+                item.ctx.lineWidth = 2;
+                item.ctx.beginPath();
+                for (let i = 0; i < s.cogPoints.length; i++) {
+                    if (i === 0) item.ctx.moveTo(s.cogPoints[i].x, s.cogPoints[i].y);
+                    else item.ctx.lineTo(s.cogPoints[i].x, s.cogPoints[i].y);
                 }
+                item.ctx.stroke();
 
-                if (s.cogPoints.length > 0) {
-                    item.ctx.save();
-                    item.ctx.strokeStyle = 'rgba(255, 204, 0, 0.6)';
-                    item.ctx.lineWidth = 2;
+                s.cogPoints.forEach((pt, i) => {
+                    const isLatest = (i === s.cogPoints.length - 1);
+                    item.ctx.fillStyle = isLatest ? '#ff375f' : '#ffcc00';
                     item.ctx.beginPath();
-                    for (let i = 0; i < s.cogPoints.length; i++) {
-                        if (i === 0) item.ctx.moveTo(s.cogPoints[i].x, s.cogPoints[i].y);
-                        else item.ctx.lineTo(s.cogPoints[i].x, s.cogPoints[i].y);
-                    }
-                    item.ctx.stroke();
+                    item.ctx.arc(pt.x, pt.y, isLatest ? 7 : 5, 0, Math.PI * 2);
+                    item.ctx.fill();
 
-                    s.cogPoints.forEach((pt, i) => {
-                        const isLatest = (i === s.cogPoints.length - 1);
-                        item.ctx.fillStyle = isLatest ? '#ff375f' : '#ffcc00';
-                        item.ctx.beginPath();
-                        item.ctx.arc(pt.x, pt.y, isLatest ? 7 : 5, 0, Math.PI * 2);
-                        item.ctx.fill();
-
-                        item.ctx.fillStyle = '#fff';
-                        item.ctx.font = isLatest ? 'bold 11px sans-serif' : '9px sans-serif';
-                        item.ctx.fillText(`${i + 1}`, pt.x + 6, pt.y - 4);
-                    });
-                    item.ctx.restore();
-                }
+                    item.ctx.fillStyle = '#fff';
+                    item.ctx.font = isLatest ? 'bold 11px sans-serif' : '9px sans-serif';
+                    item.ctx.fillText(`${i + 1}`, pt.x + 6, pt.y - 4);
+                });
+                item.ctx.restore();
             }
 
             // 4. 通常の測定ポイント / 予測シミュレーション
-            if (s.points.length > 0 && lastMeasureMode !== 'cog' && lastMeasureMode !== 'cogbase') {
+            if (s.points.length > 0 && lastMeasureMode !== 'cog' && lastMeasureMode !== 'perp') {
                 if (lastMeasureMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
                 else if (lastMeasureMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
                 else if (lastMeasureMode === 'accel') item.ctx.strokeStyle = item.ctx.fillStyle = '#ff375f';
