@@ -170,7 +170,6 @@
     input[type=range] { flex: 1; height: 20px; accent-color: #007aff; }
     #seekbar2 { accent-color: #af52de; }
     #perp-slider { accent-color: #ff2d55; }
-    #sim-slider { accent-color: #30d158; }
 
     .mode-grid {
         width: 100%;
@@ -196,7 +195,6 @@
     button.mode-active { background: #30d158; color: black; font-weight: bold; }
     #btn-mode-acc.mode-active { background: #ff375f; color: white; font-weight: bold; }
     #btn-mode-perp.mode-active { background: #ff2d55; color: white; font-weight: bold; }
-    #btn-mode-sim.mode-active { background: #30d158; color: black; font-weight: bold; }
     #btn-mode-cog.mode-active { background: #5e5ce6; color: white; font-weight: bold; }
     
     .playback-row {
@@ -233,7 +231,6 @@
     }
     #snapshot-img { max-width: 100%; max-height: 50vh; border-radius: 6px; border: 1px solid #555; margin-bottom: 10px; }
 
-    /* 重心データテーブル */
     .cog-table-container {
         width: 100%;
         overflow-y: auto;
@@ -346,7 +343,6 @@
     </div>
 </div>
 
-<!-- 重心データ詳細モーダル -->
 <div id="cog-data-modal-overlay" class="modal-overlay">
     <div class="modal-card">
         <h3 style="color:#5e5ce6;">📍 重心移動 全打点データ</h3>
@@ -501,6 +497,7 @@
 
     let draggingPoint = null;
 
+    // 加速度・速度・角度の計算ロジック（フレーム単位で厳密計算）
     function calcResults(s, mode, isNewPoint = false, targetIdx = 1) {
         if (mode === 'angle') {
             btnOpenCogData.style.display = 'none';
@@ -520,6 +517,80 @@
                 s.resultMain = s.points.length === 0 ? "角度モード: 3点をタップ" : `点 ${s.points.length}/3`;
                 s.resultSub = s.points.length === 1 ? "2点目(頂点)をタップ" : "頂点(2点目)を中心とした角度を測定";
             }
+        } else if (mode === 'distance') {
+            btnOpenCogData.style.display = 'none';
+            if (s.points.length === 2) {
+                const p1 = s.points[0], p2 = s.points[1];
+                const dx = p2.x - p1.x, dy = -(p2.y - p1.y);
+                const distPx = Math.hypot(dx, dy);
+                
+                // コマ数または時間から経過秒数を算出
+                let dt = (p2.frame !== undefined && p1.frame !== undefined && p2.frame !== p1.frame) 
+                         ? Math.abs(p2.frame - p1.frame) / currentFPS 
+                         : Math.abs(p2.time - p1.time);
+
+                s.resultMain = `距離: ${formatDistance(distPx, s.pxPerCm)}`;
+                if (dt > 0) {
+                    if (s.pxPerCm) {
+                        const speedKMH = ((distPx / s.pxPerCm) / 100) / dt * 3.6;
+                        s.resultSub = `速度: <span class="highlight-speed">${speedKMH.toFixed(1)}km/h</span> (${(dt * 1000).toFixed(0)}ms / ${currentFPS}fps)`;
+                    } else {
+                        const speedPxS = distPx / dt;
+                        s.resultSub = `速度: <span class="highlight-speed">${speedPxS.toFixed(0)}px/s</span> (物差し未設定)`;
+                    }
+                } else {
+                    s.resultSub = `1点目を打った後、コマ送り(▶)してから2点目を打ってください`;
+                }
+            } else {
+                s.resultMain = s.points.length === 0 ? "速度モード: 始点→終点をタップ" : "始点を記録";
+                s.resultSub = "1点目タップ後、コマ送りして2点目をタップ";
+            }
+        } else if (mode === 'accel') {
+            btnOpenCogData.style.display = 'none';
+            if (s.points.length === 3) {
+                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
+                
+                // コマ番号からの経過時間算出（同期ズレ対策）
+                let dt1 = (p2.frame !== undefined && p1.frame !== undefined && p2.frame !== p1.frame) 
+                          ? Math.abs(p2.frame - p1.frame) / currentFPS 
+                          : Math.abs(p2.time - p1.time);
+                let dt2 = (p3.frame !== undefined && p2.frame !== undefined && p3.frame !== p2.frame) 
+                          ? Math.abs(p3.frame - p2.frame) / currentFPS 
+                          : Math.abs(p3.time - p2.time);
+
+                // もし同じコマでタップされていた場合のデフォルト値(1コマ分)
+                if (dt1 <= 0) dt1 = 1 / currentFPS;
+                if (dt2 <= 0) dt2 = 1 / currentFPS;
+
+                const dist1Px = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                const dist2Px = Math.hypot(p3.x - p2.x, p3.y - p2.y);
+
+                if (s.pxPerCm) {
+                    const v1 = ((dist1Px / s.pxPerCm) / 100) / dt1; // m/s
+                    const v2 = ((dist2Px / s.pxPerCm) / 100) / dt2; // m/s
+                    const avgDt = (dt1 + dt2) / 2;
+                    const accel = (v2 - v1) / avgDt; // m/s^2
+                    const gForce = accel / 9.80665;  // G
+
+                    s.resultMain = `<span class="highlight-acc">加速度: ${accel >= 0 ? '+' : ''}${accel.toFixed(2)}m/s² (${gForce >= 0 ? '+' : ''}${gForce.toFixed(2)}G)</span>`;
+                    s.resultSub = `速度変化: ${(v1 * 3.6).toFixed(1)}k → ${(v2 * 3.6).toFixed(1)}km/h (${currentFPS}fps)`;
+                } else {
+                    const v1Px = dist1Px / dt1;
+                    const v2Px = dist2Px / dt2;
+                    const avgDt = (dt1 + dt2) / 2;
+                    const accelPx = (v2Px - v1Px) / avgDt;
+
+                    s.resultMain = `<span class="highlight-acc">加速度: ${accelPx >= 0 ? '+' : ''}${accelPx.toFixed(0)}px/s²</span>`;
+                    s.resultSub = `物差しを設定すると m/s² および G に換算されます`;
+                }
+            } else {
+                s.resultMain = s.points.length === 0 ? "加速度モード: 連続3点をタップ" : `点 ${s.points.length}/3`;
+                s.resultSub = "コマ送りしながら 始点(①) → 中間(②) → 終点(③) をタップ";
+            }
+        } else if (mode === 'perp') {
+            btnOpenCogData.style.display = 'none';
+            s.resultMain = s.perpPoints.length === 2 ? `垂直線(基準) 設定完了` : `基準線となる2点をタップ`;
+            s.resultSub = `スライダーで垂直線を動かせます。設定後は「📍重心移動」で測定可能`;
         } else if (mode === 'cog') {
             if (s.perpPoints.length < 2) {
                 btnOpenCogData.style.display = 'none';
@@ -562,50 +633,9 @@
                 const spanLStr = formatDistance(rangeL, s.pxPerCm);
                 const spanVStr = formatDistance(rangeV, s.pxPerCm);
 
-                s.resultMain = `<span class="highlight-cog">重心 [点${s.cogPoints.length}]: 垂直線から左右 ${curLStr} ｜ 上下 ${curVStr}</span>`;
+                s.resultMain = `<span class="highlight-cog">重心 [点${s.cogPoints.length}]: 左右 ${curLStr} ｜ 上下 ${curVStr}</span>`;
                 s.resultSub = `最大移動幅: 左右ブレ ${spanLStr} ｜ 上下ブレ ${spanVStr}`;
             }
-        } else if (mode === 'distance') {
-            btnOpenCogData.style.display = 'none';
-            if (s.points.length === 2) {
-                const p1 = s.points[0], p2 = s.points[1];
-                const dx = p2.x - p1.x, dy = -(p2.y - p1.y);
-                const dist = Math.hypot(dx, dy);
-                const dt = Math.abs(p2.time - p1.time);
-                s.resultMain = `距離: ${formatDistance(dist, s.pxPerCm)}`;
-                if (dt > 0 && s.pxPerCm) {
-                    const speedKMH = ((dist / s.pxPerCm) / 100) / dt * 3.6;
-                    s.resultSub = `速度: <span class="highlight-speed">${speedKMH.toFixed(1)}km/h</span> (${currentFPS}fps)`;
-                    if (isNewPoint) historyData.push({ target: targetIdx, time: p2.time, speedKMH, accelG: null });
-                }
-            } else {
-                s.resultMain = s.points.length === 0 ? "速度モード: 始点→終点をタップ" : "始点を記録";
-                s.resultSub = "1点目タップ後、コマ送りして2点目をタップ";
-            }
-        } else if (mode === 'accel') {
-            btnOpenCogData.style.display = 'none';
-            if (s.points.length === 3) {
-                const p1 = s.points[0], p2 = s.points[1], p3 = s.points[2];
-                const dt1 = Math.abs(p2.time - p1.time), dt2 = Math.abs(p3.time - p2.time);
-                const dist1 = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-                const dist2 = Math.hypot(p3.x - p2.x, p3.y - p2.y);
-                if (dt1 > 0 && dt2 > 0 && s.pxPerCm) {
-                    const v1 = ((dist1 / s.pxPerCm) / 100) / dt1;
-                    const v2 = ((dist2 / s.pxPerCm) / 100) / dt2;
-                    const accel = (v2 - v1) / ((dt1 + dt2) / 2);
-                    const gForce = accel / 9.80665;
-                    s.resultMain = `<span class="highlight-acc">加速度: ${accel > 0 ? '+' : ''}${accel.toFixed(2)}m/s² (${gForce > 0 ? '+' : ''}${gForce.toFixed(2)}G)</span>`;
-                    s.resultSub = `①:${(v1 * 3.6).toFixed(1)}k → ②:${(v2 * 3.6).toFixed(1)}k (${currentFPS}fps)`;
-                    if (isNewPoint) historyData.push({ target: targetIdx, time: p3.time, speedKMH: v2 * 3.6, accelG: gForce });
-                }
-            } else {
-                s.resultMain = s.points.length === 0 ? "加速度モード: 連続3点をタップ" : `点 ${s.points.length}/3`;
-                s.resultSub = "コマ送りしながら 始点 → 中間 → 終点 をタップ";
-            }
-        } else if (mode === 'perp') {
-            btnOpenCogData.style.display = 'none';
-            s.resultMain = s.perpPoints.length === 2 ? `垂直線(基準) 設定完了` : `基準線となる2点をタップ`;
-            s.resultSub = `スライダーで垂直線を動かせます。設定後は「📍重心移動」で測定可能`;
         }
     }
 
@@ -854,8 +884,16 @@
 
     function stepFrame(dir) {
         const stepSec = dir / currentFPS;
-        if (video1.duration) video1.currentTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
-        if (compareMode > 0 && video2.duration) video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
+        if (video1.duration) {
+            const nextTime = Math.max(0, Math.min(video1.duration, video1.currentTime + stepSec));
+            video1.currentTime = nextTime;
+            seekbar1.value = nextTime;
+        }
+        if (compareMode > 0 && video2.duration) {
+            const nextTime2 = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
+            video2.currentTime = nextTime2;
+            seekbar2.value = nextTime2;
+        }
     }
 
     function updateDisplayResult() {
@@ -1251,7 +1289,7 @@
                 item.ctx.restore();
             }
 
-            // 4. 通常の測定ポイント
+            // 4. 通常の測定ポイント (角度・速度・加速)
             if (s.points.length > 0 && lastMeasureMode !== 'cog' && lastMeasureMode !== 'perp') {
                 if (lastMeasureMode === 'angle') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
                 else if (lastMeasureMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
