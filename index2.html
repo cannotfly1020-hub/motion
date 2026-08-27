@@ -8,9 +8,8 @@
 <meta name="apple-mobile-web-app-title" content="動作分析Pro">
 <title>動作分析 Pro</title>
 
-<!-- MediaPipe Pose & Drawing Utils の読み込み -->
+<!-- MediaPipe Pose の読み込み -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 
 <style>
@@ -130,7 +129,7 @@
         <button class="ctrl-btn" id="btn-mode-cog" onclick="setMode('cog')">📍 重心移動</button>
         <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">📏 物差し</button>
         <button class="ctrl-btn" id="btn-mode-zoom" onclick="setMode('zoom')">🔍 ズーム</button>
-        <button class="ctrl-btn" id="btn-mode-ai" onclick="setMode('ai')" style="grid-column: span 4; border: 1px solid #00ffcc; color: #00ffcc; background: rgba(0, 255, 204, 0.1);">🤖 AI全身骨格表示 (体幹傾斜 & 捻転差)</button>
+        <button class="ctrl-btn" id="btn-mode-ai" onclick="setMode('ai')" style="grid-column: span 4; border: 1px solid #00ffcc; color: #00ffcc; background: rgba(0, 255, 204, 0.1);">🤖 AI骨格解析 (体幹傾斜 & 捻転差)</button>
     </div>
     
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
@@ -237,10 +236,9 @@
 
     let currentTorsionAngle = 0;
 
-    // rawLandmarks: 全身33点の描画用データ
     const state = {
-        1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], rawLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
-        2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], rawLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" }
+        1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
+        2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" }
     };
     
     const viewState = {
@@ -431,7 +429,7 @@
             const torsionText = `<span class="highlight-speed" style="font-size:13px;">${Math.abs(currentTorsionAngle).toFixed(1)}°</span>`;
 
             mainResult.innerHTML = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差(X-Factor): ${torsionText}`;
-            subResult.innerHTML = `全33点骨格表示 ｜ 赤:胸郭 / 青:骨盤 / 緑:体幹軸（端点ドラッグで修正可能）`;
+            subResult.innerHTML = `四肢骨格表示 ｜ 赤:胸郭 / 青:骨盤 / 緑:体幹軸（端点ドラッグで修正可能）`;
         }
     }
 
@@ -778,7 +776,7 @@
         return null;
     }
 
-    // ★修正: 全身33点の骨格ワイヤーフレーム ＋ 体幹中心軸・胸郭・骨盤バーを描画
+    // ★修正: 顔・手先を除いた「主要な四肢の骨格」のみを描画する
     function redraw() {
         [ {idx: 1, c: canvas1, ctx: ctx1}, {idx: 2, c: canvas2, ctx: ctx2} ].forEach(item => {
             const s = state[item.idx];
@@ -786,18 +784,39 @@
 
             if (currentMode === 'ai') {
                 if (item.idx === 1) {
-                    // 1. 全身33箇所の骨格ワイヤーフレームを描画
-                    if (s.rawLandmarks) {
+                    // 1. 顔・手先を除いた四肢の骨格ラインを描画
+                    if (s.limbsLandmarks) {
+                        const lm = s.limbsLandmarks;
+                        // 接続する主要な関節ペア（腕・脚）
+                        const limbConnections = [
+                            [11, 13], [13, 15],       // 左腕（肩-肘-手首）
+                            [12, 14], [14, 16],       // 右腕（肩-肘-手首）
+                            [23, 25], [25, 27], [27, 29], [29, 31], // 左脚（股関節-膝-足首-踵-つま先）
+                            [24, 26], [26, 28], [28, 30], [30, 32]  // 右脚（股関節-膝-足首-踵-つま先）
+                        ];
+
                         item.ctx.save();
-                        drawConnectors(item.ctx, s.rawLandmarks, POSE_CONNECTIONS, {
-                            color: 'rgba(0, 255, 204, 0.45)', 
-                            lineWidth: 2 
+                        item.ctx.strokeStyle = 'rgba(0, 255, 204, 0.4)';
+                        item.ctx.lineWidth = 2.5;
+
+                        limbConnections.forEach(([i, j]) => {
+                            if (lm[i] && lm[j]) {
+                                item.ctx.beginPath();
+                                item.ctx.moveTo(lm[i].x, lm[i].y);
+                                item.ctx.lineTo(lm[j].x, lm[j].y);
+                                item.ctx.stroke();
+                            }
                         });
-                        drawLandmarks(item.ctx, s.rawLandmarks, {
-                            color: '#ff9500', 
-                            fillColor: '#ffffff', 
-                            lineWidth: 1.5, 
-                            radius: 3 
+
+                        // 四肢の主要な関節（肩・腰を除く肘・手首・膝・足首・足先）に小さめの点を打つ
+                        const keyJointIndices = [13, 14, 15, 16, 25, 26, 27, 28, 29, 30, 31, 32];
+                        item.ctx.fillStyle = '#00ffcc';
+                        keyJointIndices.forEach(idx => {
+                            if (lm[idx]) {
+                                item.ctx.beginPath();
+                                item.ctx.arc(lm[idx].x, lm[idx].y, 3.5, 0, Math.PI * 2);
+                                item.ctx.fill();
+                            }
                         });
                         item.ctx.restore();
                     }
@@ -843,7 +862,7 @@
                         item.ctx.lineWidth = 4;
                         item.ctx.stroke();
 
-                        // 操作可能な4つの端点（大きめのオレンジ丸）
+                        // 操作可能な4つの端点（オレンジの丸）
                         item.ctx.fillStyle = '#ff9500';
                         s.aiJoints.forEach(pt => {
                             item.ctx.beginPath(); item.ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2); item.ctx.fill();
@@ -961,8 +980,21 @@
 
         const currentFrame = Math.round(video1.currentTime * currentFPS);
         
-        // 全身33点のランドマークデータを保持
-        state[1].rawLandmarks = results.poseLandmarks || null;
+        if (!results.poseLandmarks) {
+            state[1].limbsLandmarks = null;
+            mainResult.innerHTML = `🤖 AI自動計測 ｜ 人物が検出できません`;
+            return;
+        }
+
+        const landmarks = results.poseLandmarks;
+        const getPos = (lm) => ({ x: lm.x * canvas1.width, y: lm.y * canvas1.height, z: lm.z || 0 });
+        
+        // 全体の座標をキャンバスピクセルに変換
+        const mappedLandmarks = {};
+        for (let i = 0; i < landmarks.length; i++) {
+            mappedLandmarks[i] = getPos(landmarks[i]);
+        }
+        state[1].limbsLandmarks = mappedLandmarks;
 
         const overrideData = getInterpolatedAiPoints(currentFrame);
         if (overrideData) {
@@ -971,19 +1003,11 @@
             redraw();
             return;
         }
-
-        if (!results.poseLandmarks) {
-            mainResult.innerHTML = `🤖 AI自動計測 ｜ 人物が検出できません`;
-            return;
-        }
         
-        const landmarks = results.poseLandmarks;
-        const getPos = (lm) => ({ x: lm.x * canvas1.width, y: lm.y * canvas1.height, z: lm.z || 0 });
-        
-        const shoulderL = getPos(landmarks[11]);
-        const shoulderR = getPos(landmarks[12]);
-        const hipL = getPos(landmarks[23]);
-        const hipR = getPos(landmarks[24]);
+        const shoulderL = mappedLandmarks[11];
+        const shoulderR = mappedLandmarks[12];
+        const hipL = mappedLandmarks[23];
+        const hipR = mappedLandmarks[24];
 
         state[1].aiJoints = [shoulderL, shoulderR, hipL, hipR];
         calcAiResults('ai');
