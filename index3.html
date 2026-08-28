@@ -263,7 +263,7 @@ const BSIP = { trunk: 0.678, thigh: 0.100, shank: 0.046, foot: 0.014 };
 let prevCoM = null, prevVelCoM = null, prevTime = null;
 let filteredGRF = { x: 0, y: 0 };
 const LPF_ALPHA = 0.35;
-const GRAVITY = 9.81;
+let comHistory = []; // 追加：重心の座標履歴
 
 const pose = new Pose({
  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
@@ -522,31 +522,79 @@ function onResults(results) {
  y: BSIP.trunk * comTrunk.y + BSIP.thigh * (comThighR.y + comThighL.y) + BSIP.shank * (comShankR.y + comShankL.y) + BSIP.foot * (comFootR.y + comFootL.y)
  };
 
+ // 1. 重心座標の移動平均（ノイズ除去）
+ comHistory.push(currentCoM);
+ if (comHistory.length > 5) comHistory.shift(); // 5フレームの移動平均
+ 
+ const avgCoM = { x: 0, y: 0 };
+ for(let p of comHistory) { avgCoM.x += p.x; avgCoM.y += p.y; }
+ avgCoM.x /= comHistory.length;
+ avgCoM.y /= comHistory.length;
+
  let totalGrf = { x: 0, y: mass * GRAVITY };
- if (prevCoM && prevTime && Math.abs(now - prevTime) > 0.0001) {
- const dt = Math.max(Math.abs(now - prevTime), 0.001);
- const velCoM = { x: (currentCoM.x - prevCoM.x) / dt, y: (currentCoM.y - prevCoM.y) / dt };
+ if (prevCoM) {
+   // 2. ブラウザの時間ではなく、設定したFPSを基準に固定時間を算出
+   const fixedDt = 1.0 / currentFPS; 
+   
+   const velCoM = { 
+     x: (avgCoM.x - prevCoM.x) / fixedDt, 
+     y: (avgCoM.y - prevCoM.y) / fixedDt 
+   };
 
- if (prevVelCoM) {
- const accCoM = { x: (velCoM.x - prevVelCoM.x) / dt, y: (velCoM.y - prevVelCoM.y) / dt };
- const rawGrfX = mass * accCoM.x;
- const rawGrfY = Math.max(0, mass * (accCoM.y + GRAVITY));
+   if (prevVelCoM) {
+     const accCoM = { 
+       x: (velCoM.x - prevVelCoM.x) / fixedDt, 
+       y: (velCoM.y - prevVelCoM.y) / fixedDt 
+     };
+     const rawGrfX = mass * accCoM.x;
+     const rawGrfY = Math.max(0, mass * (accCoM.y + GRAVITY));
 
- filteredGRF.x = filteredGRF.x * (1 - LPF_ALPHA) + rawGrfX * LPF_ALPHA;
- filteredGRF.y = filteredGRF.y * (1 - LPF_ALPHA) + rawGrfY * LPF_ALPHA;
- totalGrf = filteredGRF;
+     // 3. 出力フィルターも少し強めに設定（0.15）
+     const strongAlpha = 0.15;
+     filteredGRF.x = filteredGRF.x * (1 - strongAlpha) + rawGrfX * strongAlpha;
+     filteredGRF.y = filteredGRF.y * (1 - strongAlpha) + rawGrfY * strongAlpha;
+     totalGrf = filteredGRF;
+   }
+   prevVelCoM = velCoM;
  }
- prevVelCoM = velCoM;
- }
- prevCoM = currentCoM;
+ prevCoM = avgCoM; 
  prevTime = now;
 
+ // 4. 接地判定と重心距離ベースの動的な力分配
  const rContact = ankleR.y < ankleL.y + 0.08 ? 1.0 : 0.0;
  const lContact = ankleL.y < ankleR.y + 0.08 ? 1.0 : 0.0;
- const sumContact = (rContact + lContact) || 1.0;
 
- lastGrfR = { x: (totalGrf.x * rContact) / sumContact, y: (totalGrf.y * rContact) / sumContact };
- lastGrfL = { x: (totalGrf.x * lContact) / sumContact, y: (totalGrf.y * lContact) / sumContact };
+ let ratioR = 0;
+ let ratioL = 0;
+
+ if (rContact > 0 && lContact > 0) {
+   // 両足接地時：重心のX座標の位置で力の割合を計算
+   const distTotal = Math.abs(ankleL.x - ankleR.x);
+   
+   if (distTotal > 0.01) {
+     const distToL = Math.abs(avgCoM.x - ankleL.x);
+     const distToR = Math.abs(avgCoM.x - ankleR.x);
+     
+     // 重心が近い方に多くの力を配分（逆比）
+     let rawRatioR = distToL / (distToR + distToL);
+     let rawRatioL = distToR / (distToR + distToL);
+     
+     // 重心が足幅の外に出た時のための安全処理
+     ratioR = Math.max(0, Math.min(1.0, rawRatioR));
+     ratioL = Math.max(0, Math.min(1.0, rawRatioL));
+   } else {
+     ratioR = 0.5;
+     ratioL = 0.5;
+   }
+ } else {
+   // 片足立ち、あるいは両足が浮いちょる時
+   const sumContact = (rContact + lContact) || 1.0;
+   ratioR = rContact / sumContact;
+   ratioL = lContact / sumContact;
+ }
+
+ lastGrfR = { x: totalGrf.x * ratioR, y: totalGrf.y * ratioR };
+ lastGrfL = { x: totalGrf.x * ratioL, y: totalGrf.y * ratioL };
 
  const torqueAnkleR = (comFootR.x - ankleR.x) * lastGrfR.y - (comFootR.y - ankleR.y) * lastGrfR.x;
  const torqueKneeR = (comFootR.x - kneeR.x) * lastGrfR.y - (comFootR.y - kneeR.y) * lastGrfR.x;
