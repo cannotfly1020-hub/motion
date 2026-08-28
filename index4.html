@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="動作分析Pro">
-<title>CMJ & パワー解析 - 動作分析Pro</title>
+<title>連続ジャンプ・リバウンド解析 - 動作分析Pro</title>
 
 <!-- MediaPipe Pose -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -45,10 +45,12 @@
     .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 14px; flex-shrink: 0; text-align: center; }
     input[type=range] { flex: 1; height: 18px; accent-color: #007aff; }
 
-    /* CMJアクションボタン（4ステップ） */
-    .jump-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
-    .jump-btn { background: #2c2c2e; color: #888; border: 1.5px solid #444; padding: 7px 0; border-radius: 6px; font-size: 11px; font-weight: bold; text-align: center; cursor: pointer; transition: all 0.2s; }
-    .jump-btn.active-start { background: #ff9500; color: #000; border-color: #ff9500; }
+    /* 連続ジャンプ用ステップボタン */
+    .jump-actions-container { display: flex; flex-direction: column; gap: 3px; width: 100%; }
+    .jump-actions-row { display: grid; grid-template-columns: 0.7fr repeat(3, 1fr); gap: 3px; align-items: center; }
+    .row-label { font-size: 10px; font-weight: bold; text-align: center; color: #aaa; }
+    
+    .jump-btn { background: #2c2c2e; color: #888; border: 1.5px solid #444; padding: 6px 0; border-radius: 6px; font-size: 11px; font-weight: bold; text-align: center; cursor: pointer; transition: all 0.2s; }
     .jump-btn.active-takeoff { background: #ff375f; color: #fff; border-color: #ff375f; }
     .jump-btn.active-peak { background: #007aff; color: #fff; border-color: #007aff; }
     .jump-btn.active-landing { background: #30d158; color: #000; border-color: #30d158; }
@@ -60,15 +62,16 @@
     button.mode-floor-active { background: #00ffcc; color: #000; font-weight: bold; }
     #btnModeZoom.mode-active { background: #007aff; color: #fff; }
 
-    /* メイン指標ハイライトボード */
-    .dashboard-grid { width: 100%; display: grid; grid-template-columns: 1.2fr 1fr; gap: 4px; }
-    .side-box { background: #262629; border-radius: 6px; padding: 4px 6px; border: 1px solid #3a3a3c; }
-    .side-box.power { border-top: 2.5px solid #00ffcc; }
-    .side-box.ssc { border-top: 2.5px solid #ff9500; }
-    .side-title { font-size: 10px; font-weight: bold; text-align: center; margin-bottom: 3px; }
-    .metric-row { display: flex; justify-content: space-between; font-size: 10px; padding: 1.5px 0; color: #ccc; }
+    /* 1回目と2回目の比較ダッシュボード */
+    .dashboard-grid { width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+    .side-box { background: #262629; border-radius: 6px; padding: 4px 5px; border: 1px solid #3a3a3c; }
+    .side-box.j1 { border-top: 2.5px solid #00ffcc; }
+    .side-box.j2 { border-top: 2.5px solid #ffd60a; }
+    .side-box.rj { border-top: 2.5px solid #ff375f; }
+    .side-title { font-size: 9.5pt; font-weight: bold; text-align: center; margin-bottom: 2px; }
+    .metric-row { display: flex; justify-content: space-between; font-size: 9pt; padding: 1px 0; color: #ccc; }
     .metric-val { font-weight: bold; font-family: monospace; color: #fff; }
-    .highlight-val { font-size: 12px; color: #00ffcc !important; }
+    .highlight-val { color: #00ffcc !important; }
 
     .playback-row { width: 100%; display: grid; grid-template-columns: 1fr 1.3fr 1fr 0.9fr 1fr; gap: 4px; }
     #btnPlayPause { background: #34c759; color: #000; font-weight: bold; }
@@ -99,8 +102,8 @@
     </div>
     <div id="result-box">
         <div class="result-text-area">
-            <div id="main-result">CMJ・跳躍パワー解析</div>
-            <div id="sub-result">「📏 物差し」設定後、コマ送りで反動開始〜頂点を記録してください</div>
+            <div id="main-result">連続ジャンプ・リバウンド解析</div>
+            <div id="sub-result">1回目と2回目の「離地」「頂点」「着地」をコマ送りで記録してください</div>
         </div>
     </div>
 </div>
@@ -121,12 +124,22 @@
         <input type="range" id="seekSlider" min="0" max="100" value="0" step="0.05">
     </div>
 
-    <!-- CMJ解析ステップボタン -->
-    <div class="jump-actions">
-        <button class="jump-btn" id="btnStart" onclick="markJumpPhase('start')">① 沈み開始</button>
-        <button class="jump-btn" id="btnTakeoff" onclick="markJumpPhase('takeoff')">② 離地</button>
-        <button class="jump-btn" id="btnPeak" onclick="markJumpPhase('peak')">③ 頂点</button>
-        <button class="jump-btn" id="btnLanding" onclick="markJumpPhase('landing')">④ 着地</button>
+    <!-- 1回目＆2回目 記録ボタン群 -->
+    <div class="jump-actions-container">
+        <!-- 1回目 -->
+        <div class="jump-actions-row">
+            <span class="row-label" style="color:#00ffcc;">1回目</span>
+            <button class="jump-btn" id="btnJ1Takeoff" onclick="markJumpPhase('j1_takeoff')">🛫 離地</button>
+            <button class="jump-btn" id="btnJ1Peak" onclick="markJumpPhase('j1_peak')">⛰️ 頂点</button>
+            <button class="jump-btn" id="btnJ1Landing" onclick="markJumpPhase('j1_landing')">🛬 着地(接地)</button>
+        </div>
+        <!-- 2回目 -->
+        <div class="jump-actions-row">
+            <span class="row-label" style="color:#ffd60a;">2回目</span>
+            <button class="jump-btn" id="btnJ2Takeoff" onclick="markJumpPhase('j2_takeoff')">🛫 離地(再跳躍)</button>
+            <button class="jump-btn" id="btnJ2Peak" onclick="markJumpPhase('j2_peak')">⛰️ 頂点</button>
+            <button class="jump-btn" id="btnJ2Landing" onclick="markJumpPhase('j2_landing')">🛬 着地</button>
+        </div>
     </div>
 
     <div class="mode-grid">
@@ -141,19 +154,22 @@
         <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1">
     </div>
 
-    <!-- 重要指標パネル -->
+    <!-- 3列比較ダッシュボード -->
     <div class="dashboard-grid">
-        <div class="side-box power">
-            <div class="side-title" style="color:#00ffcc;">⚡️ 跳躍高 ＆ バネ指標(RSI)</div>
-            <div class="metric-row"><span>跳躍高(重心実測):</span><span id="res_height_disp" class="metric-val highlight-val">--- cm</span></div>
-            <div class="metric-row"><span>RSI (キレ・バネ):</span><span id="res_rsi" class="metric-val" style="color:#ffd60a;">---</span></div>
-            <div class="metric-row"><span>跳躍高(滞空参考):</span><span id="res_height_time" class="metric-val">--- cm</span></div>
+        <div class="side-box j1">
+            <div class="side-title" style="color:#00ffcc;">1回目ジャンプ</div>
+            <div class="metric-row"><span>高さ:</span><span id="res_j1_h" class="metric-val highlight-val">--- cm</span></div>
+            <div class="metric-row"><span>滞空:</span><span id="res_j1_t" class="metric-val">--- s</span></div>
         </div>
-        <div class="side-box ssc">
-            <div class="side-title" style="color:#ff9500;">⏱️ カウンター時間</div>
-            <div class="metric-row"><span>動作/接地時間:</span><span id="res_contact_time" class="metric-val" style="color:#ff9500;">--- s</span></div>
-            <div class="metric-row"><span>滞空時間:</span><span id="res_time" class="metric-val">--- s</span></div>
-            <div class="metric-row"><span>水平移動幅:</span><span id="res_dist" class="metric-val">--- cm</span></div>
+        <div class="side-box j2">
+            <div class="side-title" style="color:#ffd60a;">2回目ジャンプ</div>
+            <div class="metric-row"><span>高さ:</span><span id="res_j2_h" class="metric-val" style="color:#ffd60a;">--- cm</span></div>
+            <div class="metric-row"><span>滞空:</span><span id="res_j2_t" class="metric-val">--- s</span></div>
+        </div>
+        <div class="side-box rj">
+            <div class="side-title" style="color:#ff375f;">🔄 バネ能力(RJ)</div>
+            <div class="metric-row"><span>接地時間:</span><span id="res_contact_t" class="metric-val" style="color:#ff9500;">--- s</span></div>
+            <div class="metric-row"><span>RSI(バネ):</span><span id="res_rsi" class="metric-val" style="color:#ff375f;">---</span></div>
         </div>
     </div>
 
@@ -185,7 +201,7 @@
 <!-- Snapshot Modal -->
 <div id="snapshot-modal-overlay" class="modal-overlay">
     <div class="modal-card" style="max-width:360px;">
-        <h3 style="color:#5856d6;">📸 CMJ解析キャプチャ</h3>
+        <h3 style="color:#5856d6;">📸 連続ジャンプ解析キャプチャ</h3>
         <p style="font-size:11px; color:#aaa;">画像を長押しして「写真に追加」で保存できます</p>
         <img id="snapshot-img" src="" alt="Screenshot">
         <div class="modal-btn-row">
@@ -237,8 +253,12 @@ let roiNorm = { x: 0.2, y: 0.1, w: 0.6, h: 0.8 };
 const roiCanvas = document.createElement('canvas');
 const roiCtx = roiCanvas.getContext('2d');
 
-// Jump Data (CMJ: Start, Takeoff, Peak, Landing)
-const jumpData = { start: null, takeoff: null, peak: null, landing: null };
+// Jump Data (1回目 & 2回目)
+const jumps = {
+    j1: { takeoff: null, peak: null, landing: null },
+    j2: { takeoff: null, peak: null, landing: null }
+};
+
 let currentLandmarks = null;
 let currentCoM = null;
 let currentFeetCenter = null;
@@ -261,7 +281,7 @@ function toggleFPS() {
     fpsIdx = (fpsIdx + 1) % fpsList.length;
     currentFPS = fpsList[fpsIdx];
     document.getElementById('btnFps').innerText = `${currentFPS}fps`;
-    calculateJumpMetrics();
+    calculateMetrics();
 }
 
 function togglePlaybackRate() {
@@ -295,10 +315,9 @@ function toggleScaleMode() {
         isZoomMode = isRoiMode = isFloorMode = false;
         scalePoints = [];
         mainResult.innerText = "📏 物差し：基準の長さを2点タップ";
-        subResult.innerText = "動画内で長さが分かるもの（バットやベースなど）の両端をタップしてください";
+        subResult.innerText = "動画内で長さが分かるものの両端をタップしてください";
     } else {
-        mainResult.innerText = "CMJ・パワー解析モード";
-        subResult.innerText = "コマ送りで「沈み開始」「離地」「頂点」を指定してください";
+        mainResult.innerText = "連続ジャンプ・リバウンド解析";
     }
     updateButtons();
     redrawOverlay();
@@ -311,7 +330,7 @@ function toggleFloorMode() {
         mainResult.innerHTML = "<span style='color:#00ffcc;'>🟦 地面ライン設定 (ドラッグ可能)</span>";
         subResult.innerText = "ラインを上下にドラッグして地面に合わせ、「🟦 地面」を再タップで確定";
     } else {
-        mainResult.innerText = "CMJ・パワー解析モード";
+        mainResult.innerText = "連続ジャンプ・リバウンド解析";
     }
     updateButtons();
     redrawOverlay();
@@ -323,7 +342,7 @@ function toggleRoiMode() {
         isZoomMode = isScaleMode = isFloorMode = false;
         mainResult.innerText = "🔲 対象者を画面ドラッグで囲んでください";
     } else {
-        mainResult.innerText = "CMJ・パワー解析モード";
+        mainResult.innerText = "連続ジャンプ・リバウンド解析";
     }
     updateButtons();
     redrawOverlay();
@@ -418,8 +437,8 @@ function submitScaleModal() {
         closeScaleModal(false); 
 
         mainResult.innerHTML = "<span style='color:#30d158;'>✅ 物差し設定完了</span>";
-        subResult.innerText = "コマ送り（<-1, +1>）で各フェーズを記録してください";
-        calculateJumpMetrics();
+        subResult.innerText = "コマ送り（<-1, +1>）で1回目と2回目のジャンプを記録してください";
+        calculateMetrics();
     } else {
         alert("有効な数値を入力してください");
     }
@@ -487,10 +506,13 @@ function redrawOverlay() {
 }
 
 function updateJumpBtnStyles() {
-    document.getElementById('btnStart').className = `jump-btn ${jumpData.start ? 'active-start' : ''}`;
-    document.getElementById('btnTakeoff').className = `jump-btn ${jumpData.takeoff ? 'active-takeoff' : ''}`;
-    document.getElementById('btnPeak').className = `jump-btn ${jumpData.peak ? 'active-peak' : ''}`;
-    document.getElementById('btnLanding').className = `jump-btn ${jumpData.landing ? 'active-landing' : ''}`;
+    document.getElementById('btnJ1Takeoff').className = `jump-btn ${jumps.j1.takeoff ? 'active-takeoff' : ''}`;
+    document.getElementById('btnJ1Peak').className = `jump-btn ${jumps.j1.peak ? 'active-peak' : ''}`;
+    document.getElementById('btnJ1Landing').className = `jump-btn ${jumps.j1.landing ? 'active-landing' : ''}`;
+
+    document.getElementById('btnJ2Takeoff').className = `jump-btn ${jumps.j2.takeoff ? 'active-takeoff' : ''}`;
+    document.getElementById('btnJ2Peak').className = `jump-btn ${jumps.j2.peak ? 'active-peak' : ''}`;
+    document.getElementById('btnJ2Landing').className = `jump-btn ${jumps.j2.landing ? 'active-landing' : ''}`;
 }
 
 function onResults(results) {
@@ -550,8 +572,8 @@ function drawSkeleton(lm, w, h) {
     outCtx.restore();
 }
 
-// CMJ各フェーズの手動記録
-function markJumpPhase(phase) {
+// ジャンプフェーズ記録
+function markJumpPhase(key) {
     if (!currentCoM || !currentFeetCenter) {
         alert("人物が検出できていません"); return;
     }
@@ -560,102 +582,67 @@ function markJumpPhase(phase) {
     }
 
     const frame = Math.round(video.currentTime * currentFPS);
-    jumpData[phase] = { time: frame / currentFPS, frame: frame, com: { ...currentCoM }, feet: { ...currentFeetCenter } };
+    const data = { time: frame / currentFPS, frame: frame, com: { ...currentCoM }, feet: { ...currentFeetCenter } };
     
-    updateJumpBtnStyles();
-    calculateJumpMetrics();
-    redrawJumpVisuals();
+    const [jId, phase] = key.split('_');
+    jumps[jId][phase] = data;
 
-    if (phase === 'start') {
-        mainResult.innerHTML = "<span style='color:#ff9500;'>① 沈み込み開始を記録</span>";
-        subResult.innerText = "次にコマ送りで足が離れる瞬間を探し、「② 離地」を押してください";
-    } else if (phase === 'takeoff') {
-        mainResult.innerHTML = "<span style='color:#ff375f;'>② 離地を記録</span>";
-        subResult.innerText = "次に一番高いフレームを探し、「③ 頂点」を押してください";
-    } else if (phase === 'peak') {
-        mainResult.innerHTML = "<span style='color:#007aff;'>③ 頂点を記録</span>";
-        subResult.innerText = "最後に足が着く瞬間のフレームを探し、「④ 着地」を押してください";
-    } else if (phase === 'landing') {
-        mainResult.innerHTML = "<span style='color:#30d158;'>④ 着地を記録・解析完了！</span>";
-        subResult.innerText = "跳躍高、カウンター時間、RSIスコアが算出されました";
-    }
+    updateJumpBtnStyles();
+    calculateMetrics();
+    redrawJumpVisuals();
 }
 
 function clearJumpData() {
-    jumpData.start = jumpData.takeoff = jumpData.peak = jumpData.landing = null;
+    jumps.j1 = { takeoff: null, peak: null, landing: null };
+    jumps.j2 = { takeoff: null, peak: null, landing: null };
     updateJumpBtnStyles();
-    calculateJumpMetrics();
+    calculateMetrics();
     redrawJumpVisuals();
 }
 
-function calculateJumpMetrics() {
-    const elHeightD = document.getElementById('res_height_disp');
-    const elRSI = document.getElementById('res_rsi');
-    const elHeightT = document.getElementById('res_height_time');
-    const elContactT = document.getElementById('res_contact_time');
-    const elTime = document.getElementById('res_time');
-    const elDist = document.getElementById('res_dist');
+function calculateMetrics() {
+    // 1回目
+    let j1HeightM = 0;
+    if (pxPerCm && jumps.j1.takeoff && jumps.j1.peak) {
+        const dy = jumps.j1.takeoff.com.y - jumps.j1.peak.com.y;
+        const hCm = Math.max(0, dy / pxPerCm);
+        j1HeightM = hCm / 100;
+        document.getElementById('res_j1_h').innerText = `${hCm.toFixed(1)} cm`;
+    } else { document.getElementById('res_j1_h').innerText = "--- cm"; }
 
-    let heightDispM = 0;
+    if (jumps.j1.takeoff && jumps.j1.landing) {
+        const t = Math.max(0, jumps.j1.landing.time - jumps.j1.takeoff.time);
+        document.getElementById('res_j1_t').innerText = `${t.toFixed(3)} s`;
+    } else { document.getElementById('res_j1_t').innerText = "--- s"; }
+
+    // 2回目
+    let j2HeightM = 0;
+    if (pxPerCm && jumps.j2.takeoff && jumps.j2.peak) {
+        const dy = jumps.j2.takeoff.com.y - jumps.j2.peak.com.y;
+        const hCm = Math.max(0, dy / pxPerCm);
+        j2HeightM = hCm / 100;
+        document.getElementById('res_j2_h').innerText = `${hCm.toFixed(1)} cm`;
+    } else { document.getElementById('res_j2_h').innerText = "--- cm"; }
+
+    if (jumps.j2.takeoff && jumps.j2.landing) {
+        const t = Math.max(0, jumps.j2.landing.time - jumps.j2.takeoff.time);
+        document.getElementById('res_j2_t').innerText = `${t.toFixed(3)} s`;
+    } else { document.getElementById('res_j2_t').innerText = "--- s"; }
+
+    // リバウンド（接地時間 ＆ RSI）
     let contactTimeS = 0;
+    if (jumps.j1.landing && jumps.j2.takeoff) {
+        contactTimeS = Math.max(0, jumps.j2.takeoff.time - jumps.j1.landing.time);
+        document.getElementById('res_contact_t').innerText = `${contactTimeS.toFixed(3)} s`;
+    } else { document.getElementById('res_contact_t').innerText = "--- s"; }
 
-    // 1. 跳躍高（重心実変位: cm）★最重要
-    if (pxPerCm && jumpData.takeoff && jumpData.peak) {
-        const dyPx = jumpData.takeoff.com.y - jumpData.peak.com.y;
-        const heightCm = Math.max(0, dyPx / pxPerCm);
-        heightDispM = heightCm / 100;
-        elHeightD.innerText = `${heightCm.toFixed(1)} cm`;
-    } else {
-        elHeightD.innerText = "--- cm";
-    }
-
-    // 2. カウンター動作時間 / 接地時間（s）★最重要
-    if (jumpData.start && jumpData.takeoff) {
-        contactTimeS = Math.max(0, jumpData.takeoff.time - jumpData.start.time);
-        elContactT.innerText = `${contactTimeS.toFixed(3)} s`;
-    } else {
-        elContactT.innerText = "--- s";
-    }
-
-    // 3. RSI（バネ・キレ指数） = 跳躍高(m) ÷ 時間(s)
-    if (heightDispM > 0 && contactTimeS > 0) {
-        const rsiVal = heightDispM / contactTimeS;
-        elRSI.innerText = `${rsiVal.toFixed(2)}`;
-    } else {
-        elRSI.innerText = "---";
-    }
-
-    // 4. 滞空時間 & 滞空跳躍高（参考）
-    if (jumpData.takeoff && jumpData.landing) {
-        const tFlight = Math.max(0, jumpData.landing.time - jumpData.takeoff.time);
-        elTime.innerText = `${tFlight.toFixed(3)} s`;
-        const hTime = 1.22625 * (tFlight * tFlight);
-        elHeightT.innerText = `${(hTime * 100).toFixed(1)} cm`;
-
-        if (pxPerCm) {
-            const dxPx = Math.abs(jumpData.landing.feet.x - jumpData.takeoff.feet.x);
-            elDist.innerText = `${(dxPx / pxPerCm).toFixed(1)} cm`;
-        }
-    } else {
-        elTime.innerText = "--- s";
-        elHeightT.innerText = "--- cm";
-        elDist.innerText = "--- cm";
-    }
+    if (j2HeightM > 0 && contactTimeS > 0) {
+        const rsi = j2HeightM / contactTimeS;
+        document.getElementById('res_rsi').innerText = `${rsi.toFixed(2)}`;
+    } else { document.getElementById('res_rsi').innerText = "---"; }
 }
 
 function redrawJumpVisuals() {
-    if (jumpData.takeoff && jumpData.peak) {
-        outCtx.save();
-        outCtx.strokeStyle = 'rgba(0, 255, 204, 0.7)';
-        outCtx.setLineDash([4/zoomScale, 4/zoomScale]);
-        outCtx.lineWidth = 2/zoomScale;
-        outCtx.beginPath();
-        outCtx.moveTo(jumpData.takeoff.com.x, jumpData.takeoff.com.y);
-        outCtx.lineTo(jumpData.takeoff.com.x, jumpData.peak.com.y);
-        outCtx.stroke();
-        outCtx.restore();
-    }
-    
     const drawMark = (pt, label, color) => {
         if (!pt) return;
         outCtx.save();
@@ -665,10 +652,14 @@ function redrawJumpVisuals() {
         outCtx.fillText(label, pt.com.x + 8/zoomScale, pt.com.y - 4/zoomScale);
         outCtx.restore();
     };
-    drawMark(jumpData.start, "沈み開始", "#ff9500");
-    drawMark(jumpData.takeoff, "離地", "#ff375f");
-    drawMark(jumpData.peak, "頂点", "#007aff");
-    drawMark(jumpData.landing, "着地", "#30d158");
+
+    drawMark(jumps.j1.takeoff, "①離地", "#00ffcc");
+    drawMark(jumps.j1.peak, "①頂点", "#00ffcc");
+    drawMark(jumps.j1.landing, "①着地", "#00ffcc");
+
+    drawMark(jumps.j2.takeoff, "②離地", "#ffd60a");
+    drawMark(jumps.j2.peak, "②頂点", "#ffd60a");
+    drawMark(jumps.j2.landing, "②着地", "#ffd60a");
 }
 
 async function renderCurrentFrame() {
@@ -718,10 +709,10 @@ function captureSnapshot() {
     snapCtx.fillStyle = '#000'; snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
     snapCtx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height); snapCtx.drawImage(outputCanvas, 0, 0);
     snapCtx.fillStyle = '#1c1c1e'; snapCtx.fillRect(0, outputCanvas.height, snapCanvas.width, 70);
-    snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 14px sans-serif';
-    snapCtx.fillText(`跳躍高: ${document.getElementById('res_height_disp').innerText} ｜ RSI: ${document.getElementById('res_rsi').innerText}`, 15, outputCanvas.height + 26);
-    snapCtx.fillStyle = '#ccc'; snapCtx.font = '11px sans-serif';
-    snapCtx.fillText(`動作時間: ${document.getElementById('res_contact_time').innerText} ｜ 滞空時間: ${document.getElementById('res_time').innerText}`, 15, outputCanvas.height + 50);
+    snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 13px sans-serif';
+    snapCtx.fillText(`1回目高: ${document.getElementById('res_j1_h').innerText} ｜ 2回目高: ${document.getElementById('res_j2_h').innerText}`, 15, outputCanvas.height + 26);
+    snapCtx.fillStyle = '#ff375f'; snapCtx.font = 'bold 12px sans-serif';
+    snapCtx.fillText(`接地時間: ${document.getElementById('res_contact_t').innerText} ｜ RSI: ${document.getElementById('res_rsi').innerText}`, 15, outputCanvas.height + 50);
     document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); document.getElementById('snapshot-modal-overlay').style.display = 'flex';
 }
 function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
