@@ -1,183 +1,161 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head><link rel="apple-touch-icon" href="icon.png.JPG">
+<head>
+<link rel="apple-touch-icon" href="icon.png.JPG">
 <link rel="icon" type="image/jpeg" href="icon.png.JPG">
-
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="動作分析Pro">
-<title>動作分析 Pro - トップページ</title>
+<title>動作分析 Pro - ポータル</title>
 
 <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    html, body {
-        width: 100%;
-        min-height: 100dvh;
-        background: #0d0d0e;
-        color: #fff;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding-top: env(safe-area-inset-top);
-        padding-bottom: env(safe-area-inset-bottom);
-    }
-    .container {
-        width: 100%;
-        max-width: 480px;
-        padding: 30px 20px 40px;
-        display: flex;
-        flex-direction: column;
-        gap: 24px;
-    }
-    .hero {
-        text-align: center;
-        padding: 20px 0 10px;
-    }
-    .badge {
-        display: inline-block;
-        background: rgba(0, 255, 204, 0.15);
-        color: #00ffcc;
-        border: 1px solid #00ffcc;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: bold;
-        margin-bottom: 12px;
-    }
-    .title {
-        font-size: 28px;
-        font-weight: 800;
-        letter-spacing: -0.5px;
-        margin-bottom: 8px;
-        background: linear-gradient(135deg, #fff 40%, #aaa);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-    .subtitle {
-        font-size: 13px;
-        color: #8e8e93;
-        line-height: 1.5;
-    }
-    .launch-card {
-        background: linear-gradient(145deg, #1c1c1e, #2c2c2e);
-        border: 1px solid #3a3a3c;
-        border-radius: 16px;
-        padding: 24px 20px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-        gap: 16px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    }
-    .launch-btn {
-        width: 100%;
-        padding: 16px;
-        background: #007aff;
-        color: #fff;
-        border: none;
-        border-radius: 12px;
-        font-size: 16px;
-        font-weight: bold;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        box-shadow: 0 4px 15px rgba(0, 122, 255, 0.35);
-        transition: transform 0.1s ease, background 0.2s;
-    }
-    .launch-btn:active {
-        transform: scale(0.98);
-        background: #0062cc;
-    }
-    .feature-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 10px;
-    }
-    .feature-card {
-        background: #1c1c1e;
-        border: 1px solid #2c2c2e;
-        border-radius: 12px;
-        padding: 14px;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-    }
-    .feature-icon {
-        font-size: 20px;
-    }
-    .feature-title {
-        font-size: 13px;
-        font-weight: bold;
-        color: #f2f2f7;
-    }
-    .feature-desc {
-        font-size: 11px;
-        color: #8e8e93;
-        line-height: 1.4;
-    }
-    .footer {
-        margin-top: auto;
-        text-align: center;
-        font-size: 11px;
-        color: #48484a;
-        padding-top: 20px;
-    }
+ * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+ html, body { 
+   width: 100%; 
+   height: 100dvh; 
+   background: #000; 
+   color: #fff; 
+   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+   display: flex; 
+   flex-direction: column; 
+   justify-content: space-between;
+   padding: calc(16px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom)) 16px;
+   overflow: hidden;
+ }
+
+ .header-area {
+   text-align: center;
+   margin-top: 10px;
+ }
+ .app-badge {
+   display: inline-block;
+   background: rgba(0, 255, 204, 0.15);
+   color: #00ffcc;
+   border: 1px solid #00ffcc;
+   font-size: 11px;
+   font-weight: bold;
+   padding: 3px 10px;
+   border-radius: 20px;
+   margin-bottom: 8px;
+ }
+ h1 {
+   font-size: 24px;
+   font-weight: 800;
+   letter-spacing: 0.5px;
+   background: linear-gradient(135deg, #fff 40%, #aaa 100%);
+   -webkit-background-clip: text;
+   -webkit-text-fill-color: transparent;
+ }
+ .subtitle {
+   font-size: 12px;
+   color: #888;
+   margin-top: 4px;
+ }
+
+ .menu-grid {
+   display: flex;
+   flex-direction: column;
+   gap: 14px;
+   max-width: 420px;
+   width: 100%;
+   margin: 0 auto;
+ }
+
+ .menu-card {
+   background: #1c1c1e;
+   border: 1px solid #333;
+   border-radius: 16px;
+   padding: 18px 16px;
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   text-decoration: none;
+   color: #fff;
+   box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+   transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+ }
+ .menu-card:active {
+   transform: scale(0.97);
+   background: #262629;
+ }
+ .menu-card.card-rotation {
+   border-left: 5px solid #00ffcc;
+ }
+ .menu-card.card-bio {
+   border-left: 5px solid #ffd60a;
+ }
+
+ .card-content {
+   display: flex;
+   flex-direction: column;
+   gap: 4px;
+ }
+ .card-tag {
+   font-size: 10px;
+   font-weight: bold;
+   letter-spacing: 0.5px;
+ }
+ .tag-rotation { color: #00ffcc; }
+ .tag-bio { color: #ffd60a; }
+
+ .card-title {
+   font-size: 16px;
+   font-weight: bold;
+ }
+ .card-desc {
+   font-size: 11px;
+   color: #999;
+   line-height: 1.3;
+ }
+
+ .card-arrow {
+   font-size: 18px;
+   color: #555;
+   padding-left: 8px;
+ }
+
+ .footer-area {
+   text-align: center;
+   font-size: 10px;
+   color: #555;
+ }
 </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="hero">
-        <span class="badge">AI Motion Analysis</span>
-        <h1 class="title">動作分析 Pro</h1>
-        <p class="subtitle">フォーム解析・角度測定・体幹傾斜＆捻転差の定量化ツール</p>
-    </div>
+ <div class="header-area">
+   <div class="app-badge">AI MOTION ANALYSIS</div>
+   <h1>動作分析 Pro</h1>
+   <p class="subtitle">解析対象の動作モジュールを選択してください</p>
+ </div>
 
-    <div class="launch-card">
-        <div>
-            <div style="font-size: 15px; font-weight: bold; margin-bottom: 4px;">分析ワークスペース</div>
-            <div style="font-size: 12px; color: #aaa;">動画の読み込み・2画面比較・AI骨格抽出</div>
-        </div>
-        <a href="index2.html" class="launch-btn">
-            <span>🚀 アプリを起動する</span>
-        </a>
-    </div>
+ <div class="menu-grid">
+   <!-- モジュール1: 体幹・捻転差解析 (index2.html) -->
+   <a href="index2.html" class="menu-card card-rotation">
+     <div class="card-content">
+       <span class="card-tag tag-rotation">MODULE 01 ｜ ROTATION & TORSION</span>
+       <div class="card-title">⚾️ 体幹傾斜 & 捻転差解析</div>
+       <div class="card-desc">胸郭・骨盤の回旋角度（X-Factor）、体幹軸の傾き、手動キーフレーム補正</div>
+     </div>
+     <div class="card-arrow">❯</div>
+   </a>
 
-    <div style="font-size: 13px; font-weight: bold; color: #aaa; margin-left: 4px;">主な解析機能</div>
+   <!-- モジュール2: 下肢バイオメカニクス (index3.html) -->
+   <a href="index3.html" class="menu-card card-bio">
+     <div class="card-content">
+       <span class="card-tag tag-bio">MODULE 02 ｜ STS & LOWER LIMBS</span>
+       <div class="card-title">🦵 下肢関節モーメント & 床反力</div>
+       <div class="card-desc">立ち上がり動作の床反力ベクトル、股・膝・足関節トルク、介助者除外ROI</div>
+     </div>
+     <div class="card-arrow">❯</div>
+   </a>
+ </div>
 
-    <div class="feature-grid">
-        <div class="feature-card">
-            <div class="feature-icon">🤖</div>
-            <div class="feature-title">AI骨格 & 捻転差</div>
-            <div class="feature-desc">肩・骨盤の傾斜とX-Factorを自動算出。手動微調整にも対応。</div>
-        </div>
-        <div class="feature-card">
-            <div class="feature-icon">📐</div>
-            <div class="feature-title">角度 & 予測</div>
-            <div class="feature-desc">3点タップでの関節角度計測と、可動域改善シミュレーション。</div>
-        </div>
-        <div class="feature-card">
-            <div class="feature-icon">⚡</div>
-            <div class="feature-title">速度・加速度</div>
-            <div class="feature-desc">物差し設定による実寸換算と、コマ送りによる速度・G値の算出。</div>
-        </div>
-        <div class="feature-card">
-            <div class="feature-icon">📍</div>
-            <div class="feature-title">重心移動追跡</div>
-            <div class="feature-desc">垂直基準線をもとに、頭部や重心のブレ幅・移動量をトラッキング。</div>
-        </div>
-    </div>
-
-    <div class="footer">
-        動作分析 Pro &copy; 2026
-    </div>
-</div>
+ <div class="footer-area">
+   動作分析 Pro v2.0 ｜ Clinical & Sports Biomechanics
+ </div>
 
 </body>
 </html>
