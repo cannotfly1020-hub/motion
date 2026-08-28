@@ -18,7 +18,7 @@
  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
  html, body { width: 100%; height: 100dvh; background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; overflow: hidden; }
  
- #header { width: 100%; background: #1c1c1e; padding-top: calc(6px + env(safe-area-inset-top)); padding-left: calc(8px + env(safe-area-inset-left)); padding-right: calc(8px + env(safe-area-inset-right)); padding-bottom: 6px; display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid #333; z-index: 20; flex-shrink: 0; }
+ #header { width: 100%; background: #1c1c1e; padding-top: calc(6px + env(safe-area-inset-top)); padding-left: calc(8px + env(safe-area-inset-left)); padding-right: calc(8px + env(safe-area-inset-right)); padding-bottom: 6px; display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid #333; z-index: 30; flex-shrink: 0; }
  .header-top-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 4px; }
  .btn-group-header { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; flex: 1; min-width: 0; }
  
@@ -27,7 +27,7 @@
  .hdr-btn.fps-badge { background: #30d158; color: #000; font-size: 10px; }
  .hdr-btn.rec-btn { background: #ff3b30; color: #fff; }
  .hdr-btn.rec-active { background: #ff453a; animation: blink 1s infinite; }
- .hdr-btn.roi-active { background: #ff9500; color: #000; font-weight: bold; }
+ .hdr-btn.roi-active { background: #ff9500 !important; color: #000 !important; font-weight: bold; }
  @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
  
  #body-info-text { font-size: 10px; color: #ff9500; font-weight: 600; white-space: nowrap; flex-shrink: 0; padding: 4px 6px; background: #262629; border: 1px solid #3a3a3c; border-radius: 6px; cursor: pointer; }
@@ -41,14 +41,20 @@
  .video-pane { position: relative; flex: 1; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #000; }
  .zoom-target { width: 100%; height: 100%; position: relative; transform-origin: center center; }
  video { width: 100%; height: 100%; object-fit: contain; display: block; }
- canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; pointer-events: auto; }
+ canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
  
- .hud-overlay { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; pointer-events: none; z-index: 10; }
+ /* 骨格・ベクトル描画用Canvas */
+ #outputCanvas { z-index: 1; pointer-events: none; }
+ 
+ /* ROI操作・タッチイベント用Canvas */
+ #interactionCanvas { z-index: 10; touch-action: none; cursor: crosshair; }
+
+ .hud-overlay { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; pointer-events: none; z-index: 20; }
  .hud-badge { background: rgba(0, 0, 0, 0.75); padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; border: 1px solid #444; }
  .hud-r { color: #00e5ff; border-left: 3px solid #00e5ff; }
  .hud-l { color: #ffd60a; border-left: 3px solid #ffd60a; }
 
- #controls { width: 100%; background: #1c1c1e; padding-top: 5px; padding-left: calc(8px + env(safe-area-inset-left)); padding-right: calc(8px + env(safe-area-inset-right)); padding-bottom: calc(6px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 5px; border-top: 1px solid #333; flex-shrink: 0; }
+ #controls { width: 100%; background: #1c1c1e; padding-top: 5px; padding-left: calc(8px + env(safe-area-inset-left)); padding-right: calc(8px + env(safe-area-inset-right)); padding-bottom: calc(6px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 5px; border-top: 1px solid #333; z-index: 30; flex-shrink: 0; }
  .seek-container { display: flex; flex-direction: column; gap: 3px; width: 100%; }
  .seek-row { display: flex; align-items: center; gap: 6px; width: 100%; }
  .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 14px; flex-shrink: 0; text-align: center; }
@@ -105,6 +111,7 @@
  <div class="zoom-target" id="zoomTarget">
  <video id="videoElement" playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
  <canvas id="outputCanvas"></canvas>
+ <canvas id="interactionCanvas"></canvas>
  </div>
  <div class="hud-overlay">
  <div class="hud-badge hud-r">右膝: <span id="hud_r_knee">0.0</span> N·m</div>
@@ -144,11 +151,10 @@
  <button class="ctrl-btn" id="btnPlayPause">▶ 再生</button>
  <button class="ctrl-btn" id="btnStepForward">+1 ▶</button>
  <button class="ctrl-btn" id="btnSpeed" onclick="togglePlaybackRate()">1.0x</button>
- <button class="ctrl-btn" id="btnClearRoi" onclick="clearRoi()">枠解除</button>
+ <button class="ctrl-btn" id="btnClearRoi" onclick="clearRoi()">枠クリア</button>
  </div>
 </div>
 
-<!-- 身体情報設定モーダル -->
 <div id="body-modal-overlay" class="modal-overlay">
  <div class="modal-card">
  <h3>身体パラメータ設定</h3>
@@ -169,7 +175,6 @@
  </div>
 </div>
 
-<!-- 静止画モーダル -->
 <div id="snapshot-modal-overlay" class="modal-overlay">
  <div class="modal-card" style="max-width:360px;">
  <h3 style="color:#5856d6;">📸 静止画キャプチャ</h3>
@@ -183,8 +188,10 @@
 
 <script>
 const video = document.getElementById('videoElement');
-const canvas = document.getElementById('outputCanvas');
-const ctx = canvas.getContext('2d');
+const outputCanvas = document.getElementById('outputCanvas');
+const outCtx = outputCanvas.getContext('2d');
+const interactionCanvas = document.getElementById('interactionCanvas');
+const intCtx = interactionCanvas.getContext('2d');
 const zoomTarget = document.getElementById('zoomTarget');
 
 const btnToggleRoi = document.getElementById('btnToggleRoi');
@@ -215,14 +222,13 @@ let currentRateIdx = 0;
 
 let zoomScale = 1.0;
 let panOffsetX = 0, panOffsetY = 0;
-let isPanning = false;
-let panStartX = 0, panStartY = 0;
 
+// ROI（患者さん枠）
 let isRoiMode = false;
 let isRoiDrawing = false;
 let isRoiEnabled = false;
 let roiStart = { x: 0, y: 0 };
-let roiNorm = { x: 0.2, y: 0.1, w: 0.6, h: 0.8 };
+let roiNorm = { x: 0.2, y: 0.1, w: 0.6, h: 0.8 }; // 0.0〜1.0正規化
 const roiCanvas = document.createElement('canvas');
 const roiCtx = roiCanvas.getContext('2d');
 
@@ -250,6 +256,18 @@ pose.setOptions({
 });
 pose.onResults(onResults);
 
+function fitCanvases() {
+ const rect = video.parentElement.getBoundingClientRect();
+ if (rect.width > 0 && rect.height > 0) {
+ [outputCanvas, interactionCanvas].forEach(c => {
+ c.width = rect.width;
+ c.height = rect.height;
+ });
+ }
+ redrawOverlay();
+}
+window.addEventListener('resize', fitCanvases);
+
 function toggleFPS() {
  fpsIdx = (fpsIdx + 1) % fpsList.length;
  currentFPS = fpsList[fpsIdx];
@@ -273,92 +291,94 @@ function toggleRoiMode() {
  isRoiMode = !isRoiMode;
  if (isRoiMode) {
  btnToggleRoi.classList.add('roi-active');
- document.getElementById('main-result').innerHTML = "🔲 対象者（患者さん）をドラッグして囲んでください";
- document.getElementById('sub-result').innerHTML = "枠内の人物のみをAIが固定追跡します（介助者を除外）";
+ document.getElementById('main-result').innerHTML = "🔲 画面をドラッグして患者さんを四角く囲んでください";
+ document.getElementById('sub-result').innerHTML = "囲んだ枠内のみをAIが追跡します（介助者を除外）";
  } else {
  btnToggleRoi.classList.remove('roi-active');
- redraw();
+ document.getElementById('main-result').innerHTML = "解析待機中";
+ document.getElementById('sub-result').innerHTML = "下肢関節モーメント & 床反力ベクトルをリアルタイム解析";
  }
+ redrawOverlay();
 }
 
 function clearRoi() {
  isRoiEnabled = false;
  isRoiMode = false;
  btnToggleRoi.classList.remove('roi-active');
- redraw();
+ redrawOverlay();
  renderCurrentFrame();
 }
 
-function applyZoom() {
- zoomTarget.style.transform = `translate(${panOffsetX}px, ${panOffsetY}px) scale(${zoomScale})`;
- redraw();
+function getPointerNorm(e) {
+ const rect = interactionCanvas.getBoundingClientRect();
+ const x = Math.max(0, Math.min(1.0, (e.clientX - rect.left) / rect.width));
+ const y = Math.max(0, Math.min(1.0, (e.clientY - rect.top) / rect.height));
+ return { x, y };
 }
 
-function getCanvasCoords(e) {
- const rect = canvas.getBoundingClientRect();
- const clickRelX = e.clientX - (rect.left + rect.width / 2);
- const clickRelY = e.clientY - (rect.top + rect.height / 2);
- const targetRelX = (clickRelX - panOffsetX) / zoomScale;
- const targetRelY = (clickRelY - panOffsetY) / zoomScale;
- return {
- x: Math.max(0, Math.min(canvas.width, targetRelX + canvas.width / 2)),
- y: Math.max(0, Math.min(canvas.height, targetRelY + canvas.height / 2))
- };
-}
-
-canvas.addEventListener('pointerdown', (e) => {
+// interactionCanvas 上で確実にドラッグ判定
+interactionCanvas.addEventListener('pointerdown', (e) => {
  e.preventDefault();
- if (isRoiMode) {
+ if (!isRoiMode) return;
  isRoiDrawing = true;
- const pos = getCanvasCoords(e);
- roiStart = pos;
- roiNorm = { x: pos.x / canvas.width, y: pos.y / canvas.height, w: 0, h: 0 };
- try { canvas.setPointerCapture(e.pointerId); } catch(err){}
- redraw();
- return;
- }
-
- if (zoomScale > 1.0) {
- isPanning = true;
- panStartX = e.clientX - panOffsetX;
- panStartY = e.clientY - panOffsetY;
- try { canvas.setPointerCapture(e.pointerId); } catch(err){}
- }
-});
-
-canvas.addEventListener('pointermove', (e) => {
- if (isRoiDrawing && isRoiMode) {
- const pos = getCanvasCoords(e);
- const x = Math.min(roiStart.x, pos.x) / canvas.width;
- const y = Math.min(roiStart.y, pos.y) / canvas.height;
- const w = Math.abs(pos.x - roiStart.x) / canvas.width;
- const h = Math.abs(pos.y - roiStart.y) / canvas.height;
- roiNorm = { x, y, w, h };
+ const p = getPointerNorm(e);
+ roiStart = p;
+ roiNorm = { x: p.x, y: p.y, w: 0, h: 0 };
  isRoiEnabled = true;
- redraw();
- return;
- }
-
- if (isPanning && zoomScale > 1.0) {
- panOffsetX = e.clientX - panStartX;
- panOffsetY = e.clientY - panStartY;
- applyZoom();
- }
+ try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
+ redrawOverlay();
 });
 
-canvas.addEventListener('pointerup', (e) => {
+interactionCanvas.addEventListener('pointermove', (e) => {
+ if (!isRoiDrawing || !isRoiMode) return;
+ const p = getPointerNorm(e);
+ roiNorm.x = Math.min(roiStart.x, p.x);
+ roiNorm.y = Math.min(roiStart.y, p.y);
+ roiNorm.w = Math.abs(p.x - roiStart.x);
+ roiNorm.h = Math.abs(p.y - roiStart.y);
+ redrawOverlay();
+});
+
+interactionCanvas.addEventListener('pointerup', (e) => {
  if (isRoiDrawing) {
  isRoiDrawing = false;
- try { canvas.releasePointerCapture(e.pointerId); } catch(err){}
- toggleRoiMode();
+ try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){}
+ toggleRoiMode(); // 囲み完了でモードOFF
  renderCurrentFrame();
- return;
- }
- if (isPanning) {
- isPanning = false;
- try { canvas.releasePointerCapture(e.pointerId); } catch(err){}
  }
 });
+
+function redrawOverlay() {
+ intCtx.clearRect(0, 0, interactionCanvas.width, interactionCanvas.height);
+ if (!isRoiEnabled) return;
+
+ const rx = roiNorm.x * interactionCanvas.width;
+ const ry = roiNorm.y * interactionCanvas.height;
+ const rw = roiNorm.w * interactionCanvas.width;
+ const rh = roiNorm.h * interactionCanvas.height;
+
+ if (rw < 5 || rh < 5) return;
+
+ intCtx.save();
+ // 枠外を少し暗くする
+ intCtx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+ intCtx.fillRect(0, 0, interactionCanvas.width, interactionCanvas.height);
+ intCtx.clearRect(rx, ry, rw, rh);
+
+ // オレンジの破線枠
+ intCtx.strokeStyle = '#ff9500';
+ intCtx.lineWidth = 2.5;
+ intCtx.setLineDash([6, 4]);
+ intCtx.strokeRect(rx, ry, rw, rh);
+
+ // バッジ表示
+ intCtx.fillStyle = '#ff9500';
+ intCtx.fillRect(rx, Math.max(0, ry - 18), 70, 18);
+ intCtx.fillStyle = '#000';
+ intCtx.font = 'bold 10px sans-serif';
+ intCtx.fillText("🎯 追跡エリア", rx + 4, Math.max(12, ry - 5));
+ intCtx.restore();
+}
 
 let lastLandmarks = null;
 let lastGrfR = { x: 0, y: 0 }, lastMagR = 0;
@@ -367,13 +387,13 @@ let lastGrfL = { x: 0, y: 0 }, lastMagL = 0;
 function onResults(results) {
  if (!results.poseLandmarks) {
  lastLandmarks = null;
- redraw();
+ outCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
  return;
  }
 
  const rawLm = results.poseLandmarks;
  const lm = rawLm.map(p => {
- if (isRoiEnabled) {
+ if (isRoiEnabled && roiNorm.w > 0.05 && roiNorm.h > 0.05) {
  return {
  x: roiNorm.x + p.x * roiNorm.w,
  y: roiNorm.y + p.y * roiNorm.h,
@@ -389,12 +409,12 @@ function onResults(results) {
  const heightM = (parseFloat(inputHeight.value) || 140) / 100.0;
  const now = video.currentTime;
 
- const pxBodyHeight = Math.abs(lm[0].y - (lm[27].y + lm[28].y) / 2) * canvas.height;
+ const pxBodyHeight = Math.abs(lm[0].y - (lm[27].y + lm[28].y) / 2) * outputCanvas.height;
  const meterPerPixel = (heightM * 0.85) / (pxBodyHeight || 1);
 
  const getPoint = (idx) => ({
- x: lm[idx].x * canvas.width * meterPerPixel,
- y: (1.0 - lm[idx].y) * canvas.height * meterPerPixel
+ x: lm[idx].x * outputCanvas.width * meterPerPixel,
+ y: (1.0 - lm[idx].y) * outputCanvas.height * meterPerPixel
  });
 
  const shoulderR = getPoint(12), shoulderL = getPoint(11);
@@ -467,68 +487,55 @@ function onResults(results) {
  document.getElementById('l_knee').textContent = `${torqueKneeL.toFixed(1)} N·m`;
  document.getElementById('l_hip').textContent = `${torqueHipL.toFixed(1)} N·m`;
 
- redraw();
+ redrawSkeletons();
 }
 
-function redraw() {
- ctx.clearRect(0, 0, canvas.width, canvas.height);
-
- if (isRoiEnabled && roiNorm.w > 0.02 && roiNorm.h > 0.02) {
- ctx.save();
- ctx.strokeStyle = isRoiMode ? '#ff9500' : 'rgba(255, 149, 0, 0.4)';
- ctx.lineWidth = 2 / zoomScale;
- ctx.setLineDash([4 / zoomScale, 4 / zoomScale]);
- ctx.strokeRect(roiNorm.x * canvas.width, roiNorm.y * canvas.height, roiNorm.w * canvas.width, roiNorm.h * canvas.height);
- ctx.fillStyle = '#ff9500';
- ctx.font = `bold ${Math.max(8, 10 / zoomScale)}px sans-serif`;
- ctx.fillText("追跡エリア", roiNorm.x * canvas.width + 4 / zoomScale, roiNorm.y * canvas.height - 4 / zoomScale);
- ctx.restore();
- }
-
+function redrawSkeletons() {
+ outCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
  if (!lastLandmarks) return;
  const lm = lastLandmarks;
 
- ctx.save();
- ctx.strokeStyle = '#00e5ff';
- ctx.lineWidth = 3.5 / zoomScale;
- ctx.beginPath();
- ctx.moveTo(lm[24].x * canvas.width, lm[24].y * canvas.height);
- ctx.lineTo(lm[26].x * canvas.width, lm[26].y * canvas.height);
- ctx.lineTo(lm[28].x * canvas.width, lm[28].y * canvas.height);
- ctx.lineTo(lm[32].x * canvas.width, lm[32].y * canvas.height);
- ctx.stroke();
+ outCtx.save();
+ outCtx.strokeStyle = '#00e5ff';
+ outCtx.lineWidth = 3.5;
+ outCtx.beginPath();
+ outCtx.moveTo(lm[24].x * outputCanvas.width, lm[24].y * outputCanvas.height);
+ outCtx.lineTo(lm[26].x * outputCanvas.width, lm[26].y * outputCanvas.height);
+ outCtx.lineTo(lm[28].x * outputCanvas.width, lm[28].y * outputCanvas.height);
+ outCtx.lineTo(lm[32].x * outputCanvas.width, lm[32].y * outputCanvas.height);
+ outCtx.stroke();
 
- ctx.strokeStyle = '#ffd60a';
- ctx.lineWidth = 3.5 / zoomScale;
- ctx.beginPath();
- ctx.moveTo(lm[23].x * canvas.width, lm[23].y * canvas.height);
- ctx.lineTo(lm[25].x * canvas.width, lm[25].y * canvas.height);
- ctx.lineTo(lm[27].x * canvas.width, lm[27].y * canvas.height);
- ctx.lineTo(lm[31].x * canvas.width, lm[31].y * canvas.height);
- ctx.stroke();
+ outCtx.strokeStyle = '#ffd60a';
+ outCtx.lineWidth = 3.5;
+ outCtx.beginPath();
+ outCtx.moveTo(lm[23].x * outputCanvas.width, lm[23].y * outputCanvas.height);
+ outCtx.lineTo(lm[25].x * outputCanvas.width, lm[25].y * outputCanvas.height);
+ outCtx.lineTo(lm[27].x * outputCanvas.width, lm[27].y * outputCanvas.height);
+ outCtx.lineTo(lm[31].x * outputCanvas.width, lm[31].y * outputCanvas.height);
+ outCtx.stroke();
 
  [24, 26, 28, 32].forEach(idx => {
- ctx.fillStyle = '#00e5ff';
- ctx.beginPath();
- ctx.arc(lm[idx].x * canvas.width, lm[idx].y * canvas.height, 4.5 / zoomScale, 0, Math.PI * 2);
- ctx.fill();
+ outCtx.fillStyle = '#00e5ff';
+ outCtx.beginPath();
+ outCtx.arc(lm[idx].x * outputCanvas.width, lm[idx].y * outputCanvas.height, 4.5, 0, Math.PI * 2);
+ outCtx.fill();
  });
  [23, 25, 27, 31].forEach(idx => {
- ctx.fillStyle = '#ffd60a';
- ctx.beginPath();
- ctx.arc(lm[idx].x * canvas.width, lm[idx].y * canvas.height, 4.5 / zoomScale, 0, Math.PI * 2);
- ctx.fill();
+ outCtx.fillStyle = '#ffd60a';
+ outCtx.beginPath();
+ outCtx.arc(lm[idx].x * outputCanvas.width, lm[idx].y * outputCanvas.height, 4.5, 0, Math.PI * 2);
+ outCtx.fill();
  });
 
- const rCopPxX = (lm[28].x + lm[32].x) * 0.5 * canvas.width;
- const rCopPxY = (lm[28].y + lm[32].y) * 0.5 * canvas.height;
+ const rCopPxX = (lm[28].x + lm[32].x) * 0.5 * outputCanvas.width;
+ const rCopPxY = (lm[28].y + lm[32].y) * 0.5 * outputCanvas.height;
  if (lastMagR > 25) drawDynamicForceArrow(rCopPxX, rCopPxY, lastGrfR.x, lastGrfR.y, lastMagR);
 
- const lCopPxX = (lm[27].x + lm[31].x) * 0.5 * canvas.width;
- const lCopPxY = (lm[27].y + lm[31].y) * 0.5 * canvas.height;
+ const lCopPxX = (lm[27].x + lm[31].x) * 0.5 * outputCanvas.width;
+ const lCopPxY = (lm[27].y + lm[31].y) * 0.5 * outputCanvas.height;
  if (lastMagL > 25) drawDynamicForceArrow(lCopPxX, lCopPxY, lastGrfL.x, lastGrfL.y, lastMagL);
 
- ctx.restore();
+ outCtx.restore();
 }
 
 function drawDynamicForceArrow(fromX, fromY, fx, fy, mag) {
@@ -537,61 +544,61 @@ function drawDynamicForceArrow(fromX, fromY, fx, fy, mag) {
  const toY = fromY - fy * scale;
  const angle = Math.atan2(toY - fromY, toX - fromX);
  
- const headLen = Math.min(36, Math.max(14, mag * 0.045)) / zoomScale;
- const lineWidth = Math.min(12, Math.max(3.5, mag * 0.015)) / zoomScale;
+ const headLen = Math.min(36, Math.max(14, mag * 0.045));
+ const lineWidth = Math.min(12, Math.max(3.5, mag * 0.015));
 
  let color = '#38bdf8';
  if (mag > 900) color = '#ff1744';
  else if (mag > 600) color = '#ff9100';
  else if (mag > 300) color = '#00e676';
 
- ctx.save();
- ctx.strokeStyle = color;
- ctx.fillStyle = color;
- ctx.lineWidth = lineWidth;
- ctx.lineCap = 'round';
- ctx.lineJoin = 'round';
+ outCtx.save();
+ outCtx.strokeStyle = color;
+ outCtx.fillStyle = color;
+ outCtx.lineWidth = lineWidth;
+ outCtx.lineCap = 'round';
+ outCtx.lineJoin = 'round';
 
- ctx.beginPath();
- ctx.moveTo(fromX, fromY);
- ctx.lineTo(toX, toY);
- ctx.stroke();
+ outCtx.beginPath();
+ outCtx.moveTo(fromX, fromY);
+ outCtx.lineTo(toX, toY);
+ outCtx.stroke();
 
- ctx.beginPath();
- ctx.moveTo(toX, toY);
- ctx.lineTo(toX - headLen * Math.cos(angle - Math.PI / 5), toY - headLen * Math.sin(angle - Math.PI / 5));
- ctx.lineTo(toX - (headLen * 0.6) * Math.cos(angle), toY - (headLen * 0.6) * Math.sin(angle));
- ctx.lineTo(toX - headLen * Math.cos(angle + Math.PI / 5), toY - headLen * Math.sin(angle + Math.PI / 5));
- ctx.closePath();
- ctx.fill();
+ outCtx.beginPath();
+ outCtx.moveTo(toX, toY);
+ outCtx.lineTo(toX - headLen * Math.cos(angle - Math.PI / 5), toY - headLen * Math.sin(angle - Math.PI / 5));
+ outCtx.lineTo(toX - (headLen * 0.6) * Math.cos(angle), toY - (headLen * 0.6) * Math.sin(angle));
+ outCtx.lineTo(toX - headLen * Math.cos(angle + Math.PI / 5), toY - headLen * Math.sin(angle + Math.PI / 5));
+ outCtx.closePath();
+ outCtx.fill();
 
  const text = `${Math.round(mag)} N`;
- ctx.font = `bold ${Math.max(8, Math.round(11 / zoomScale))}px monospace`;
- const textMetrics = ctx.measureText(text);
- const badgeW = textMetrics.width + (8 / zoomScale);
- const badgeH = 16 / zoomScale;
- const badgeX = toX + (10 / zoomScale) * Math.cos(angle) - badgeW / 2;
- const badgeY = toY + (10 / zoomScale) * Math.sin(angle) - badgeH / 2;
+ outCtx.font = `bold 11px monospace`;
+ const textMetrics = outCtx.measureText(text);
+ const badgeW = textMetrics.width + 8;
+ const badgeH = 16;
+ const badgeX = toX + 10 * Math.cos(angle) - badgeW / 2;
+ const badgeY = toY + 10 * Math.sin(angle) - badgeH / 2;
 
- ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
- ctx.strokeStyle = color;
- ctx.lineWidth = 1.2 / zoomScale;
- ctx.beginPath();
- ctx.rect(badgeX, badgeY, badgeW, badgeH);
- ctx.fill();
- ctx.stroke();
+ outCtx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+ outCtx.strokeStyle = color;
+ outCtx.lineWidth = 1.2;
+ outCtx.beginPath();
+ outCtx.rect(badgeX, badgeY, badgeW, badgeH);
+ outCtx.fill();
+ outCtx.stroke();
 
- ctx.fillStyle = '#ffffff';
- ctx.textAlign = 'center';
- ctx.textBaseline = 'middle';
- ctx.fillText(text, badgeX + badgeW / 2, badgeY + badgeH / 2);
+ outCtx.fillStyle = '#ffffff';
+ outCtx.textAlign = 'center';
+ outCtx.textBaseline = 'middle';
+ outCtx.fillText(text, badgeX + badgeW / 2, badgeY + badgeH / 2);
 
- ctx.beginPath();
- ctx.arc(fromX, fromY, Math.min(7, Math.max(3.5, mag * 0.009)) / zoomScale, 0, 2 * Math.PI);
- ctx.fillStyle = color;
- ctx.fill();
+ outCtx.beginPath();
+ outCtx.arc(fromX, fromY, Math.min(7, Math.max(3.5, mag * 0.009)), 0, 2 * Math.PI);
+ outCtx.fillStyle = color;
+ outCtx.fill();
 
- ctx.restore();
+ outCtx.restore();
 }
 
 async function renderCurrentFrame() {
@@ -600,7 +607,7 @@ async function renderCurrentFrame() {
  try {
  let inputSource = video;
  
- if (isRoiEnabled) {
+ if (isRoiEnabled && roiNorm.w > 0.05 && roiNorm.h > 0.05) {
  const sx = roiNorm.x * video.videoWidth;
  const sy = roiNorm.y * video.videoHeight;
  const sw = roiNorm.w * video.videoWidth;
@@ -684,22 +691,22 @@ function captureSnapshot() {
  if (!video.videoWidth) { alert("動画が読み込まれていません"); return; }
  const snapCanvas = document.createElement('canvas');
  const snapCtx = snapCanvas.getContext('2d');
- snapCanvas.width = canvas.width;
- snapCanvas.height = canvas.height + 60;
+ snapCanvas.width = outputCanvas.width;
+ snapCanvas.height = outputCanvas.height + 60;
 
  snapCtx.fillStyle = '#000';
  snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
- snapCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
- snapCtx.drawImage(canvas, 0, 0);
+ snapCtx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
+ snapCtx.drawImage(outputCanvas, 0, 0);
 
  snapCtx.fillStyle = '#1c1c1e';
- snapCtx.fillRect(0, canvas.height, snapCanvas.width, 60);
+ snapCtx.fillRect(0, outputCanvas.height, snapCanvas.width, 60);
  snapCtx.fillStyle = '#00ffcc';
  snapCtx.font = 'bold 13px -apple-system, sans-serif';
- snapCtx.fillText(`右膝トルク: ${document.getElementById('hud_r_knee').textContent} N·m ｜ 左膝トルク: ${document.getElementById('hud_l_knee').textContent} N·m`, 15, canvas.height + 24);
+ snapCtx.fillText(`右膝トルク: ${document.getElementById('hud_r_knee').textContent} N·m ｜ 左膝トルク: ${document.getElementById('hud_l_knee').textContent} N·m`, 15, outputCanvas.height + 24);
  snapCtx.fillStyle = '#ccc';
  snapCtx.font = '11px -apple-system, sans-serif';
- snapCtx.fillText(`右床反力: ${document.getElementById('r_grf').textContent} ｜ 左床反力: ${document.getElementById('l_grf').textContent}`, 15, canvas.height + 46);
+ snapCtx.fillText(`右床反力: ${document.getElementById('r_grf').textContent} ｜ 左床反力: ${document.getElementById('l_grf').textContent}`, 15, outputCanvas.height + 46);
 
  document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png');
  document.getElementById('snapshot-modal-overlay').style.display = 'flex';
@@ -716,25 +723,25 @@ function startRecording() {
 
  recordedChunks = [];
  recordCanvas = document.createElement('canvas');
- recordCanvas.width = canvas.width;
- recordCanvas.height = canvas.height + 50;
+ recordCanvas.width = outputCanvas.width;
+ recordCanvas.height = outputCanvas.height + 50;
  recordCtx = recordCanvas.getContext('2d');
 
  function drawRecordFrame() {
  if (!isRecording) return;
  recordCtx.fillStyle = '#000';
  recordCtx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
- recordCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
- recordCtx.drawImage(canvas, 0, 0);
+ recordCtx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
+ recordCtx.drawImage(outputCanvas, 0, 0);
 
  recordCtx.fillStyle = '#1c1c1e';
- recordCtx.fillRect(0, canvas.height, recordCanvas.width, 50);
+ recordCtx.fillRect(0, outputCanvas.height, recordCanvas.width, 50);
  recordCtx.fillStyle = '#00ffcc';
  recordCtx.font = 'bold 12px -apple-system, sans-serif';
- recordCtx.fillText(`右膝: ${document.getElementById('hud_r_knee').textContent} N·m ｜ 左膝: ${document.getElementById('hud_l_knee').textContent} N·m`, 12, canvas.height + 22);
+ recordCtx.fillText(`右膝: ${document.getElementById('hud_r_knee').textContent} N·m ｜ 左膝: ${document.getElementById('hud_l_knee').textContent} N·m`, 12, outputCanvas.height + 22);
  recordCtx.fillStyle = '#ccc';
  recordCtx.font = '10px -apple-system, sans-serif';
- recordCtx.fillText(`右床反力: ${document.getElementById('r_grf').textContent} ｜ 左床反力: ${document.getElementById('l_grf').textContent}`, 12, canvas.height + 40);
+ recordCtx.fillText(`右床反力: ${document.getElementById('r_grf').textContent} ｜ 左床反力: ${document.getElementById('l_grf').textContent}`, 12, outputCanvas.height + 40);
 
  recordAnimId = requestAnimationFrame(drawRecordFrame);
  }
@@ -807,19 +814,13 @@ inputFile.addEventListener('change', (e) => {
  }
  video.pause();
 
- zoomScale = 1.0;
- panOffsetX = 0;
- panOffsetY = 0;
- applyZoom();
-
  currentBlobUrl = URL.createObjectURL(file);
  video.src = currentBlobUrl;
  video.load();
 
  const onCanPlay = () => {
  video.removeEventListener('canplay', onCanPlay);
- canvas.width = video.videoWidth;
- canvas.height = video.videoHeight;
+ fitCanvases();
  isProcessing = true;
  btnPlayPause.textContent = '▶ 再生';
  video.currentTime = 0.001;
