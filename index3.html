@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>下肢動作分析</title>
+  <title>下肢動作分析 & GRFベクトル可視化</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
       width: 100%;
       height: 100%;
-      overflow: hidden; /* 画面全体のスクロールを完全禁止 */
+      overflow: hidden;
       background-color: #121212;
       color: #e0e0e0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -24,7 +24,6 @@
       max-width: 480px;
       margin: 0 auto;
     }
-    /* 1. 設定バー */
     .top-bar {
       flex: 0 0 auto;
       background: #1e1e1e;
@@ -56,7 +55,6 @@
     .btn-blue { background: #0070f3; color: #fff; }
     .btn-gray { background: #333; color: #fff; border: 1px solid #555; }
     
-    /* 2. 映像エリア (余白を埋めるフレキシブル設計) */
     .viewport {
       flex: 1 1 auto;
       position: relative;
@@ -73,7 +71,6 @@
       height: 100%;
       object-fit: contain;
     }
-    /* 画面上のHUD */
     .hud-overlay {
       position: absolute;
       top: 6px;
@@ -84,7 +81,7 @@
       pointer-events: none;
     }
     .hud-badge {
-      background: rgba(0, 0, 0, 0.7);
+      background: rgba(0, 0, 0, 0.75);
       padding: 4px 8px;
       border-radius: 4px;
       font-size: 11px;
@@ -93,7 +90,6 @@
     .hud-r { color: #00e5ff; border-left: 3px solid #00e5ff; }
     .hud-l { color: #ff9100; border-left: 3px solid #ff9100; }
 
-    /* 3. シークバー */
     .controller {
       flex: 0 0 auto;
       background: #1e1e1e;
@@ -133,7 +129,6 @@
       border-radius: 4px;
     }
 
-    /* 4. 下部数値カード (左右横並び) */
     .dashboard-grid {
       flex: 0 0 auto;
       display: grid;
@@ -342,22 +337,27 @@ function onResults(results) {
   document.getElementById('hud_r_knee').textContent = torqueKneeR.toFixed(1);
   document.getElementById('hud_l_knee').textContent = torqueKneeL.toFixed(1);
 
-  document.getElementById('r_grf').textContent = `${Math.round(grfR.y)} N`;
+  const magGrfR = Math.hypot(grfR.x, grfR.y);
+  const magGrfL = Math.hypot(grfL.x, grfL.y);
+
+  document.getElementById('r_grf').textContent = `${Math.round(magGrfR)} N`;
   document.getElementById('r_ankle').textContent = `${torqueAnkleR.toFixed(1)} N·m`;
   document.getElementById('r_knee').textContent = `${torqueKneeR.toFixed(1)} N·m`;
   document.getElementById('r_hip').textContent = `${torqueHipR.toFixed(1)} N·m`;
 
-  document.getElementById('l_grf').textContent = `${Math.round(grfL.y)} N`;
+  document.getElementById('l_grf').textContent = `${Math.round(magGrfL)} N`;
   document.getElementById('l_ankle').textContent = `${torqueAnkleL.toFixed(1)} N·m`;
   document.getElementById('l_knee').textContent = `${torqueKneeL.toFixed(1)} N·m`;
   document.getElementById('l_hip').textContent = `${torqueHipL.toFixed(1)} N·m`;
 
-  drawBilateralOverlay(lm, comFootR, grfR, comFootL, grfL, meterPerPixel);
+  // 描画
+  drawVisuals(lm, comFootR, grfR, magGrfR, comFootL, grfL, magGrfL, meterPerPixel);
   ctx.restore();
 }
 
-function drawBilateralOverlay(lm, copR, grfR, copL, grfL, meterPerPixel) {
-  // 右 (水色)
+// 骨格および矢印ベクトルの高度描画
+function drawVisuals(lm, copR, grfR, magR, copL, grfL, magL, meterPerPixel) {
+  // 1. 右骨格 (シアン)
   ctx.strokeStyle = '#00e5ff';
   ctx.lineWidth = 3;
   ctx.beginPath();
@@ -367,7 +367,7 @@ function drawBilateralOverlay(lm, copR, grfR, copL, grfL, meterPerPixel) {
   ctx.lineTo(lm[32].x * canvas.width, lm[32].y * canvas.height);
   ctx.stroke();
 
-  // 左 (オレンジ)
+  // 2. 左骨格 (オレンジ)
   ctx.strokeStyle = '#ff9100';
   ctx.lineWidth = 3;
   ctx.beginPath();
@@ -377,25 +377,70 @@ function drawBilateralOverlay(lm, copR, grfR, copL, grfL, meterPerPixel) {
   ctx.lineTo(lm[31].x * canvas.width, lm[31].y * canvas.height);
   ctx.stroke();
 
-  // 右GRF
+  // 3. 右床反力ベクトル矢印
   const rPxX = copR.x / meterPerPixel;
   const rPxY = canvas.height - (copR.y / meterPerPixel);
-  ctx.strokeStyle = '#4ade80';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(rPxX, rPxY);
-  ctx.lineTo(rPxX + grfR.x * 0.12, rPxY - grfR.y * 0.12);
-  ctx.stroke();
+  if (magR > 30) {
+    drawForceArrow(rPxX, rPxY, grfR.x, grfR.y, magR, '#22c55e', '#4ade80');
+  }
 
-  // 左GRF
+  // 4. 左床反力ベクトル矢印
   const lPxX = copL.x / meterPerPixel;
   const lPxY = canvas.height - (copL.y / meterPerPixel);
-  ctx.strokeStyle = '#22c55e';
-  ctx.lineWidth = 4;
+  if (magL > 30) {
+    drawForceArrow(lPxX, lPxY, grfL.x, grfL.y, magL, '#10b981', '#34d399');
+  }
+}
+
+// 矢じり・強弱・数値つき矢印描画関数
+function drawForceArrow(fromX, fromY, fx, fy, mag, colorBase, colorGlow) {
+  const scale = 0.18; // ベクトルのピクセル長係数
+  const toX = fromX + fx * scale;
+  const toY = fromY - fy * scale; // 画面上向きが-y
+  
+  const angle = Math.atan2(toY - fromY, toX - fromX);
+  const headLen = Math.min(22, Math.max(12, mag * 0.025)); // 力に応じた矢じりサイズ
+  const lineWidth = Math.min(8, Math.max(3, mag * 0.01));  // 力に応じた線の太さ
+
+  ctx.save();
+  // 矢印の主軸
+  ctx.strokeStyle = colorBase;
+  ctx.fillStyle = colorBase;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
   ctx.beginPath();
-  ctx.moveTo(lPxX, lPxY);
-  ctx.lineTo(lPxX + grfL.x * 0.12, lPxY - grfL.y * 0.12);
+  ctx.moveTo(fromX, fromY);
+  ctx.lineTo(toX, toY);
   ctx.stroke();
+
+  // 矢じり (三角形)
+  ctx.beginPath();
+  ctx.moveTo(toX, toY);
+  ctx.lineTo(toX - headLen * Math.cos(angle - Math.PI / 6), toY - headLen * Math.sin(angle - Math.PI / 6));
+  ctx.lineTo(toX - headLen * Math.cos(angle + Math.PI / 6), toY - headLen * Math.sin(angle + Math.PI / 6));
+  ctx.closePath();
+  ctx.fill();
+
+  // 矢印先端のニュートン(N)数値バッジ
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 2.5;
+  const text = `${Math.round(mag)}N`;
+  const textX = toX + 8 * Math.cos(angle);
+  const textY = toY + 8 * Math.sin(angle);
+  ctx.strokeText(text, textX, textY);
+  ctx.fillText(text, textX, textY);
+
+  // 作用点（CoP）のマーカー
+  ctx.beginPath();
+  ctx.arc(fromX, fromY, 4, 0, 2 * Math.PI);
+  ctx.fillStyle = colorGlow;
+  ctx.fill();
+
+  ctx.restore();
 }
 
 async function renderCurrentFrame() {
