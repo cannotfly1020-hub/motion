@@ -492,7 +492,6 @@ function redrawOverlay() {
         intCtx.lineTo(interactionCanvas.width, fy);
         intCtx.stroke();
         
-        // ハンドルマーク（ドラッグ中・地面モード中）
         if (isFloorMode) {
             intCtx.fillStyle = '#00ffcc';
             intCtx.beginPath();
@@ -563,9 +562,21 @@ function onResults(results) {
 
     currentLandmarks = lm;
     const w = outputCanvas.width, h = outputCanvas.height;
-    const hipL = lm[23], hipR = lm[24], ankleL = lm[27], ankleR = lm[28], toeL = lm[31], toeR = lm[32], heelL = lm[29], heelR = lm[30];
     
-    if (hipL && hipR) currentCoM = { x: (hipL.x + hipR.x) * 0.5 * w, y: (hipL.y + hipR.y) * 0.5 * h };
+    // 4点（両肩・両股関節）および足部ポイント
+    const shL = lm[11], shR = lm[12], hipL = lm[23], hipR = lm[24];
+    const ankleL = lm[27], ankleR = lm[28], toeL = lm[31], toeR = lm[32], heelL = lm[29], heelR = lm[30];
+    
+    // ★ 4点の中心点（体幹・胸腰椎移行部付近）を重心（CoM）として算出！
+    if (shL && shR && hipL && hipR) {
+        currentCoM = {
+            x: (shL.x + shR.x + hipL.x + hipR.x) * 0.25 * w,
+            y: (shL.y + shR.y + hipL.y + hipR.y) * 0.25 * h
+        };
+    } else if (hipL && hipR) {
+        currentCoM = { x: (hipL.x + hipR.x) * 0.5 * w, y: (hipL.y + hipR.y) * 0.5 * h };
+    }
+
     if (ankleL && ankleR) currentFeetCenter = { x: (ankleL.x + ankleR.x) * 0.5 * w, y: (ankleL.y + ankleR.y) * 0.5 * h };
 
     drawSkeleton(lm, w, h);
@@ -613,7 +624,7 @@ function onResults(results) {
                 document.getElementById('btnAutoStart').innerText = "▶ 再生してAI自動検知を開始";
                 
                 mainResult.innerHTML = "<span style='color:#30d158;'>✅ 地面ライン連動 AI検知完了！</span>";
-                subResult.innerText = "離地・着地を地面ライン基準で正確に捉えました";
+                subResult.innerText = "4点中心モデルにより正確な跳躍高を算出しました";
                 updateJumpBtnStyles();
             }
         }
@@ -638,6 +649,7 @@ function drawSkeleton(lm, w, h) {
     drawLine(24, 26, '#ffd60a'); drawLine(26, 28, '#ffd60a'); drawLine(28, 32, '#ffd60a');
     drawLine(23, 25, '#00ffcc'); drawLine(25, 27, '#00ffcc'); drawLine(27, 31, '#00ffcc');
     
+    // 重心（CoM）ポイントの描画（4点中心）
     if(currentCoM) {
         outCtx.fillStyle = '#ff375f'; outCtx.beginPath(); outCtx.arc(currentCoM.x, currentCoM.y, 6/zoomScale, 0, Math.PI*2); outCtx.fill();
     }
