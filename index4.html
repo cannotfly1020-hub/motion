@@ -94,7 +94,7 @@
     <div id="result-box">
         <div class="result-text-area">
             <div id="main-result">動画を選択してください</div>
-            <div id="sub-result">コマ送りし「離地」「頂点」「着地」を指定してジャンプ力を解析</div>
+            <div id="sub-result">最初に「📏 物差し」で基準の長さを設定してください</div>
         </div>
     </div>
 </div>
@@ -137,15 +137,15 @@
     <div class="dashboard-grid">
         <div class="side-box right">
             <div class="side-title" style="color:#00ffcc;">📈 高さ・滞空時間</div>
-            <div class="metric-row"><span>滞空時間:</span><span id="res_time" class="metric-val">0.000 s</span></div>
-            <div class="metric-row"><span>跳躍高(滞空):</span><span id="res_height_time" class="metric-val" style="color:#00ffcc;">0.0 cm</span></div>
-            <div class="metric-row"><span>跳躍高(変位):</span><span id="res_height_disp" class="metric-val">0.0 cm</span></div>
+            <div class="metric-row"><span>滞空時間:</span><span id="res_time" class="metric-val">--- s</span></div>
+            <div class="metric-row"><span>跳躍高(滞空):</span><span id="res_height_time" class="metric-val" style="color:#00ffcc;">--- cm</span></div>
+            <div class="metric-row"><span>跳躍高(変位):</span><span id="res_height_disp" class="metric-val">--- cm</span></div>
         </div>
         <div class="side-box left">
             <div class="side-title" style="color:#ff9500;">🏃 距離・スピード</div>
-            <div class="metric-row"><span>水平距離:</span><span id="res_dist" class="metric-val" style="color:#ff9500;">0.0 cm</span></div>
-            <div class="metric-row"><span>離地初速:</span><span id="res_vel" class="metric-val">0.0 m/s</span></div>
-            <div class="metric-row"><span>初速(km/h):</span><span id="res_vel_k" class="metric-val">0.0 km/h</span></div>
+            <div class="metric-row"><span>水平距離:</span><span id="res_dist" class="metric-val" style="color:#ff9500;">--- cm</span></div>
+            <div class="metric-row"><span>離地初速:</span><span id="res_vel" class="metric-val">--- m/s</span></div>
+            <div class="metric-row"><span>初速(km/h):</span><span id="res_vel_k" class="metric-val">--- km/h</span></div>
         </div>
     </div>
 
@@ -168,7 +168,7 @@
             <span style="font-weight:bold; font-size:15px;">cm</span>
         </div>
         <div class="modal-btn-row">
-            <button style="background:#444; color:#fff;" onclick="closeScaleModal()">キャンセル</button>
+            <button style="background:#444; color:#fff;" onclick="closeScaleModal(true)">キャンセル</button>
             <button style="background:#ff9500; color:#000;" onclick="submitScaleModal()">確定</button>
         </div>
     </div>
@@ -195,8 +195,6 @@ const intCtx = interactionCanvas.getContext('2d');
 const zoomTarget = document.getElementById('zoomTarget');
 const seekSlider = document.getElementById('seekSlider');
 const btnPlayPause = document.getElementById('btnPlayPause');
-const btnStepBack = document.getElementById('btnStepBack');
-const btnStepForward = document.getElementById('btnStepForward');
 const mainResult = document.getElementById('main-result');
 const subResult = document.getElementById('sub-result');
 
@@ -218,7 +216,6 @@ let scalePoints = [];
 let zoomScale = 1.0;
 let panOffsetX = 0, panOffsetY = 0;
 let isPanning = false;
-let panStartX = 0, panStartY = 0;
 
 // ROI
 let isRoiMode = false;
@@ -230,19 +227,12 @@ const roiCanvas = document.createElement('canvas');
 const roiCtx = roiCanvas.getContext('2d');
 
 // Jump Data
-const jumpData = {
-    takeoff: null,
-    peak: null,
-    landing: null
-};
-
+const jumpData = { takeoff: null, peak: null, landing: null };
 let currentLandmarks = null;
 let currentCoM = null;
 let currentFeetCenter = null;
 
-const pose = new Pose({
-    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-});
+const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
 pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
 pose.onResults(onResults);
 
@@ -260,7 +250,7 @@ function toggleFPS() {
     fpsIdx = (fpsIdx + 1) % fpsList.length;
     currentFPS = fpsList[fpsIdx];
     document.getElementById('btnFps').innerText = `${currentFPS}fps`;
-    calculateJumpMetrics(); // Update based on new FPS
+    calculateJumpMetrics();
 }
 
 function togglePlaybackRate() {
@@ -286,29 +276,20 @@ function toggleZoomMode() {
     updateButtons();
 }
 
-function applyZoom() {
-    zoomTarget.style.transform = `translate(${panOffsetX}px, ${panOffsetY}px) scale(${zoomScale})`;
-}
-
-function resetZoom() {
-    zoomScale = 1.0; panOffsetX = 0; panOffsetY = 0;
-    document.getElementById('zoom-slider').value = 1.0;
-    applyZoom();
-}
-
-document.getElementById('zoom-slider').addEventListener('input', (e) => {
-    zoomScale = parseFloat(e.target.value);
-    applyZoom();
-});
+function applyZoom() { zoomTarget.style.transform = `translate(${panOffsetX}px, ${panOffsetY}px) scale(${zoomScale})`; }
+function resetZoom() { zoomScale = 1.0; panOffsetX = 0; panOffsetY = 0; document.getElementById('zoom-slider').value = 1.0; applyZoom(); }
+document.getElementById('zoom-slider').addEventListener('input', (e) => { zoomScale = parseFloat(e.target.value); applyZoom(); });
 
 function toggleScaleMode() {
     isScaleMode = !isScaleMode;
     if (isScaleMode) {
         isZoomMode = isRoiMode = false;
-        scalePoints = [];
+        scalePoints = []; // Click again to reset
         mainResult.innerText = "📏 物差し：基準の長さを2点タップ";
+        subResult.innerText = "動画内で長さが分かるもの（バットなど）の両端をタップしてください";
     } else {
         mainResult.innerText = "ジャンプ解析モード";
+        subResult.innerText = "コマ送りし「離地」「頂点」「着地」を指定してください";
     }
     updateButtons();
     redrawOverlay();
@@ -334,24 +315,17 @@ function updateButtons() {
 
 function getPointerNorm(e) {
     const rect = interactionCanvas.getBoundingClientRect();
-    const clickRelX = e.clientX - (rect.left + rect.width / 2);
-    const clickRelY = e.clientY - (rect.top + rect.height / 2);
-    const targetRelX = (clickRelX - panOffsetX) / zoomScale;
-    const targetRelY = (clickRelY - panOffsetY) / zoomScale;
-    const cvsX = targetRelX + interactionCanvas.width / 2;
-    const cvsY = targetRelY + interactionCanvas.height / 2;
+    const clickRelX = e.clientX - (rect.left + rect.width / 2), clickRelY = e.clientY - (rect.top + rect.height / 2);
+    const cvsX = (clickRelX - panOffsetX) / zoomScale + interactionCanvas.width / 2;
+    const cvsY = (clickRelY - panOffsetY) / zoomScale + interactionCanvas.height / 2;
     return { x: Math.max(0, Math.min(1.0, cvsX / interactionCanvas.width)), y: Math.max(0, Math.min(1.0, cvsY / interactionCanvas.height)) };
 }
 
 interactionCanvas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (isRoiMode) {
-        isRoiDrawing = true;
-        const p = getPointerNorm(e);
-        roiStart = p; roiNorm = { x: p.x, y: p.y, w: 0, h: 0 };
-        isRoiEnabled = true;
-        try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
-        return;
+        isRoiDrawing = true; roiStart = getPointerNorm(e); roiNorm = { x: roiStart.x, y: roiStart.y, w: 0, h: 0 };
+        isRoiEnabled = true; try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){} return;
     }
     if (isScaleMode) {
         const p = getPointerNorm(e);
@@ -360,12 +334,10 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
             document.getElementById('scale-modal-overlay').style.display = 'flex';
             document.getElementById('scale-input-value').focus();
         }
-        redrawOverlay();
-        return;
+        redrawOverlay(); return;
     }
     if (isZoomMode || zoomScale > 1.0) {
-        isPanning = true;
-        panStartX = e.clientX - panOffsetX; panStartY = e.clientY - panOffsetY;
+        isPanning = true; panStartX = e.clientX - panOffsetX; panStartY = e.clientY - panOffsetY;
         try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
     }
 });
@@ -375,32 +347,26 @@ interactionCanvas.addEventListener('pointermove', (e) => {
         const p = getPointerNorm(e);
         roiNorm.x = Math.min(roiStart.x, p.x); roiNorm.y = Math.min(roiStart.y, p.y);
         roiNorm.w = Math.abs(p.x - roiStart.x); roiNorm.h = Math.abs(p.y - roiStart.y);
-        redrawOverlay();
-        return;
+        redrawOverlay(); return;
     }
-    if (isPanning) {
-        panOffsetX = e.clientX - panStartX; panOffsetY = e.clientY - panStartY;
-        applyZoom();
-    }
+    if (isPanning) { panOffsetX = e.clientX - panStartX; panOffsetY = e.clientY - panStartY; applyZoom(); }
 });
 
 interactionCanvas.addEventListener('pointerup', (e) => {
-    if (isRoiDrawing) {
-        isRoiDrawing = false;
-        try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){}
-        toggleRoiMode();
-        renderCurrentFrame();
-    }
-    if (isPanning) {
-        isPanning = false;
-        try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){}
-    }
+    if (isRoiDrawing) { isRoiDrawing = false; try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){} toggleRoiMode(); renderCurrentFrame(); }
+    if (isPanning) { isPanning = false; try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){} }
 });
 
-function closeScaleModal() {
+function closeScaleModal(isCancel = true) {
     document.getElementById('scale-modal-overlay').style.display = 'none';
-    scalePoints = [];
-    toggleScaleMode();
+    if (isCancel) {
+        scalePoints = [];
+        mainResult.innerText = "ジャンプ解析モード";
+        subResult.innerText = "最初に「📏 物差し」で基準の長さを設定してください";
+    }
+    isScaleMode = false;
+    updateButtons();
+    redrawOverlay();
 }
 
 function submitScaleModal() {
@@ -409,7 +375,11 @@ function submitScaleModal() {
         const distPx = Math.hypot(scalePoints[1].x - scalePoints[0].x, scalePoints[1].y - scalePoints[0].y);
         pxPerCm = distPx / realCm;
         document.getElementById('scale-info-text').innerText = `物差し: ${(pxPerCm).toFixed(1)}px/cm`;
-        closeScaleModal();
+        
+        closeScaleModal(false); // Cancelフラグをfalseにして線は残す
+
+        mainResult.innerHTML = "<span style='color:#30d158;'>✅ 物差し設定完了</span>";
+        subResult.innerText = "コマ送りをして、足が離れる瞬間に「🛫 離地」ボタンを押してください";
         calculateJumpMetrics();
     } else {
         alert("有効な数値を入力してください");
@@ -431,10 +401,14 @@ function redrawOverlay() {
         intCtx.restore();
     }
 
-    // Draw Scale
+    // Draw Scale (Always draw if we have 2 points, but semi-transparent if not in scale mode)
     if (scalePoints.length > 0) {
         intCtx.save();
-        intCtx.fillStyle = '#ff9500'; intCtx.strokeStyle = '#ff9500'; intCtx.lineWidth = 3 / zoomScale;
+        intCtx.fillStyle = '#ff9500';
+        intCtx.strokeStyle = isScaleMode ? '#ff9500' : 'rgba(255, 149, 0, 0.4)';
+        intCtx.lineWidth = 3 / zoomScale;
+        if (!isScaleMode) intCtx.setLineDash([4/zoomScale, 4/zoomScale]);
+        
         intCtx.beginPath();
         intCtx.arc(scalePoints[0].x, scalePoints[0].y, 6 / zoomScale, 0, Math.PI*2);
         intCtx.fill();
@@ -460,19 +434,13 @@ function onResults(results) {
 
     const rawLm = results.poseLandmarks;
     const lm = rawLm.map(p => {
-        if (isRoiEnabled && roiNorm.w > 0.05) {
-            return { x: roiNorm.x + p.x * roiNorm.w, y: roiNorm.y + p.y * roiNorm.h };
-        }
+        if (isRoiEnabled && roiNorm.w > 0.05) { return { x: roiNorm.x + p.x * roiNorm.w, y: roiNorm.y + p.y * roiNorm.h }; }
         return p;
     });
 
     currentLandmarks = lm;
     const w = outputCanvas.width, h = outputCanvas.height;
-    
-    // Estimate CoM (mid-hip) and Feet Center (mid-ankle)
-    const hipL = lm[23], hipR = lm[24];
-    const ankleL = lm[27], ankleR = lm[28];
-    
+    const hipL = lm[23], hipR = lm[24], ankleL = lm[27], ankleR = lm[28];
     if (hipL && hipR) currentCoM = { x: (hipL.x + hipR.x) * 0.5 * w, y: (hipL.y + hipR.y) * 0.5 * h };
     if (ankleL && ankleR) currentFeetCenter = { x: (ankleL.x + ankleR.x) * 0.5 * w, y: (ankleL.y + ankleR.y) * 0.5 * h };
 
@@ -485,41 +453,33 @@ function drawSkeleton(lm, w, h) {
     outCtx.save();
     outCtx.lineWidth = 3 / zoomScale;
     
-    // Trunk
     if(lm[11] && lm[12] && lm[23] && lm[24]) {
         outCtx.strokeStyle = 'rgba(0, 255, 204, 0.7)';
-        outCtx.beginPath();
-        outCtx.moveTo(lm[11].x*w, lm[11].y*h); outCtx.lineTo(lm[12].x*w, lm[12].y*h);
-        outCtx.lineTo(lm[24].x*w, lm[24].y*h); outCtx.lineTo(lm[23].x*w, lm[23].y*h);
-        outCtx.closePath(); outCtx.stroke();
+        outCtx.beginPath(); outCtx.moveTo(lm[11].x*w, lm[11].y*h); outCtx.lineTo(lm[12].x*w, lm[12].y*h);
+        outCtx.lineTo(lm[24].x*w, lm[24].y*h); outCtx.lineTo(lm[23].x*w, lm[23].y*h); outCtx.closePath(); outCtx.stroke();
     }
-    
-    // Lower body
     const drawLine = (p1, p2, color) => {
-        if(lm[p1] && lm[p2]) {
-            outCtx.strokeStyle = color; outCtx.beginPath();
-            outCtx.moveTo(lm[p1].x*w, lm[p1].y*h); outCtx.lineTo(lm[p2].x*w, lm[p2].y*h); outCtx.stroke();
-        }
+        if(lm[p1] && lm[p2]) { outCtx.strokeStyle = color; outCtx.beginPath(); outCtx.moveTo(lm[p1].x*w, lm[p1].y*h); outCtx.lineTo(lm[p2].x*w, lm[p2].y*h); outCtx.stroke(); }
     }
-    drawLine(24, 26, '#ffd60a'); drawLine(26, 28, '#ffd60a'); drawLine(28, 32, '#ffd60a'); // Right
-    drawLine(23, 25, '#00ffcc'); drawLine(25, 27, '#00ffcc'); drawLine(27, 31, '#00ffcc'); // Left
+    drawLine(24, 26, '#ffd60a'); drawLine(26, 28, '#ffd60a'); drawLine(28, 32, '#ffd60a');
+    drawLine(23, 25, '#00ffcc'); drawLine(25, 27, '#00ffcc'); drawLine(27, 31, '#00ffcc');
     
-    // CoM Dot
     if(currentCoM) {
-        outCtx.fillStyle = '#ff375f';
-        outCtx.beginPath(); outCtx.arc(currentCoM.x, currentCoM.y, 6/zoomScale, 0, Math.PI*2); outCtx.fill();
+        outCtx.fillStyle = '#ff375f'; outCtx.beginPath(); outCtx.arc(currentCoM.x, currentCoM.y, 6/zoomScale, 0, Math.PI*2); outCtx.fill();
     }
     outCtx.restore();
 }
 
 function markJumpPhase(phase) {
     if (!currentCoM || !currentFeetCenter) {
-        alert("人物を検出できていません"); return;
+        alert("人物が検出できていません。少しコマ送りするか「🔲 対象者指定」で囲んでください。"); return;
     }
+    if (!pxPerCm) {
+        alert("先に「📏 物差し」で基準の長さを設定してください。"); return;
+    }
+
     const frame = Math.round(video.currentTime * currentFPS);
-    const time = frame / currentFPS;
-    
-    jumpData[phase] = { time: time, frame: frame, com: { ...currentCoM }, feet: { ...currentFeetCenter } };
+    jumpData[phase] = { time: frame / currentFPS, frame: frame, com: { ...currentCoM }, feet: { ...currentFeetCenter } };
     
     document.getElementById('btnTakeoff').classList.toggle('active', !!jumpData.takeoff);
     document.getElementById('btnPeak').classList.toggle('active', !!jumpData.peak);
@@ -527,6 +487,18 @@ function markJumpPhase(phase) {
     
     calculateJumpMetrics();
     redrawJumpVisuals();
+
+    // ユーザーへの次のステップの案内
+    if (phase === 'takeoff') {
+        mainResult.innerHTML = "離地を記録しました";
+        subResult.innerText = "さらにコマ送りして、一番高いところで「⛰️ 頂点」を押してください";
+    } else if (phase === 'peak') {
+        mainResult.innerHTML = "頂点を記録しました";
+        subResult.innerText = "さらにコマ送りして、足がつく瞬間に「🛬 着地」を押してください";
+    } else if (phase === 'landing') {
+        mainResult.innerHTML = "<span style='color:#30d158;'>解析完了</span>";
+        subResult.innerText = "下のパネルに跳躍の計算結果が表示されています";
+    }
 }
 
 function clearJumpData() {
@@ -534,96 +506,81 @@ function clearJumpData() {
     document.getElementById('btnTakeoff').classList.remove('active');
     document.getElementById('btnPeak').classList.remove('active');
     document.getElementById('btnLanding').classList.remove('active');
+    
+    mainResult.innerHTML = pxPerCm ? "データクリア完了" : "動画を選択してください";
+    subResult.innerText = pxPerCm ? "コマ送りし「離地」「頂点」「着地」を指定してください" : "最初に「📏 物差し」で基準の長さを設定してください";
+    
     calculateJumpMetrics();
     redrawJumpVisuals();
 }
 
 function calculateJumpMetrics() {
-    const elTime = document.getElementById('res_time');
-    const elHeightT = document.getElementById('res_height_time');
-    const elHeightD = document.getElementById('res_height_disp');
-    const elDist = document.getElementById('res_dist');
-    const elVel = document.getElementById('res_vel');
-    const elVelK = document.getElementById('res_vel_k');
+    const elTime = document.getElementById('res_time'), elHeightT = document.getElementById('res_height_time'), elHeightD = document.getElementById('res_height_disp');
+    const elDist = document.getElementById('res_dist'), elVel = document.getElementById('res_vel'), elVelK = document.getElementById('res_vel_k');
 
     let tFlight = 0;
     
-    // Flight time method
     if (jumpData.takeoff && jumpData.landing) {
         tFlight = Math.max(0, jumpData.landing.time - jumpData.takeoff.time);
         elTime.innerText = `${tFlight.toFixed(3)} s`;
-        
-        // h = 1/8 * g * t^2
         const hTime = 1.22625 * (tFlight * tFlight);
         elHeightT.innerText = `${(hTime * 100).toFixed(1)} cm`;
     } else {
-        elTime.innerText = "0.000 s";
-        elHeightT.innerText = "0.0 cm";
+        elTime.innerText = "--- s"; elHeightT.innerText = "--- cm";
     }
 
-    // Displacement method
     if (pxPerCm && jumpData.takeoff) {
-        // Height from Peak
         if (jumpData.peak) {
-            const dyPx = jumpData.takeoff.com.y - jumpData.peak.com.y; // up is negative in canvas
+            const dyPx = jumpData.takeoff.com.y - jumpData.peak.com.y;
             elHeightD.innerText = `${Math.max(0, dyPx / pxPerCm).toFixed(1)} cm`;
-        } else {
-            elHeightD.innerText = "---";
-        }
+        } else { elHeightD.innerText = "--- cm"; }
         
-        // Distance
         if (jumpData.landing) {
             const dxPx = Math.abs(jumpData.landing.feet.x - jumpData.takeoff.feet.x);
             const distCm = dxPx / pxPerCm;
             elDist.innerText = `${distCm.toFixed(1)} cm`;
-            
             if (tFlight > 0) {
-                const vx = (distCm / 100) / tFlight; // m/s
-                const vy = 9.80665 * (tFlight / 2); // m/s
+                const vx = (distCm / 100) / tFlight, vy = 9.80665 * (tFlight / 2);
                 const v0 = Math.sqrt(vx*vx + vy*vy);
-                elVel.innerText = `${v0.toFixed(2)} m/s`;
-                elVelK.innerText = `${(v0 * 3.6).toFixed(1)} km/h`;
-            }
-        } else {
-            elDist.innerText = "---"; elVel.innerText = "---"; elVelK.innerText = "---";
-        }
+                elVel.innerText = `${v0.toFixed(2)} m/s`; elVelK.innerText = `${(v0 * 3.6).toFixed(1)} km/h`;
+            } else { elVel.innerText = "--- m/s"; elVelK.innerText = "--- km/h"; }
+        } else { elDist.innerText = "--- cm"; elVel.innerText = "--- m/s"; elVelK.innerText = "--- km/h"; }
     } else {
-        if (!pxPerCm) {
-            elHeightD.innerText = "要・物差し"; elDist.innerText = "要・物差し"; elVel.innerText = "要・物差し"; elVelK.innerText = "";
-        } else {
-            elHeightD.innerText = "---"; elDist.innerText = "---"; elVel.innerText = "---"; elVelK.innerText = "---";
-        }
+        elHeightD.innerText = "--- cm"; elDist.innerText = "--- cm"; elVel.innerText = "--- m/s"; elVelK.innerText = "--- km/h";
     }
 }
 
 function redrawJumpVisuals() {
-    // Draw on outCtx over the skeleton
-    if (jumpData.takeoff && jumpData.peak) {
-        outCtx.save();
-        outCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        outCtx.setLineDash([4/zoomScale, 4/zoomScale]);
-        outCtx.lineWidth = 2/zoomScale;
-        outCtx.beginPath();
-        outCtx.moveTo(jumpData.takeoff.com.x, jumpData.takeoff.com.y);
-        outCtx.lineTo(jumpData.peak.com.x, jumpData.peak.com.y);
-        outCtx.stroke();
-        outCtx.restore();
+    // Show current real-time height if takeoff is marked but peak/landing isn't fully set
+    if (jumpData.takeoff && pxPerCm && currentCoM) {
+        const currentHeightCm = (jumpData.takeoff.com.y - currentCoM.y) / pxPerCm;
+        if (currentHeightCm > 2) {
+            outCtx.save();
+            outCtx.fillStyle = '#00ffcc';
+            outCtx.font = `bold ${Math.max(12, 14/zoomScale)}px sans-serif`;
+            outCtx.fillText(`現在高: ${currentHeightCm.toFixed(1)} cm`, currentCoM.x + 15/zoomScale, currentCoM.y);
+            
+            outCtx.strokeStyle = 'rgba(0, 255, 204, 0.5)';
+            outCtx.lineWidth = 1.5/zoomScale;
+            outCtx.setLineDash([4/zoomScale, 4/zoomScale]);
+            outCtx.beginPath();
+            outCtx.moveTo(jumpData.takeoff.com.x, jumpData.takeoff.com.y);
+            outCtx.lineTo(jumpData.takeoff.com.x, currentCoM.y);
+            outCtx.stroke();
+            outCtx.restore();
+        }
     }
-    
-    // Draw marked points
+
+    if (jumpData.takeoff && jumpData.peak) {
+        outCtx.save(); outCtx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; outCtx.setLineDash([4/zoomScale, 4/zoomScale]); outCtx.lineWidth = 2/zoomScale;
+        outCtx.beginPath(); outCtx.moveTo(jumpData.takeoff.com.x, jumpData.takeoff.com.y); outCtx.lineTo(jumpData.peak.com.x, jumpData.peak.com.y); outCtx.stroke(); outCtx.restore();
+    }
     const drawMark = (pt, label, color) => {
         if (!pt) return;
-        outCtx.save();
-        outCtx.fillStyle = color;
-        outCtx.beginPath(); outCtx.arc(pt.com.x, pt.com.y, 6/zoomScale, 0, Math.PI*2); outCtx.fill();
-        outCtx.fillStyle = '#fff'; outCtx.font = `bold ${10/zoomScale}px sans-serif`;
-        outCtx.fillText(label, pt.com.x + 8/zoomScale, pt.com.y - 4/zoomScale);
-        outCtx.restore();
+        outCtx.save(); outCtx.fillStyle = color; outCtx.beginPath(); outCtx.arc(pt.com.x, pt.com.y, 6/zoomScale, 0, Math.PI*2); outCtx.fill();
+        outCtx.fillStyle = '#fff'; outCtx.font = `bold ${10/zoomScale}px sans-serif`; outCtx.fillText(label, pt.com.x + 8/zoomScale, pt.com.y - 4/zoomScale); outCtx.restore();
     };
-
-    drawMark(jumpData.takeoff, "離地", "#ff375f");
-    drawMark(jumpData.peak, "頂点", "#007aff");
-    drawMark(jumpData.landing, "着地", "#30d158");
+    drawMark(jumpData.takeoff, "離地", "#ff375f"); drawMark(jumpData.peak, "頂点", "#007aff"); drawMark(jumpData.landing, "着地", "#30d158");
 }
 
 async function renderCurrentFrame() {
@@ -634,74 +591,41 @@ async function renderCurrentFrame() {
         if (isRoiEnabled && roiNorm.w > 0.05) {
             const sx = roiNorm.x * video.videoWidth, sy = roiNorm.y * video.videoHeight;
             const sw = roiNorm.w * video.videoWidth, sh = roiNorm.h * video.videoHeight;
-            if (sw > 10 && sh > 10) {
-                roiCanvas.width = sw; roiCanvas.height = sh;
-                roiCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
-                inputSource = roiCanvas;
-            }
+            if (sw > 10 && sh > 10) { roiCanvas.width = sw; roiCanvas.height = sh; roiCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh); inputSource = roiCanvas; }
         }
         await pose.send({ image: inputSource });
     } catch(e) {} finally { isProcessing = false; }
 }
 
 async function loop() {
-    if (!video.paused && !video.ended) {
-        await renderCurrentFrame();
-        updateSeekBar();
-    }
+    if (!video.paused && !video.ended) { await renderCurrentFrame(); updateSeekBar(); }
     animationFrameId = requestAnimationFrame(loop);
 }
 
-function updateSeekBar() {
-    if (video.duration) seekSlider.value = (video.currentTime / video.duration) * 100;
-}
-
-seekSlider.addEventListener('input', () => {
-    if (video.duration) {
-        video.pause(); btnPlayPause.textContent = '▶ 再生';
-        video.currentTime = (seekSlider.value / 100) * video.duration;
-    }
-});
-
-video.addEventListener('seeked', () => {
-    if (video.paused) { updateSeekBar(); renderCurrentFrame(); }
-});
+function updateSeekBar() { if (video.duration) seekSlider.value = (video.currentTime / video.duration) * 100; }
+seekSlider.addEventListener('input', () => { if (video.duration) { video.pause(); btnPlayPause.textContent = '▶ 再生'; video.currentTime = (seekSlider.value / 100) * video.duration; } });
+video.addEventListener('seeked', () => { if (video.paused) { updateSeekBar(); renderCurrentFrame(); } });
 
 btnPlayPause.addEventListener('click', async () => {
-    if (video.paused) {
-        try { await video.play(); btnPlayPause.textContent = '⏸ 停止'; btnPlayPause.style.background = '#ff9500'; } catch (e) {}
-    } else {
-        video.pause(); btnPlayPause.textContent = '▶ 再生'; btnPlayPause.style.background = '#34c759';
-    }
+    if (video.paused) { try { await video.play(); btnPlayPause.textContent = '⏸ 停止'; btnPlayPause.style.background = '#ff9500'; } catch (e) {} } 
+    else { video.pause(); btnPlayPause.textContent = '▶ 再生'; btnPlayPause.style.background = '#34c759'; }
 });
 
-btnStepForward.addEventListener('click', () => {
-    video.pause(); btnPlayPause.textContent = '▶ 再生'; btnPlayPause.style.background = '#34c759';
-    video.currentTime = Math.min(video.duration, video.currentTime + (1 / currentFPS));
-});
-
-btnStepBack.addEventListener('click', () => {
-    video.pause(); btnPlayPause.textContent = '▶ 再生'; btnPlayPause.style.background = '#34c759';
-    video.currentTime = Math.max(0, video.currentTime - (1 / currentFPS));
-});
+btnStepForward.addEventListener('click', () => { video.pause(); btnPlayPause.textContent = '▶ 再生'; btnPlayPause.style.background = '#34c759'; video.currentTime = Math.min(video.duration, video.currentTime + (1 / currentFPS)); });
+btnStepBack.addEventListener('click', () => { video.pause(); btnPlayPause.textContent = '▶ 再生'; btnPlayPause.style.background = '#34c759'; video.currentTime = Math.max(0, video.currentTime - (1 / currentFPS)); });
 
 function captureSnapshot() {
     if (!video.videoWidth) { alert("動画が読み込まれていません"); return; }
     const snapCanvas = document.createElement('canvas'), snapCtx = snapCanvas.getContext('2d');
     snapCanvas.width = outputCanvas.width; snapCanvas.height = outputCanvas.height + 70;
-
     snapCtx.fillStyle = '#000'; snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
-    snapCtx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
-    snapCtx.drawImage(outputCanvas, 0, 0);
-
+    snapCtx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height); snapCtx.drawImage(outputCanvas, 0, 0);
     snapCtx.fillStyle = '#1c1c1e'; snapCtx.fillRect(0, outputCanvas.height, snapCanvas.width, 70);
     snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 14px sans-serif';
     snapCtx.fillText(`跳躍高(滞空): ${document.getElementById('res_height_time').innerText} ｜ 離地初速: ${document.getElementById('res_vel_k').innerText}`, 15, outputCanvas.height + 26);
     snapCtx.fillStyle = '#ccc'; snapCtx.font = '11px sans-serif';
     snapCtx.fillText(`滞空時間: ${document.getElementById('res_time').innerText} ｜ 水平距離: ${document.getElementById('res_dist').innerText}`, 15, outputCanvas.height + 50);
-
-    document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png');
-    document.getElementById('snapshot-modal-overlay').style.display = 'flex';
+    document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); document.getElementById('snapshot-modal-overlay').style.display = 'flex';
 }
 function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
 
@@ -711,12 +635,8 @@ document.getElementById('inputFile').addEventListener('change', (e) => {
     if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
     video.pause(); resetZoom(); clearJumpData();
     currentBlobUrl = URL.createObjectURL(file); video.src = currentBlobUrl; video.load();
-    const onCanPlay = () => {
-        video.removeEventListener('canplay', onCanPlay); fitCanvases();
-        btnPlayPause.textContent = '▶ 再生'; video.currentTime = 0.001; loop();
-    };
-    video.addEventListener('canplay', onCanPlay);
-    e.target.value = '';
+    const onCanPlay = () => { video.removeEventListener('canplay', onCanPlay); fitCanvases(); btnPlayPause.textContent = '▶ 再生'; video.currentTime = 0.001; loop(); };
+    video.addEventListener('canplay', onCanPlay); e.target.value = '';
 });
 </script>
 </body>
