@@ -1,0 +1,49 @@
+import photos
+import ui
+
+# ピッチャー〜キャッチャー間の距離 (m)
+DISTANCE_M = 18.44
+
+class SpeedCalculatorView(ui.View):
+    def __init__(self):
+        self.start_frame = None
+        self.end_frame = None
+        self.fps = 60.0  # スマホ動画の標準FPS（スローなら120や240に変更）
+        
+        self.name = 'Ball Speed Stopwatch'
+        self.background_color = 'white'
+        
+        # UIパーツ
+        self.label = ui.Label(frame=(20, 40, 300, 40))
+        self.label.text = '1. 投球開始で [Start] をタップ'
+        self.add_subview(self.label)
+        
+        self.btn_start = ui.Button(frame=(20, 100, 120, 50), title='Start (投球)')
+        self.btn_start.background_color = '#d1e7dd'
+        self.btn_start.action = self.record_start
+        self.add_subview(self.btn_start)
+        
+        self.btn_end = ui.Button(frame=(160, 100, 120, 50), title='End (捕球)')
+        self.btn_end.background_color = '#f8d7da'
+        self.btn_end.action = self.record_end
+        self.add_subview(self.btn_end)
+        
+        self.result_label = ui.Label(frame=(20, 180, 300, 60))
+        self.result_label.font = ('<system-bold>', 24)
+        self.add_subview(self.result_label)
+
+    def record_start(self, sender):
+        import time
+        self.start_time = time.time()
+        self.label.text = '2. 捕球の瞬間に [End] をタップ'
+
+    def record_end(self, sender):
+        import time
+        if hasattr(self, 'start_time'):
+            elapsed = time.time() - self.start_time
+            speed_kmh = (DISTANCE_M / elapsed) * 3.6
+            self.result_label.text = f'{speed_kmh:.1f} km/h\n({elapsed:.3f} 秒)'
+            self.label.text = '測定完了！'
+
+v = SpeedCalculatorView()
+v.present('sheet')
