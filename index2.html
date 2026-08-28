@@ -251,11 +251,10 @@
 
  let isAiDetecting = false;
 
- // ROI（対象者切り抜き領域）
  let isRoiMode = false;
  let isRoiDrawing = false;
  let roiStart = null;
- let userRoi = null; // {x, y, w, h} (キャンバスピクセル基準)
+ let userRoi = null; 
  let roiCropCanvas = document.createElement('canvas');
  let roiCropCtx = roiCropCanvas.getContext('2d');
 
@@ -277,7 +276,7 @@
    isRoiMode = !isRoiMode;
    if (isRoiMode) {
      btnRoi.classList.add('roi-active');
-     mainResult.innerHTML = "🔲 対象者（患者さん）をドラッグして四角く囲んでください";
+     mainResult.innerHTML = "🔲 対象者をドラッグして四角く囲んでください";
      subResult.innerHTML = "枠内の人物のみをAIが固定追跡します（枠外の介助者を無視）";
    } else {
      btnRoi.classList.remove('roi-active');
@@ -463,10 +462,12 @@
    viewState[lastActiveTarget] = { scale: 1, x: 0, y: 0 }; 
    document.getElementById('zoom-slider').value = 1; 
    applyZoom(lastActiveTarget); 
+   redraw();
  }
  document.getElementById('zoom-slider').addEventListener('input', e => { 
    viewState[lastActiveTarget].scale = parseFloat(e.target.value); 
    applyZoom(lastActiveTarget); 
+   redraw();
  });
  perpSlider.addEventListener('input', () => { [1, 2].forEach(idx => calcResults(state[idx], currentMode)); updateDisplayResult(); redraw(); });
  simSlider.addEventListener('input', e => { 
@@ -750,8 +751,8 @@
    };
  }
 
- function findHitPoint(s, pos, mode) {
-   const HIT_RADIUS = 28;
+ function findHitPoint(s, pos, mode, currentScale = 1) {
+   const HIT_RADIUS = 28 / currentScale; // ズーム倍率に合わせて当たり判定も最適化
    if (mode === 'ai') {
      if (s.aiJoints && s.aiJoints.length === 4) {
        for (let i = 0; i < s.aiJoints.length; i++) {
@@ -783,7 +784,6 @@
    const s = state[targetIdx], pos = getCanvasCoords(e, cvs, targetIdx);
    const currentTime = vid.currentTime, currentFrame = Math.round(currentTime * currentFPS);
 
-   // ROI描画モード時の処理
    if (isRoiMode && targetIdx === 1) {
      isRoiDrawing = true;
      roiStart = pos;
@@ -793,7 +793,7 @@
      return;
    }
 
-   const hit = findHitPoint(s, pos, currentMode);
+   const hit = findHitPoint(s, pos, currentMode, viewState[targetIdx].scale);
    if (hit) { draggingPoint = { targetIdx, arrayName: hit.arrayName, index: hit.index }; try { cvs.setPointerCapture(e.pointerId); } catch(err){} return; }
    if (currentMode === 'ai') return; 
 
@@ -870,7 +870,7 @@
    if (isRoiDrawing) {
      isRoiDrawing = false;
      try { cvs.releasePointerCapture(e.pointerId); } catch(err){}
-     toggleRoiMode(); // 枠指定完了で通常モードに戻す
+     toggleRoiMode();
      if (video1.readyState >= 2) processAiFrame();
      return;
    }
@@ -954,22 +954,24 @@
    return { width: renderWidth, height: renderHeight, x: offsetX, y: offsetY };
  }
 
+ // ★修正: ズーム倍率（zoomScale）に応じて点・線のサイズを逆スケール補正して描画
  function redraw() {
    [ {idx: 1, c: canvas1, ctx: ctx1, v: video1}, {idx: 2, c: canvas2, ctx: ctx2, v: video2} ].forEach(item => {
      if (compareMode === 0 && item.idx === 2) return;
      const s = state[item.idx];
+     const zoom = viewState[item.idx].scale || 1; // 現在のズーム倍率
      item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
      // ROI枠の描画
      if (item.idx === 1 && userRoi && userRoi.w > 5 && userRoi.h > 5) {
        item.ctx.save();
        item.ctx.strokeStyle = isRoiMode ? '#ff9500' : 'rgba(255, 149, 0, 0.4)';
-       item.ctx.lineWidth = 2;
-       item.ctx.setLineDash([4, 4]);
+       item.ctx.lineWidth = 2 / zoom;
+       item.ctx.setLineDash([4 / zoom, 4 / zoom]);
        item.ctx.strokeRect(userRoi.x, userRoi.y, userRoi.w, userRoi.h);
        item.ctx.fillStyle = '#ff9500';
-       item.ctx.font = 'bold 10px sans-serif';
-       item.ctx.fillText("追跡エリア", userRoi.x + 4, userRoi.y - 4);
+       item.ctx.font = `bold ${Math.max(8, 10 / zoom)}px sans-serif`;
+       item.ctx.fillText("追跡エリア", userRoi.x + 4 / zoom, userRoi.y - 4 / zoom);
        item.ctx.restore();
      }
 
@@ -980,7 +982,7 @@
            const leftConnections = [[11, 13], [13, 15], [23, 25], [25, 27], [27, 29], [29, 31]];
            item.ctx.save();
            item.ctx.strokeStyle = 'rgba(0, 255, 204, 0.55)';
-           item.ctx.lineWidth = 3;
+           item.ctx.lineWidth = 3 / zoom;
            leftConnections.forEach(([i, j]) => {
              if (lm[i] && lm[j]) {
                item.ctx.beginPath();
@@ -992,6 +994,7 @@
 
            const rightConnections = [[12, 14], [14, 16], [24, 26], [26, 28], [28, 30], [30, 32]];
            item.ctx.strokeStyle = 'rgba(255, 214, 10, 0.65)';
+           item.ctx.lineWidth = 3 / zoom;
            rightConnections.forEach(([i, j]) => {
              if (lm[i] && lm[j]) {
                item.ctx.beginPath();
@@ -1006,7 +1009,7 @@
            leftJoints.forEach(idx => {
              if (lm[idx]) {
                item.ctx.beginPath();
-               item.ctx.arc(lm[idx].x, lm[idx].y, 4, 0, Math.PI * 2);
+               item.ctx.arc(lm[idx].x, lm[idx].y, 4 / zoom, 0, Math.PI * 2);
                item.ctx.fill();
              }
            });
@@ -1016,7 +1019,7 @@
            rightJoints.forEach(idx => {
              if (lm[idx]) {
                item.ctx.beginPath();
-               item.ctx.arc(lm[idx].x, lm[idx].y, 4, 0, Math.PI * 2);
+               item.ctx.arc(lm[idx].x, lm[idx].y, 4 / zoom, 0, Math.PI * 2);
                item.ctx.fill();
              }
            });
@@ -1035,14 +1038,14 @@
            item.ctx.moveTo(shoulderL.x, shoulderL.y);
            item.ctx.lineTo(shoulderR.x, shoulderR.y);
            item.ctx.strokeStyle = '#ff375f';
-           item.ctx.lineWidth = 4;
+           item.ctx.lineWidth = 4 / zoom;
            item.ctx.stroke();
 
            item.ctx.beginPath();
            item.ctx.moveTo(hipL.x, hipL.y);
            item.ctx.lineTo(hipR.x, hipR.y);
            item.ctx.strokeStyle = '#007aff';
-           item.ctx.lineWidth = 4;
+           item.ctx.lineWidth = 4 / zoom;
            item.ctx.stroke();
 
            let lineColor = '#00ffcc'; 
@@ -1053,7 +1056,7 @@
            item.ctx.moveTo(midHip.x, midHip.y);
            item.ctx.lineTo(midThorax.x, midThorax.y);
            item.ctx.strokeStyle = lineColor;
-           item.ctx.lineWidth = 4;
+           item.ctx.lineWidth = 4 / zoom;
            item.ctx.stroke();
 
            [
@@ -1064,10 +1067,10 @@
            ].forEach(({ pt, color }) => {
              item.ctx.fillStyle = color;
              item.ctx.beginPath();
-             item.ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2);
+             item.ctx.arc(pt.x, pt.y, 8 / zoom, 0, Math.PI * 2);
              item.ctx.fill();
              item.ctx.strokeStyle = '#fff';
-             item.ctx.lineWidth = 2;
+             item.ctx.lineWidth = 2 / zoom;
              item.ctx.stroke();
            });
          }
@@ -1076,41 +1079,41 @@
      }
 
      if (s.scalePoints.length === 2 && currentMode !== 'scale') {
-       item.ctx.save(); item.ctx.strokeStyle = 'rgba(255, 149, 0, 0.4)'; item.ctx.lineWidth = 2; item.ctx.setLineDash([4, 4]);
+       item.ctx.save(); item.ctx.strokeStyle = 'rgba(255, 149, 0, 0.4)'; item.ctx.lineWidth = 2 / zoom; item.ctx.setLineDash([4 / zoom, 4 / zoom]);
        item.ctx.beginPath(); item.ctx.moveTo(s.scalePoints[0].x, s.scalePoints[0].y); item.ctx.lineTo(s.scalePoints[1].x, s.scalePoints[1].y); item.ctx.stroke(); item.ctx.restore();
      }
      if (currentMode === 'scale') {
-       item.ctx.strokeStyle = '#ff9500'; item.ctx.fillStyle = '#ff9500'; item.ctx.lineWidth = 3; 
-       drawPointList(item.ctx, s.scalePoints, ["点1", "点2"]); 
+       item.ctx.strokeStyle = '#ff9500'; item.ctx.fillStyle = '#ff9500'; item.ctx.lineWidth = 3 / zoom; 
+       drawPointList(item.ctx, s.scalePoints, ["点1", "点2"], zoom); 
        return;
      }
      if (s.perpPoints.length > 0) {
        if (s.perpPoints.length === 1) {
-         item.ctx.fillStyle = '#ff2d55'; item.ctx.beginPath(); item.ctx.arc(s.perpPoints[0].x, s.perpPoints[0].y, 6, 0, Math.PI * 2); item.ctx.fill();
+         item.ctx.fillStyle = '#ff2d55'; item.ctx.beginPath(); item.ctx.arc(s.perpPoints[0].x, s.perpPoints[0].y, 6 / zoom, 0, Math.PI * 2); item.ctx.fill();
        } else if (s.perpPoints.length === 2) {
          const p1 = s.perpPoints[0], p2 = s.perpPoints[1];
-         item.ctx.strokeStyle = '#00ffcc'; item.ctx.lineWidth = 2; item.ctx.beginPath(); item.ctx.moveTo(p1.x, p1.y); item.ctx.lineTo(p2.x, p2.y); item.ctx.stroke();
-         item.ctx.fillStyle = '#ff2d55'; item.ctx.beginPath(); item.ctx.arc(p2.x, p2.y, 6, 0, Math.PI * 2); item.ctx.fill();
+         item.ctx.strokeStyle = '#00ffcc'; item.ctx.lineWidth = 2 / zoom; item.ctx.beginPath(); item.ctx.moveTo(p1.x, p1.y); item.ctx.lineTo(p2.x, p2.y); item.ctx.stroke();
+         item.ctx.fillStyle = '#ff2d55'; item.ctx.beginPath(); item.ctx.arc(p2.x, p2.y, 6 / zoom, 0, Math.PI * 2); item.ctx.fill();
          const t = parseFloat(perpSlider.value) / 100, pmX = p1.x + (p2.x - p1.x) * t, pmY = p1.y + (p2.y - p1.y) * t, dx = p2.x - p1.x, dy = p2.y - p1.y, len = Math.hypot(dx, dy);
          if (len > 0) {
            const nx = -dy / len, ny = dx / len, perpLen = 2000;
-           item.ctx.strokeStyle = '#ff2d55'; item.ctx.lineWidth = 2; item.ctx.setLineDash([4, 4]);
+           item.ctx.strokeStyle = '#ff2d55'; item.ctx.lineWidth = 2 / zoom; item.ctx.setLineDash([4 / zoom, 4 / zoom]);
            item.ctx.beginPath(); item.ctx.moveTo(pmX - nx * perpLen, pmY - ny * perpLen); item.ctx.lineTo(pmX + nx * perpLen, pmY + ny * perpLen); item.ctx.stroke();
            item.ctx.setLineDash([]);
          }
        }
      }
      if (lastMeasureMode === 'cog' && s.cogPoints.length > 0) {
-       item.ctx.save(); item.ctx.strokeStyle = 'rgba(255, 204, 0, 0.6)'; item.ctx.lineWidth = 2; item.ctx.beginPath();
+       item.ctx.save(); item.ctx.strokeStyle = 'rgba(255, 204, 0, 0.6)'; item.ctx.lineWidth = 2 / zoom; item.ctx.beginPath();
        s.cogPoints.forEach((pt, i) => { if (i === 0) item.ctx.moveTo(pt.x, pt.y); else item.ctx.lineTo(pt.x, pt.y); }); item.ctx.stroke();
        s.cogPoints.forEach((pt, i) => {
          const isLatest = (i === s.cogPoints.length - 1);
-         item.ctx.fillStyle = isLatest ? '#ff375f' : '#ffcc00'; item.ctx.beginPath(); item.ctx.arc(pt.x, pt.y, isLatest ? 7 : 5, 0, Math.PI * 2); item.ctx.fill();
-         item.ctx.fillStyle = '#fff'; item.ctx.font = isLatest ? 'bold 12px sans-serif' : '10px sans-serif'; item.ctx.fillText(`${i + 1}`, pt.x + 8, pt.y - 6);
+         item.ctx.fillStyle = isLatest ? '#ff375f' : '#ffcc00'; item.ctx.beginPath(); item.ctx.arc(pt.x, pt.y, (isLatest ? 7 : 5) / zoom, 0, Math.PI * 2); item.ctx.fill();
+         item.ctx.fillStyle = '#fff'; item.ctx.font = `${isLatest ? 'bold ' : ''}${Math.max(8, (isLatest ? 12 : 10) / zoom)}px sans-serif`; item.ctx.fillText(`${i + 1}`, pt.x + 8 / zoom, pt.y - 6 / zoom);
          if (pt.par !== undefined && pt.per !== undefined) {
            const xVal = s.pxPerCm ? (pt.par / s.pxPerCm).toFixed(1) : pt.par.toFixed(1), yVal = s.pxPerCm ? (pt.per / s.pxPerCm).toFixed(1) : pt.per.toFixed(1);
-           item.ctx.fillStyle = '#00ffcc'; item.ctx.font = '9px sans-serif'; item.ctx.fillText(`左右 ${xVal > 0 ? '+' : ''}${xVal}`, pt.x + 8, pt.y + 6);
-           item.ctx.fillStyle = '#ff9500'; item.ctx.fillText(`上下 ${yVal > 0 ? '+' : ''}${yVal}`, pt.x + 8, pt.y + 16);
+           item.ctx.fillStyle = '#00ffcc'; item.ctx.font = `${Math.max(7, 9 / zoom)}px sans-serif`; item.ctx.fillText(`左右 ${xVal > 0 ? '+' : ''}${xVal}`, pt.x + 8 / zoom, pt.y + 6 / zoom);
+           item.ctx.fillStyle = '#ff9500'; item.ctx.fillText(`上下 ${yVal > 0 ? '+' : ''}${yVal}`, pt.x + 8 / zoom, pt.y + 16 / zoom);
          }
        });
        item.ctx.restore();
@@ -1120,30 +1123,30 @@
        else if (lastMeasureMode === 'distance') item.ctx.strokeStyle = item.ctx.fillStyle = '#ffcc00';
        else if (lastMeasureMode === 'accel') item.ctx.strokeStyle = item.ctx.fillStyle = '#ff375f';
        else if (lastMeasureMode === 'sim') item.ctx.strokeStyle = item.ctx.fillStyle = '#00ffcc';
-       item.ctx.lineWidth = 3;
+       item.ctx.lineWidth = 3 / zoom;
        let labels = lastMeasureMode === 'distance' ? ["始点", "終点"] : (lastMeasureMode === 'accel' ? ["点1", "点2", "点3"] : (lastMeasureMode === 'sim' ? ["根元", "関節", "先端"] : null));
-       drawPointList(item.ctx, s.points, labels);
+       drawPointList(item.ctx, s.points, labels, zoom);
        if (lastMeasureMode === 'sim' && s.points.length === 3) {
          const p2 = s.points[1], p3 = s.points[2], deltaDeg = parseFloat(simSlider.value), simP3 = simulateJointAngle(p2, p3, deltaDeg);
-         item.ctx.save(); item.ctx.strokeStyle = '#30d158'; item.ctx.fillStyle = '#30d158'; item.ctx.lineWidth = 3; item.ctx.setLineDash([5, 4]);
+         item.ctx.save(); item.ctx.strokeStyle = '#30d158'; item.ctx.fillStyle = '#30d158'; item.ctx.lineWidth = 3 / zoom; item.ctx.setLineDash([5 / zoom, 4 / zoom]);
          item.ctx.beginPath(); item.ctx.moveTo(p2.x, p2.y); item.ctx.lineTo(simP3.x, simP3.y); item.ctx.stroke(); item.ctx.setLineDash([]);
-         item.ctx.beginPath(); item.ctx.arc(simP3.x, simP3.y, 6, 0, Math.PI * 2); item.ctx.fill();
-         item.ctx.fillStyle = '#30d158'; item.ctx.font = 'bold 11px sans-serif'; item.ctx.fillText(`予測(${deltaDeg > 0 ? '+' : ''}${deltaDeg}°)`, simP3.x + 8, simP3.y - 4); item.ctx.restore();
+         item.ctx.beginPath(); item.ctx.arc(simP3.x, simP3.y, 6 / zoom, 0, Math.PI * 2); item.ctx.fill();
+         item.ctx.fillStyle = '#30d158'; item.ctx.font = `bold ${Math.max(8, 11 / zoom)}px sans-serif`; item.ctx.fillText(`予測(${deltaDeg > 0 ? '+' : ''}${deltaDeg}°)`, simP3.x + 8 / zoom, simP3.y - 4 / zoom); item.ctx.restore();
        }
      }
    });
  }
 
- function drawPointList(cContext, ptList, labels) {
+ function drawPointList(cContext, ptList, labels, zoom = 1) {
    if (ptList.length === 0) return;
    cContext.beginPath();
    for (let i = 0; i < ptList.length; i++) { if (i === 0) cContext.moveTo(ptList[i].x, ptList[i].y); else cContext.lineTo(ptList[i].x, ptList[i].y); }
    cContext.stroke();
    for (let i = 0; i < ptList.length; i++) {
-     cContext.beginPath(); cContext.arc(ptList[i].x, ptList[i].y, 6, 0, Math.PI * 2); cContext.fill();
+     cContext.beginPath(); cContext.arc(ptList[i].x, ptList[i].y, 6 / zoom, 0, Math.PI * 2); cContext.fill();
      if (labels) {
        const text = Array.isArray(labels) ? labels[i] : `${labels}${i + 1}`;
-       if (text) { cContext.fillStyle = '#fff'; cContext.font = 'bold 10px sans-serif'; cContext.fillText(text, ptList[i].x + 7, ptList[i].y - 5); cContext.fillStyle = cContext.strokeStyle; }
+       if (text) { cContext.fillStyle = '#fff'; cContext.font = `bold ${Math.max(8, 10 / zoom)}px sans-serif`; cContext.fillText(text, ptList[i].x + 7 / zoom, ptList[i].y - 5 / zoom); cContext.fillStyle = cContext.strokeStyle; }
      }
    }
  }
@@ -1321,7 +1324,6 @@
    const landmarks = results.poseLandmarks;
    const rect = getVideoRenderRect(video1, canvas1);
 
-   // ROIが指定されている場合、クロップ枠のオフセットを加味して座標復元
    let getPos;
    if (userRoi && userRoi.w > 10 && userRoi.h > 10) {
      getPos = (lm) => ({ 
@@ -1359,10 +1361,8 @@
  async function processAiFrame() {
    if (!video1.videoWidth) return;
 
-   // ROIが有効な場合は、患者さんの領域だけをクロップしてAIに渡す
    if (userRoi && userRoi.w > 10 && userRoi.h > 10) {
      const r = getVideoRenderRect(video1, canvas1);
-     // キャンバスピクセル座標を動画の実解像度座標へマッピング
      const scaleX = video1.videoWidth / r.width;
      const scaleY = video1.videoHeight / r.height;
      const srcX = Math.max(0, (userRoi.x - r.x) * scaleX);
@@ -1379,7 +1379,6 @@
      }
    }
 
-   // ROI未設定時は動画全体を解析
    await pose.send({ image: video1 });
  }
 
