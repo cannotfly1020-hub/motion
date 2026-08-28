@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="動作分析Pro">
 <title>動作分析 Pro</title>
 
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
 
 <style>
@@ -26,6 +27,7 @@
  .hdr-btn.fps-badge { background: #30d158; color: #000; font-size: 10px; }
  .hdr-btn.rec-btn { background: #ff3b30; color: #fff; }
  .hdr-btn.rec-active { background: #ff453a; animation: blink 1s infinite; }
+ .hdr-btn.roi-active { background: #ff9500; color: #000; font-weight: bold; }
  @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
  #scale-info-text { font-size: 10px; color: #ff9500; font-weight: 600; white-space: nowrap; margin-left: auto; flex-shrink: 0; padding-left: 4px; }
  
@@ -34,7 +36,6 @@
  #main-result { color: #00ffcc; font-size: 12px; font-weight: bold; line-height: 1.2; }
  #sub-result { color: #aaa; font-size: 10px; margin-top: 2px; font-weight: 500; line-height: 1.2; }
  #btn-confirm-scale { display: none; background: #ff9500; color: #000; font-size: 11px; font-weight: bold; padding: 5px 10px; border: none; border-radius: 6px; cursor: pointer; flex-shrink: 0; white-space: nowrap; }
- #btn-confirm-scale:active { background: #e08500; }
 
  .highlight-acc { color: #ff375f; font-weight: bold; }
  .highlight-speed { color: #ffcc00; font-weight: bold; }
@@ -88,6 +89,7 @@
  <button class="hdr-btn secondary" id="btn-pick2" style="display:none;" onclick="triggerPickVideo(2)">動画②</button>
  <button class="hdr-btn secondary" id="btn-toggle-compare" onclick="toggleCompareMode()">1画面</button>
  <button class="hdr-btn fps-badge" id="btn-fps" onclick="toggleFPS()">30fps</button>
+ <button class="hdr-btn secondary" id="btn-roi" onclick="toggleRoiMode()">🔲 対象者指定</button>
  <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 静止画</button>
  <button class="hdr-btn rec-btn" id="btn-record" onclick="toggleRecording()">🎥 録画開始</button>
  </div>
@@ -107,13 +109,13 @@
 <div id="stage">
  <div class="video-pane" id="pane1">
  <div class="zoom-target" id="zoom-target-1">
- <video id="video1" playsinline webkit-playsinline muted></video>
+ <video id="video1" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
  <canvas id="canvas1"></canvas>
  </div>
  </div>
  <div class="video-pane" id="pane2">
  <div class="zoom-target" id="zoom-target-2">
- <video id="video2" playsinline webkit-playsinline muted></video>
+ <video id="video2" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
  <canvas id="canvas2"></canvas>
  </div>
  </div>
@@ -207,6 +209,7 @@
  const btnPick2 = document.getElementById('btn-pick2');
  const btnToggleCompare = document.getElementById('btn-toggle-compare');
  const btnFps = document.getElementById('btn-fps');
+ const btnRoi = document.getElementById('btn-roi');
  const btnRecord = document.getElementById('btn-record');
  const seekbar1 = document.getElementById('seekbar1');
  const seekbar2 = document.getElementById('seekbar2');
@@ -248,9 +251,13 @@
 
  let isAiDetecting = false;
 
- // 複数人誤認対策用の追跡重心バッファ
- let prevAiCenter = null;
- let smoothedAiLandmarks = null;
+ // ROI（対象者切り抜き領域）
+ let isRoiMode = false;
+ let isRoiDrawing = false;
+ let roiStart = null;
+ let userRoi = null; // {x, y, w, h} (キャンバスピクセル基準)
+ let roiCropCanvas = document.createElement('canvas');
+ let roiCropCtx = roiCropCanvas.getContext('2d');
 
  const state = {
    1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
@@ -265,6 +272,19 @@
  let scaleTarget = 1;
  let lastActiveTarget = 1;
  let draggingPoint = null;
+
+ function toggleRoiMode() {
+   isRoiMode = !isRoiMode;
+   if (isRoiMode) {
+     btnRoi.classList.add('roi-active');
+     mainResult.innerHTML = "🔲 対象者（患者さん）をドラッグして四角く囲んでください";
+     subResult.innerHTML = "枠内の人物のみをAIが固定追跡します（枠外の介助者を無視）";
+   } else {
+     btnRoi.classList.remove('roi-active');
+     updateDisplayResult();
+     redraw();
+   }
+ }
 
  function toggleFPS() {
    fpsIdx = (fpsIdx + 1) % fpsList.length;
@@ -430,8 +450,8 @@
      else if (type === 'interpolated') { typeLabel = "✨ 補間"; color = "#ffcc00"; }
      
      const torsionText = `<span class="highlight-speed" style="font-size:13px;">${Math.abs(currentTorsionAngle).toFixed(1)}°</span>`;
-     mainResult.innerHTML = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差(X-Factor): ${torsionText}`;
-     subResult.innerHTML = `<span style="color:#00ffcc;">左半身:水色</span> / <span style="color:#ffd60a;">右半身:黄色</span> ｜ 端点ドラッグで修正可能`;
+     mainResult.innerHTML = `${typeLabel} ｜ 体幹前傾/傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差: ${torsionText}`;
+     subResult.innerHTML = `<span style="color:#00ffcc;">左半身:水色</span> / <span style="color:#ffd60a;">右半身:黄色</span> ｜ 介助者除外ROI有効`;
    }
  }
 
@@ -469,8 +489,7 @@
    state[idx] = { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" };
    if (idx === 1) {
      currentTorsionAngle = 0;
-     prevAiCenter = null;
-     smoothedAiLandmarks = null;
+     userRoi = null;
    }
    updateScaleInfoText();
    updateDisplayResult();
@@ -578,7 +597,7 @@
      btnConfirmScale.style.display = (currentMode === 'scale' && s && s.scalePoints.length === 2) ? 'inline-block' : 'none';
    }
 
-   if (currentMode === 'zoom' || currentMode === 'ai') return; 
+   if (currentMode === 'zoom' || currentMode === 'ai' || isRoiMode) return; 
 
    if (compareMode === 0) {
      mainResult.innerHTML = state[1].resultMain || "測定したい点をタップしてください"; subResult.innerHTML = state[1].resultSub || "";
@@ -614,9 +633,9 @@
      document.getElementById('zoom-slider').value = viewState[lastActiveTarget].scale;
    } else if (mode === 'ai') {
      document.getElementById('btn-mode-ai').classList.add('mode-active');
-     mainResult.innerHTML = "🤖 AI読込中..."; subResult.innerHTML = "動画を再生するかコマ送りして解析を開始してください";
+     mainResult.innerHTML = "🤖 AI読込中..."; subResult.innerHTML = "横の「🔲対象者指定」で患者さんを囲むと介助者を確実に除外できます";
      currentTorsionAngle = 0;
-     if (video1.readyState >= 2) pose.send({image: video1});
+     if (video1.readyState >= 2) processAiFrame();
      redraw();
    } else {
      const btnMap = { 'angle': 'btn-mode-angle', 'distance': 'btn-mode-dist', 'accel': 'btn-mode-acc', 'scale': 'btn-mode-scale', 'perp': 'btn-mode-perp', 'sim': 'btn-mode-sim', 'cog': 'btn-mode-cog' };
@@ -638,9 +657,8 @@
    if (currentMode === 'ai') {
      state[1].aiOverrides = {};
      currentTorsionAngle = 0;
-     prevAiCenter = null;
-     smoothedAiLandmarks = null;
-     if (video1.readyState >= 2) pose.send({image: video1});
+     userRoi = null;
+     if (video1.readyState >= 2) processAiFrame();
      return;
    }
    if (currentMode === 'scale') {
@@ -709,24 +727,20 @@
    item.c.addEventListener('pointercancel', (e) => handlePointerUp(e, item.c));
  });
 
- // 【バグ修正1】ズーム・平行移動の状態を逆変換してキャンバス実座標を正確に算出
  function getCanvasCoords(e, cvs, targetIdx) {
    const pane = cvs.closest('.video-pane');
    const paneRect = pane.getBoundingClientRect();
    const vs = viewState[targetIdx];
 
-   // 親ペイン中心を原点としたクリック位置
    const paneCenterX = paneRect.left + paneRect.width / 2;
    const paneCenterY = paneRect.top + paneRect.height / 2;
    
    const clickRelX = e.clientX - paneCenterX;
    const clickRelY = e.clientY - paneCenterY;
 
-   // transform (translate & scale) の逆変換
    const targetRelX = (clickRelX - vs.x) / vs.scale;
    const targetRelY = (clickRelY - vs.y) / vs.scale;
 
-   // キャンバス左上基準のピクセル座標へ
    const cvsX = targetRelX + cvs.width / 2;
    const cvsY = targetRelY + cvs.height / 2;
 
@@ -768,6 +782,17 @@
    lastActiveTarget = targetIdx;
    const s = state[targetIdx], pos = getCanvasCoords(e, cvs, targetIdx);
    const currentTime = vid.currentTime, currentFrame = Math.round(currentTime * currentFPS);
+
+   // ROI描画モード時の処理
+   if (isRoiMode && targetIdx === 1) {
+     isRoiDrawing = true;
+     roiStart = pos;
+     userRoi = { x: pos.x, y: pos.y, w: 0, h: 0 };
+     try { cvs.setPointerCapture(e.pointerId); } catch(err){}
+     redraw();
+     return;
+   }
+
    const hit = findHitPoint(s, pos, currentMode);
    if (hit) { draggingPoint = { targetIdx, arrayName: hit.arrayName, index: hit.index }; try { cvs.setPointerCapture(e.pointerId); } catch(err){} return; }
    if (currentMode === 'ai') return; 
@@ -805,8 +830,20 @@
  }
 
  function handlePointerMove(e, cvs, targetIdx) {
+   const pos = getCanvasCoords(e, cvs, targetIdx);
+
+   if (isRoiDrawing && isRoiMode && targetIdx === 1) {
+     const x = Math.min(roiStart.x, pos.x);
+     const y = Math.min(roiStart.y, pos.y);
+     const w = Math.abs(pos.x - roiStart.x);
+     const h = Math.abs(pos.y - roiStart.y);
+     userRoi = { x, y, w, h };
+     redraw();
+     return;
+   }
+
    if (!draggingPoint || draggingPoint.targetIdx !== targetIdx) return;
-   const s = state[targetIdx], pos = getCanvasCoords(e, cvs, targetIdx);
+   const s = state[targetIdx];
    const pt = s[draggingPoint.arrayName][draggingPoint.index];
    if (pt) {
      pt.x = pos.x; pt.y = pos.y;
@@ -830,6 +867,13 @@
  }
 
  function handlePointerUp(e, cvs) {
+   if (isRoiDrawing) {
+     isRoiDrawing = false;
+     try { cvs.releasePointerCapture(e.pointerId); } catch(err){}
+     toggleRoiMode(); // 枠指定完了で通常モードに戻す
+     if (video1.readyState >= 2) processAiFrame();
+     return;
+   }
    if (draggingPoint) { try { cvs.releasePointerCapture(e.pointerId); } catch(err){} draggingPoint = null; }
  }
 
@@ -915,6 +959,19 @@
      if (compareMode === 0 && item.idx === 2) return;
      const s = state[item.idx];
      item.ctx.clearRect(0, 0, item.c.width, item.c.height);
+
+     // ROI枠の描画
+     if (item.idx === 1 && userRoi && userRoi.w > 5 && userRoi.h > 5) {
+       item.ctx.save();
+       item.ctx.strokeStyle = isRoiMode ? '#ff9500' : 'rgba(255, 149, 0, 0.4)';
+       item.ctx.lineWidth = 2;
+       item.ctx.setLineDash([4, 4]);
+       item.ctx.strokeRect(userRoi.x, userRoi.y, userRoi.w, userRoi.h);
+       item.ctx.fillStyle = '#ff9500';
+       item.ctx.font = 'bold 10px sans-serif';
+       item.ctx.fillText("追跡エリア", userRoi.x + 4, userRoi.y - 4);
+       item.ctx.restore();
+     }
 
      if (currentMode === 'ai') {
        if (item.idx === 1) {
@@ -1246,11 +1303,10 @@
  pose.setOptions({
    modelComplexity: 2, 
    smoothLandmarks: true,
-   minDetectionConfidence: 0.65,
-   minTrackingConfidence: 0.65
+   minDetectionConfidence: 0.6,
+   minTrackingConfidence: 0.6
  });
 
- // 【バグ修正2】複数人認識時のトラッキング補正 & ノイズ平滑化
  pose.onResults((results) => {
    if (currentMode !== 'ai') return; 
 
@@ -1264,46 +1320,27 @@
 
    const landmarks = results.poseLandmarks;
    const rect = getVideoRenderRect(video1, canvas1);
-   
-   // 検出された骨格の体幹中心を計算
-   const sL = landmarks[11], sR = landmarks[12], hL = landmarks[23], hR = landmarks[24];
-   const currentCenter = {
-     x: (sL.x + sR.x + hL.x + hR.x) / 4,
-     y: (sL.y + sR.y + hL.y + hR.y) / 4
-   };
 
-   // 2人目への誤認ジャンプを検出（距離が急変した場合は直前データを維持または平滑化）
-   if (prevAiCenter && !video1.paused) {
-     const jumpDist = Math.hypot(currentCenter.x - prevAiCenter.x, currentCenter.y - prevAiCenter.y);
-     // 1フレームで画面幅の20%以上ワープした場合は別人と判定してスキップ
-     if (jumpDist > 0.20 && smoothedAiLandmarks) {
-       return; 
-     }
+   // ROIが指定されている場合、クロップ枠のオフセットを加味して座標復元
+   let getPos;
+   if (userRoi && userRoi.w > 10 && userRoi.h > 10) {
+     getPos = (lm) => ({ 
+       x: userRoi.x + lm.x * userRoi.w, 
+       y: userRoi.y + lm.y * userRoi.h, 
+       z: (lm.z || 0) * userRoi.w 
+     });
+   } else {
+     getPos = (lm) => ({ 
+       x: rect.x + lm.x * rect.width, 
+       y: rect.y + lm.y * rect.height, 
+       z: (lm.z || 0) * rect.width 
+     });
    }
-   prevAiCenter = currentCenter;
-
-   const getPos = (lm) => ({ 
-     x: rect.x + lm.x * rect.width, 
-     y: rect.y + lm.y * rect.height, 
-     z: (lm.z || 0) * rect.width 
-   });
    
    const mappedLandmarks = {};
    for (let i = 0; i < landmarks.length; i++) {
-     const rawPos = getPos(landmarks[i]);
-     // EMA平滑化フィルターで手足の小刻みなブレを吸収
-     if (smoothedAiLandmarks && smoothedAiLandmarks[i] && !video1.paused) {
-       const alpha = 0.65;
-       mappedLandmarks[i] = {
-         x: smoothedAiLandmarks[i].x * (1 - alpha) + rawPos.x * alpha,
-         y: smoothedAiLandmarks[i].y * (1 - alpha) + rawPos.y * alpha,
-         z: (smoothedAiLandmarks[i].z || 0) * (1 - alpha) + (rawPos.z || 0) * alpha
-       };
-     } else {
-       mappedLandmarks[i] = rawPos;
-     }
+     mappedLandmarks[i] = getPos(landmarks[i]);
    }
-   smoothedAiLandmarks = mappedLandmarks;
    state[1].limbsLandmarks = mappedLandmarks;
 
    const overrideData = getInterpolatedAiPoints(currentFrame);
@@ -1319,9 +1356,36 @@
    redraw();
  });
 
+ async function processAiFrame() {
+   if (!video1.videoWidth) return;
+
+   // ROIが有効な場合は、患者さんの領域だけをクロップしてAIに渡す
+   if (userRoi && userRoi.w > 10 && userRoi.h > 10) {
+     const r = getVideoRenderRect(video1, canvas1);
+     // キャンバスピクセル座標を動画の実解像度座標へマッピング
+     const scaleX = video1.videoWidth / r.width;
+     const scaleY = video1.videoHeight / r.height;
+     const srcX = Math.max(0, (userRoi.x - r.x) * scaleX);
+     const srcY = Math.max(0, (userRoi.y - r.y) * scaleY);
+     const srcW = Math.min(video1.videoWidth - srcX, userRoi.w * scaleX);
+     const srcH = Math.min(video1.videoHeight - srcY, userRoi.h * scaleY);
+
+     if (srcW > 5 && srcH > 5) {
+       roiCropCanvas.width = srcW;
+       roiCropCanvas.height = srcH;
+       roiCropCtx.drawImage(video1, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
+       await pose.send({ image: roiCropCanvas });
+       return;
+     }
+   }
+
+   // ROI未設定時は動画全体を解析
+   await pose.send({ image: video1 });
+ }
+
  async function detectFrame() {
    if (currentMode === 'ai' && !video1.paused && !video1.ended && video1.readyState >= 2) {
-     await pose.send({image: video1});
+     await processAiFrame();
      requestAnimationFrame(detectFrame);
    } else {
      isAiDetecting = false;
@@ -1338,7 +1402,7 @@
  video1.addEventListener('seeked', async () => { 
    if (currentMode === 'ai' && video1.readyState >= 2 && !isAiDetecting) {
      isAiDetecting = true;
-     await pose.send({image: video1}); 
+     await processAiFrame(); 
      isAiDetecting = false;
    }
  });
