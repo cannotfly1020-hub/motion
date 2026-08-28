@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<link rel="apple-touch-icon" href="icon.png.JPG">
+<link rel="icon" type="image/jpeg" href="icon.png.JPG">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="動作分析Pro">
+<title>動作分析 Pro</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+<style>
+ * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+ html, body { width: 100%; height: 100dvh; background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; overflow: hidden; }
+ #header { width: 100%; background: #1c1c1e; padding-top: calc(6px + env(safe-area-inset-top)); padding-left: calc(8px + env(safe-area-inset-left)); padding-right: calc(8px + env(safe-area-inset-right)); padding-bottom: 6px; display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid #333; z-index: 10; flex-shrink: 0; }
+ .header-top-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+ .header-top-row::-webkit-scrollbar { display: none; }
+ .btn-group-header { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; flex-shrink: 0; }
+ .hdr-btn { -webkit-appearance: none; appearance: none; background: #007aff; color: white; border: none; padding: 5px 8px; border-radius: 6px; font-weight: bold; font-size: 11px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+ .hdr-btn.secondary { background: #3a3a3c; }
+ .hdr-btn.compare-parallel { background: #af52de; color: #fff; }
+ .hdr-btn.compare-overlay { background: #ff2d55; color: #fff; }
+ .hdr-btn.fps-badge { background: #30d158; color: #000; font-size: 10px; }
+ .hdr-btn.rec-btn { background: #ff3b30; color: #fff; }
+ .hdr-btn.rec-active { background: #ff453a; animation: blink 1s infinite; }
+ .hdr-btn.roi-active { background: #ff9500; color: #000; font-weight: bold; }
+ @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+ #scale-info-text { font-size: 10px; color: #ff9500; font-weight: 600; white-space: nowrap; margin-left: auto; flex-shrink: 0; padding-left: 4px; }
+ 
+ #result-box { width: 100%; background: #262629; border-radius: 6px; padding: 5px 8px; border: 1px solid #3a3a3c; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+ .result-text-area { flex: 1; min-width: 0; }
+ #main-result { color: #00ffcc; font-size: 12px; font-weight: bold; line-height: 1.2; }
+ #sub-result { color: #aaa; font-size: 10px; margin-top: 2px; font-weight: 500; line-height: 1.2; }
+ #btn-confirm-scale { display: none; background: #ff9500; color: #000; font-size: 11px; font-weight: bold; padding: 5px 10px; border: none; border-radius: 6px; cursor: pointer; flex-shrink: 0; white-space: nowrap; }
+
+ .highlight-acc { color: #ff375f; font-weight: bold; }
+ .highlight-speed { color: #ffcc00; font-weight: bold; }
+ .highlight-sim { color: #30d158; font-weight: bold; }
+ .highlight-cog { color: #5e5ce6; font-weight: bold; }
+ #stage { width: 100%; position: relative; flex: 1; min-height: 0; display: flex; background: #000; overflow: hidden; }
+ .video-pane { position: relative; flex: 1; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #000; }
+ .zoom-target { width: 100%; height: 100%; position: relative; transform-origin: center center; }
+ #pane2 { display: none; border-left: 2px solid #555; }
+ video { width: 100%; height: 100%; object-fit: contain; display: block; }
+ canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; pointer-events: auto; }
+ #controls { width: 100%; background: #1c1c1e; padding-top: 5px; padding-left: calc(8px + env(safe-area-inset-left)); padding-right: calc(8px + env(safe-area-inset-right)); padding-bottom: calc(6px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 5px; border-top: 1px solid #333; flex-shrink: 0; }
+ .seek-container { display: flex; flex-direction: column; gap: 3px; width: 100%; }
+ .seek-row { display: flex; align-items: center; gap: 6px; width: 100%; }
+ .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 14px; flex-shrink: 0; text-align: center; }
+ .seek-label.v2 { color: #af52de; }
+ input[type=range] { flex: 1; height: 18px; accent-color: #007aff; }
+ #seekbar2 { accent-color: #af52de; }
+ #perp-slider { accent-color: #ff2d55; }
+ #sim-slider { accent-color: #30d158; }
+ .mode-grid { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+ button.ctrl-btn { -webkit-appearance: none; appearance: none; width: 100%; padding: 6px 0; background: #2c2c2e; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; }
+ button.ctrl-btn:active { background: #444; }
+ button.mode-active { background: #30d158; color: black; font-weight: bold; }
+ #btn-mode-acc.mode-active { background: #ff375f; color: white; }
+ #btn-mode-scale.mode-active { background: #ff9500; color: black; }
+ #btn-mode-zoom.mode-active { background: #007aff; color: white; }
+ #btn-mode-perp.mode-active { background: #ff2d55; color: white; }
+ #btn-mode-cog.mode-active { background: #5e5ce6; color: white; }
+ #btn-mode-ai.mode-active { background: #00ffcc; color: black; }
+ .playback-row { width: 100%; display: grid; grid-template-columns: 1fr 1.3fr 1fr 0.9fr 1fr; gap: 4px; }
+ #btn-play { background: #34c759; color: #000; font-weight: bold; }
+ #btn-clear { background: #ff3b30; }
+ .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
+ .modal-card { background: #2c2c2e; border: 1px solid #444; border-radius: 12px; width: 90%; max-width: 340px; padding: 16px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
+ .modal-card h3 { font-size: 15px; margin-bottom: 6px; color: #ff9500; }
+ .modal-card p { font-size: 12px; color: #ccc; margin-bottom: 12px; }
+ .modal-input-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 14px; }
+ .modal-input-row input { width: 100px; font-size: 16px; padding: 6px; text-align: center; border-radius: 6px; border: 1px solid #555; background: #1c1c1e; color: #fff; user-select: auto; -webkit-user-select: auto; }
+ .modal-btn-row { display: flex; gap: 8px; }
+ .modal-btn-row button { -webkit-appearance: none; appearance: none; flex: 1; padding: 8px 0; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; }
+ #snapshot-img { max-width: 100%; max-height: 50vh; border-radius: 6px; border: 1px solid #555; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<div id="header">
+ <div class="header-top-row">
+ <div class="btn-group-header">
+ <button class="hdr-btn" onclick="triggerPickVideo(1)">動画①</button>
+ <button class="hdr-btn secondary" id="btn-pick2" style="display:none;" onclick="triggerPickVideo(2)">動画②</button>
+ <button class="hdr-btn secondary" id="btn-toggle-compare" onclick="toggleCompareMode()">1画面</button>
+ <button class="hdr-btn fps-badge" id="btn-fps" onclick="toggleFPS()">30fps</button>
+ <button class="hdr-btn secondary" id="btn-roi" onclick="toggleRoiMode()">🔲 対象者指定</button>
+ <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 静止画</button>
+ <button class="hdr-btn rec-btn" id="btn-record" onclick="toggleRecording()">🎥 録画開始</button>
+ </div>
+ <span id="scale-info-text">物差し: 未設定</span>
+ <input type="file" id="file-input-1" accept="video/*" style="display:none">
+ <input type="file" id="file-input-2" accept="video/*" style="display:none">
+ </div>
+ <div id="result-box">
+ <div class="result-text-area">
+ <div id="main-result">動画①を選択してください</div>
+ <div id="sub-result"></div>
+ </div>
+ <button id="btn-confirm-scale" onclick="openScaleModal()">📏 長さ確定</button>
+ </div>
+</div>
+
+<div id="stage">
+ <div class="video-pane" id="pane1">
+ <div class="zoom-target" id="zoom-target-1">
+ <video id="video1" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
+ <canvas id="canvas1"></canvas>
+ </div>
+ </div>
+ <div class="video-pane" id="pane2">
+ <div class="zoom-target" id="zoom-target-2">
+ <video id="video2" playsinline webkit-playsinline muted crossorigin="anonymous"></video>
+ <canvas id="canvas2"></canvas>
+ </div>
+ </div>
+</div>
+
+<div id="controls">
+ <div class="seek-container">
+ <div class="seek-row">
+ <span class="seek-label">①</span>
+ <input type="range" id="seekbar1" min="0" max="100" value="0" step="0.001">
+ </div>
+ <div class="seek-row" id="seek-row-2" style="display:none;">
+ <span class="seek-label v2">②</span>
+ <input type="range" id="seekbar2" min="0" max="100" value="0" step="0.001">
+ </div>
+ </div>
+ 
+ <div class="mode-grid">
+ <button class="ctrl-btn mode-active" id="btn-mode-angle" onclick="setMode('angle')">角度(3点)</button>
+ <button class="ctrl-btn" id="btn-mode-dist" onclick="setMode('distance')">速度(2点)</button>
+ <button class="ctrl-btn" id="btn-mode-acc" onclick="setMode('accel')">加速(3点)</button>
+ <button class="ctrl-btn" id="btn-mode-perp" onclick="setMode('perp')">垂直線</button>
+ <button class="ctrl-btn" id="btn-mode-sim" onclick="setMode('sim')">🎯 予測(+10°)</button>
+ <button class="ctrl-btn" id="btn-mode-cog" onclick="setMode('cog')">📍 重心移動</button>
+ <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">📏 物差し</button>
+ <button class="ctrl-btn" id="btn-mode-zoom" onclick="setMode('zoom')">🔍 ズーム</button>
+ <button class="ctrl-btn" id="btn-mode-ai" onclick="setMode('ai')" style="grid-column: span 4; border: 1px solid #00ffcc; color: #00ffcc; background: rgba(0, 255, 204, 0.1);">🤖 AI骨格解析 (体幹分析)</button>
+ </div>
+ 
+ <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
+ <span style="font-size:11px; font-weight:bold; color:#007aff;">倍率(画面<span id="zoom-target-label">①</span>)</span>
+ <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1">
+ <button class="ctrl-btn" style="width:auto; padding:4px 10px; background:#444;" onclick="resetZoom()">リセット</button>
+ </div>
+
+ <div id="perp-controls" style="display:none; width:100%; align-items:center; gap:8px;">
+ <span style="font-size:11px; font-weight:bold; color:#ff2d55; white-space:nowrap;">垂直線移動</span>
+ <input type="range" id="perp-slider" min="0" max="100" step="0.5" value="50">
+ </div>
+
+ <div id="sim-controls" style="display:none; width:100%; align-items:center; gap:8px;">
+ <span style="font-size:11px; font-weight:bold; color:#30d158; white-space:nowrap;">角度: <span id="sim-deg-val">+10°</span></span>
+ <input type="range" id="sim-slider" min="-30" max="30" step="1" value="10">
+ </div>
+
+ <div class="playback-row">
+ <button class="ctrl-btn" onclick="stepFrame(-1)">◀ -1</button>
+ <button class="ctrl-btn" id="btn-play" onclick="togglePlay()">▶ 再生</button>
+ <button class="ctrl-btn" onclick="stepFrame(1)">+1 ▶</button>
+ <button class="ctrl-btn" id="btn-speed" onclick="togglePlaybackRate()">1.0x</button>
+ <button class="ctrl-btn" id="btn-clear" onclick="clearCurrentPoints()">クリア</button>
+ </div>
+</div>
+
+<div id="scale-modal-overlay" class="modal-overlay">
+ <div class="modal-card">
+ <h3 id="scale-modal-title">物差しの長さ設定</h3>
+ <p>指定した2点間の実際の長さを入力</p>
+ <div class="modal-input-row">
+ <input type="number" id="scale-input-value" inputmode="decimal" placeholder="100" value="100">
+ <span style="font-weight:bold; font-size:15px;">cm</span>
+ </div>
+ <div class="modal-btn-row">
+ <button style="background:#444; color:#fff;" onclick="closeScaleModal()">キャンセル</button>
+ <button style="background:#ff9500; color:#000;" onclick="submitScaleModal()">確定</button>
+ </div>
+ </div>
+</div>
+
+<div id="snapshot-modal-overlay" class="modal-overlay">
+ <div class="modal-card" style="max-width:360px;">
+ <h3 style="color:#5856d6;">📸 静止画キャプチャ</h3>
+ <p style="font-size:11px; color:#aaa;">画像を長押しして「写真に追加」で保存できます</p>
+ <img id="snapshot-img" src="" alt="Screenshot">
+ <div class="modal-btn-row">
+ <button style="background:#444; color:#fff;" onclick="closeSnapshotModal()">閉じる</button>
+ </div>
+ </div>
+</div>
+
+<script src="index2_script.js"></script>
+</body>
+</html>
