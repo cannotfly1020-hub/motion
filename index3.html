@@ -3,227 +3,221 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>下肢バイオメカニクス動作分析</title>
-  <!-- MediaPipe Pose CDN -->
+  <title>下肢動作分析</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
-  <!-- Chart.js CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden; /* 画面全体のスクロールを完全禁止 */
       background-color: #121212;
       color: #e0e0e0;
-      padding: 10px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    .container {
-      max-width: 640px;
-      margin: 0 auto;
+    .app-wrapper {
       display: flex;
       flex-direction: column;
-      gap: 10px;
-    }
-    h2 { font-size: 16px; text-align: center; }
-    .panel {
-      background: #1e1e1e;
-      padding: 10px;
-      border-radius: 8px;
-    }
-    .input-row {
-      display: flex;
-      justify-content: space-around;
-      margin-bottom: 8px;
-    }
-    .input-row label {
-      font-size: 13px;
-      display: flex;
-      align-items: center;
+      height: 100%;
+      padding: 6px;
       gap: 6px;
+      max-width: 480px;
+      margin: 0 auto;
     }
-    .input-row input {
+    /* 1. 設定バー */
+    .top-bar {
+      flex: 0 0 auto;
+      background: #1e1e1e;
+      padding: 6px 10px;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+    }
+    .top-bar input {
       background: #2a2a2a;
       border: 1px solid #555;
       color: #fff;
-      padding: 4px 6px;
+      padding: 2px 4px;
       border-radius: 4px;
-      width: 65px;
+      width: 42px;
       text-align: center;
-      font-size: 14px;
-    }
-    .btn-row {
-      display: flex;
-      gap: 8px;
+      font-size: 11px;
     }
     .btn {
-      flex: 1;
-      padding: 10px;
-      border-radius: 6px;
+      padding: 5px 10px;
+      border-radius: 4px;
       font-weight: bold;
-      font-size: 13px;
+      font-size: 11px;
       cursor: pointer;
-      text-align: center;
       border: none;
     }
     .btn-blue { background: #0070f3; color: #fff; }
-    .btn-gray { background: #333; color: #fff; border: 1px solid #555; display: inline-block; }
-    .btn-small { padding: 8px 12px; font-size: 12px; background: #2a2a2a; color: #ccc; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
+    .btn-gray { background: #333; color: #fff; border: 1px solid #555; }
     
+    /* 2. 映像エリア (余白を埋めるフレキシブル設計) */
     .viewport {
+      flex: 1 1 auto;
       position: relative;
-      width: 100%;
       background: #000;
-      border-radius: 8px;
+      border-radius: 6px;
       overflow: hidden;
-      min-height: 220px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      min-height: 160px;
     }
     canvas#outputCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
       width: 100%;
-      height: auto;
-      display: block;
+      height: 100%;
       object-fit: contain;
     }
-    
-    .video-controller {
+    /* 画面上のHUD */
+    .hud-overlay {
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      right: 6px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+    .hud-badge {
+      background: rgba(0, 0, 0, 0.7);
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+    .hud-r { color: #00e5ff; border-left: 3px solid #00e5ff; }
+    .hud-l { color: #ff9100; border-left: 3px solid #ff9100; }
+
+    /* 3. シークバー */
+    .controller {
+      flex: 0 0 auto;
       background: #1e1e1e;
-      padding: 8px 12px;
-      border-radius: 8px;
+      padding: 4px 8px;
+      border-radius: 6px;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 2px;
     }
     .slider-row {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
     }
     .slider-row input[type="range"] {
       flex: 1;
+      height: 18px;
       accent-color: #0070f3;
     }
     .time-label {
-      font-size: 11px;
-      color: #aaa;
-      width: 75px;
+      font-size: 10px;
+      color: #888;
+      width: 65px;
       text-align: right;
     }
     .step-row {
       display: flex;
       justify-content: center;
-      gap: 10px;
+      gap: 12px;
+    }
+    .btn-step {
+      padding: 3px 8px;
+      font-size: 10px;
+      background: #2a2a2a;
+      color: #ccc;
+      border: 1px solid #444;
+      border-radius: 4px;
     }
 
+    /* 4. 下部数値カード (左右横並び) */
     .dashboard-grid {
+      flex: 0 0 auto;
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
+      gap: 6px;
+      margin-bottom: 2px;
     }
     .side-box {
-      background: #1a1a1a;
-      border-radius: 8px;
-      padding: 8px;
-      border-top: 3px solid #555;
+      background: #1e1e1e;
+      border-radius: 6px;
+      padding: 4px 8px;
     }
-    .side-box.right { border-top-color: #00e5ff; }
-    .side-box.left { border-top-color: #ff9100; }
-    
+    .side-box.right { border-top: 2px solid #00e5ff; }
+    .side-box.left { border-top: 2px solid #ff9100; }
     .side-title {
-      font-size: 12px;
+      font-size: 10px;
       font-weight: bold;
       text-align: center;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
-    .side-title.right { color: #00e5ff; }
-    .side-title.left { color: #ff9100; }
-
     .metric-row {
       display: flex;
       justify-content: space-between;
-      font-size: 11px;
-      padding: 3px 0;
-      border-bottom: 1px solid #282828;
+      font-size: 9.5px;
+      padding: 1px 0;
     }
-    .metric-row:last-child { border-bottom: none; }
-    .metric-val { font-weight: bold; }
-
-    .chart-wrapper {
-      position: relative;
-      width: 100%;
-      height: 160px;
-      background: #1e1e1e;
-      border-radius: 8px;
-      padding: 6px;
-    }
-    #statusLog {
-      font-size: 11px;
-      color: #00e5ff;
-      text-align: center;
-      min-height: 16px;
-    }
+    .metric-val { font-weight: bold; font-family: monospace; }
   </style>
 </head>
 <body>
 
-<div class="container">
-  <h2>下肢バイオメカニクス動作分析</h2>
-
-  <div class="panel">
-    <div class="input-row">
-      <label>体重 (kg): <input type="number" id="inputMass" value="70"></label>
-      <label>身長 (cm): <input type="number" id="inputHeight" value="175"></label>
+<div class="app-wrapper">
+  <div class="top-bar">
+    <div>
+      <label>体重:<input type="number" id="inputMass" value="47">kg</label>
+      <label style="margin-left:4px;">身長:<input type="number" id="inputHeight" value="140">cm</label>
     </div>
-    <div class="btn-row">
-      <button id="btnCamera" class="btn btn-blue">カメラ起動</button>
-      <label class="btn btn-gray">
-        動画を選択
+    <div style="display:flex; gap:4px;">
+      <button id="btnCamera" class="btn btn-blue">カメラ</button>
+      <label class="btn btn-gray" style="display:flex; align-items:center;">
+        動画選択
         <input type="file" id="inputFile" accept="video/*" style="display:none;">
       </label>
     </div>
   </div>
 
-  <div id="statusLog">AIモデル準備中...</div>
-
   <div class="viewport">
     <video id="videoElement" playsinline webkit-playsinline muted style="display:none;"></video>
     <canvas id="outputCanvas"></canvas>
+    
+    <div class="hud-overlay">
+      <div class="hud-badge hud-r">右膝: <span id="hud_r_knee">0</span> N·m</div>
+      <div class="hud-badge hud-l">左膝: <span id="hud_l_knee">0</span> N·m</div>
+    </div>
   </div>
 
-  <!-- 動画コントローラー -->
-  <div class="video-controller" id="videoControls">
+  <div class="controller">
     <div class="slider-row">
       <input type="range" id="seekSlider" min="0" max="100" value="0" step="0.05">
       <span class="time-label" id="timeDisplay">0.00 / 0.00</span>
     </div>
     <div class="step-row">
-      <button id="btnStepBack" class="btn-small">◀ 1コマ戻る</button>
-      <button id="btnPlayPause" class="btn-small" style="min-width: 60px;">再生</button>
-      <button id="btnStepForward" class="btn-small">1コマ進む ▶</button>
+      <button id="btnStepBack" class="btn-step">◀ コマ戻る</button>
+      <button id="btnPlayPause" class="btn-step" style="min-width: 45px;">再生</button>
+      <button id="btnStepForward" class="btn-step">コマ進む ▶</button>
     </div>
   </div>
 
-  <!-- 左右メトリクス -->
   <div class="dashboard-grid">
     <div class="side-box right">
-      <div class="side-title right">右脚 (Right)</div>
-      <div class="metric-row"><span>推定床反力:</span><span id="r_grf" class="metric-val" style="color:#4ade80;">0 N</span></div>
-      <div class="metric-row"><span>足関節トルク:</span><span id="r_ankle" class="metric-val" style="color:#60a5fa;">0 N·m</span></div>
-      <div class="metric-row"><span>膝関節トルク:</span><span id="r_knee" class="metric-val" style="color:#38bdf8;">0 N·m</span></div>
-      <div class="metric-row"><span>股関節トルク:</span><span id="r_hip" class="metric-val" style="color:#818cf8;">0 N·m</span></div>
+      <div class="side-title" style="color:#00e5ff;">右脚 (Right)</div>
+      <div class="metric-row"><span>床反力:</span><span id="r_grf" class="metric-val" style="color:#4ade80;">0 N</span></div>
+      <div class="metric-row"><span>足関節:</span><span id="r_ankle" class="metric-val" style="color:#60a5fa;">0.0 N·m</span></div>
+      <div class="metric-row"><span>膝関節:</span><span id="r_knee" class="metric-val" style="color:#38bdf8;">0.0 N·m</span></div>
+      <div class="metric-row"><span>股関節:</span><span id="r_hip" class="metric-val" style="color:#818cf8;">0.0 N·m</span></div>
     </div>
 
     <div class="side-box left">
-      <div class="side-title left">左脚 (Left)</div>
-      <div class="metric-row"><span>推定床反力:</span><span id="l_grf" class="metric-val" style="color:#4ade80;">0 N</span></div>
-      <div class="metric-row"><span>足関節トルク:</span><span id="l_ankle" class="metric-val" style="color:#fb923c;">0 N·m</span></div>
-      <div class="metric-row"><span>膝関節トルク:</span><span id="l_knee" class="metric-val" style="color:#f87171;">0 N·m</span></div>
-      <div class="metric-row"><span>股関節トルク:</span><span id="l_hip" class="metric-val" style="color:#fbbf24;">0 N·m</span></div>
+      <div class="side-title" style="color:#ff9100;">左脚 (Left)</div>
+      <div class="metric-row"><span>床反力:</span><span id="l_grf" class="metric-val" style="color:#4ade80;">0 N</span></div>
+      <div class="metric-row"><span>足関節:</span><span id="l_ankle" class="metric-val" style="color:#fb923c;">0.0 N·m</span></div>
+      <div class="metric-row"><span>膝関節:</span><span id="l_knee" class="metric-val" style="color:#f87171;">0.0 N·m</span></div>
+      <div class="metric-row"><span>股関節:</span><span id="l_hip" class="metric-val" style="color:#fbbf24;">0.0 N·m</span></div>
     </div>
-  </div>
-
-  <div class="chart-wrapper">
-    <canvas id="torqueChart"></canvas>
   </div>
 </div>
 
@@ -233,7 +227,6 @@ const canvas = document.getElementById('outputCanvas');
 const ctx = canvas.getContext('2d');
 const btnCamera = document.getElementById('btnCamera');
 const inputFile = document.getElementById('inputFile');
-const statusLog = document.getElementById('statusLog');
 
 const seekSlider = document.getElementById('seekSlider');
 const timeDisplay = document.getElementById('timeDisplay');
@@ -246,40 +239,12 @@ let isVideoMode = false;
 let isBusy = false;
 let animationFrameId = null;
 
-function log(msg) { statusLog.textContent = msg; }
-
 const BSIP = { trunk: 0.678, thigh: 0.100, shank: 0.046, foot: 0.014 };
 let prevCoM = null, prevVelCoM = null, prevTime = null;
 let filteredGRF = { x: 0, y: 0 };
 const LPF_ALPHA = 0.35;
 const GRAVITY = 9.81;
 
-// Chart.js 初期化
-const maxPoints = 40;
-const torqueChart = new Chart(document.getElementById('torqueChart').getContext('2d'), {
-  type: 'line',
-  data: {
-    labels: Array(maxPoints).fill(''),
-    datasets: [
-      { label: '右・膝', borderColor: '#38bdf8', data: Array(maxPoints).fill(0), borderWidth: 2, pointRadius: 0 },
-      { label: '右・股', borderColor: '#818cf8', data: Array(maxPoints).fill(0), borderWidth: 2, pointRadius: 0 },
-      { label: '左・膝', borderColor: '#f87171', data: Array(maxPoints).fill(0), borderWidth: 2, pointRadius: 0 },
-      { label: '左・股', borderColor: '#fbbf24', data: Array(maxPoints).fill(0), borderWidth: 2, pointRadius: 0 }
-    ]
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: false,
-    scales: {
-      y: { grid: { color: '#333' }, ticks: { color: '#888', font: { size: 9 } } },
-      x: { display: false }
-    },
-    plugins: { legend: { labels: { color: '#ccc', boxWidth: 8, font: { size: 9 } } } }
-  }
-});
-
-// MediaPipe Pose 初期化
 const pose = new Pose({
   locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
 });
@@ -290,9 +255,6 @@ pose.setOptions({
   minTrackingConfidence: 0.5
 });
 pose.onResults(onResults);
-pose.initialize().then(() => {
-  log('準備完了：カメラまたは動画を選択してください');
-});
 
 function onResults(results) {
   if (video.videoWidth && canvas.width !== video.videoWidth) {
@@ -310,8 +272,8 @@ function onResults(results) {
   }
 
   const lm = results.poseLandmarks;
-  const mass = parseFloat(document.getElementById('inputMass').value) || 70;
-  const heightM = (parseFloat(document.getElementById('inputHeight').value) || 175) / 100.0;
+  const mass = parseFloat(document.getElementById('inputMass').value) || 47;
+  const heightM = (parseFloat(document.getElementById('inputHeight').value) || 140) / 100.0;
   const now = isVideoMode ? video.currentTime : performance.now() / 1000.0;
 
   const pxBodyHeight = Math.abs(lm[0].y - (lm[27].y + lm[28].y) / 2) * canvas.height;
@@ -328,10 +290,7 @@ function onResults(results) {
   const ankleR = getPoint(28), ankleL = getPoint(27);
   const toeR = getPoint(32), toeL = getPoint(31);
 
-  const shoulderMid = { x: (shoulderR.x + shoulderL.x) * 0.5, y: (shoulderR.y + shoulderL.y) * 0.5 };
-  const hipMid = { x: (hipR.x + hipL.x) * 0.5, y: (hipR.y + hipL.y) * 0.5 };
-  const comTrunk = { x: (shoulderMid.x + hipMid.x) * 0.5, y: (shoulderMid.y + hipMid.y) * 0.5 };
-
+  const comTrunk = { x: (shoulderR.x + hipR.x + shoulderL.x + hipL.x) * 0.25, y: (shoulderR.y + hipR.y + shoulderL.y + hipL.y) * 0.25 };
   const comThighR = { x: hipR.x * 0.433 + kneeR.x * 0.567, y: hipR.y * 0.433 + kneeR.y * 0.567 };
   const comShankR = { x: kneeR.x * 0.433 + ankleR.x * 0.567, y: kneeR.y * 0.433 + ankleR.y * 0.567 };
   const comFootR  = { x: (ankleR.x + toeR.x) * 0.5, y: (ankleR.y + toeR.y) * 0.5 };
@@ -348,16 +307,10 @@ function onResults(results) {
   let totalGrf = { x: 0, y: mass * GRAVITY };
   if (prevCoM && prevTime && Math.abs(now - prevTime) > 0.0001) {
     const dt = Math.max(Math.abs(now - prevTime), 0.001);
-    const velCoM = {
-      x: (currentCoM.x - prevCoM.x) / dt,
-      y: (currentCoM.y - prevCoM.y) / dt
-    };
+    const velCoM = { x: (currentCoM.x - prevCoM.x) / dt, y: (currentCoM.y - prevCoM.y) / dt };
 
     if (prevVelCoM) {
-      const accCoM = {
-        x: (velCoM.x - prevVelCoM.x) / dt,
-        y: (velCoM.y - prevVelCoM.y) / dt
-      };
+      const accCoM = { x: (velCoM.x - prevVelCoM.x) / dt, y: (velCoM.y - prevVelCoM.y) / dt };
       const rawGrfX = mass * accCoM.x;
       const rawGrfY = Math.max(0, mass * (accCoM.y + GRAVITY));
 
@@ -377,21 +330,17 @@ function onResults(results) {
   const grfR = { x: (totalGrf.x * rContact) / sumContact, y: (totalGrf.y * rContact) / sumContact };
   const grfL = { x: (totalGrf.x * lContact) / sumContact, y: (totalGrf.y * lContact) / sumContact };
 
-  // 右脚トルク
-  const r_rAnkle = { x: comFootR.x - ankleR.x, y: comFootR.y - ankleR.y };
-  const r_rKnee  = { x: comFootR.x - kneeR.x,  y: comFootR.y - kneeR.y };
-  const r_rHip   = { x: comFootR.x - hipR.x,   y: comFootR.y - hipR.y };
-  const torqueAnkleR = r_rAnkle.x * grfR.y - r_rAnkle.y * grfR.x;
-  const torqueKneeR  = r_rKnee.x * grfR.y - r_rKnee.y * grfR.x;
-  const torqueHipR   = r_rHip.x * grfR.y - r_rHip.y * grfR.x;
+  const torqueAnkleR = (comFootR.x - ankleR.x) * grfR.y - (comFootR.y - ankleR.y) * grfR.x;
+  const torqueKneeR  = (comFootR.x - kneeR.x)  * grfR.y - (comFootR.y - kneeR.y)  * grfR.x;
+  const torqueHipR   = (comFootR.x - hipR.x)   * grfR.y - (comFootR.y - hipR.y)   * grfR.x;
 
-  // 左脚トルク
-  const l_rAnkle = { x: comFootL.x - ankleL.x, y: comFootL.y - ankleL.y };
-  const l_rKnee  = { x: comFootL.x - kneeL.x,  y: comFootL.y - kneeL.y };
-  const l_rHip   = { x: comFootL.x - hipL.x,   y: comFootL.y - hipL.y };
-  const torqueAnkleL = l_rAnkle.x * grfL.y - l_rAnkle.y * grfL.x;
-  const torqueKneeL  = l_rKnee.x * grfL.y - l_rKnee.y * grfL.x;
-  const torqueHipL   = l_rHip.x * grfL.y - l_rHip.y * grfL.x;
+  const torqueAnkleL = (comFootL.x - ankleL.x) * grfL.y - (comFootL.y - ankleL.y) * grfL.x;
+  const torqueKneeL  = (comFootL.x - kneeL.x)  * grfL.y - (comFootL.y - kneeL.y)  * grfL.x;
+  const torqueHipL   = (comFootL.x - hipL.x)   * grfL.y - (comFootL.y - hipL.y)   * grfL.x;
+
+  // 数値反映
+  document.getElementById('hud_r_knee').textContent = torqueKneeR.toFixed(1);
+  document.getElementById('hud_l_knee').textContent = torqueKneeL.toFixed(1);
 
   document.getElementById('r_grf').textContent = `${Math.round(grfR.y)} N`;
   document.getElementById('r_ankle').textContent = `${torqueAnkleR.toFixed(1)} N·m`;
@@ -402,13 +351,6 @@ function onResults(results) {
   document.getElementById('l_ankle').textContent = `${torqueAnkleL.toFixed(1)} N·m`;
   document.getElementById('l_knee').textContent = `${torqueKneeL.toFixed(1)} N·m`;
   document.getElementById('l_hip').textContent = `${torqueHipL.toFixed(1)} N·m`;
-
-  const d = torqueChart.data.datasets;
-  d[0].data.push(torqueKneeR); d[0].data.shift();
-  d[1].data.push(torqueHipR);  d[1].data.shift();
-  d[2].data.push(torqueKneeL); d[2].data.shift();
-  d[3].data.push(torqueHipL);  d[3].data.shift();
-  torqueChart.update('none');
 
   drawBilateralOverlay(lm, comFootR, grfR, comFootL, grfL, meterPerPixel);
   ctx.restore();
@@ -442,7 +384,7 @@ function drawBilateralOverlay(lm, copR, grfR, copL, grfL, meterPerPixel) {
   ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.moveTo(rPxX, rPxY);
-  ctx.lineTo(rPxX + grfR.x * 0.15, rPxY - grfR.y * 0.15);
+  ctx.lineTo(rPxX + grfR.x * 0.12, rPxY - grfR.y * 0.12);
   ctx.stroke();
 
   // 左GRF
@@ -452,20 +394,14 @@ function drawBilateralOverlay(lm, copR, grfR, copL, grfL, meterPerPixel) {
   ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.moveTo(lPxX, lPxY);
-  ctx.lineTo(lPxX + grfL.x * 0.15, lPxY - grfL.y * 0.15);
+  ctx.lineTo(lPxX + grfL.x * 0.12, lPxY - grfL.y * 0.12);
   ctx.stroke();
 }
 
 async function renderCurrentFrame() {
   if (isBusy || video.readyState < 2) return;
   isBusy = true;
-  try {
-    await pose.send({ image: video });
-  } catch (e) {
-    console.error(e);
-  } finally {
-    isBusy = false;
-  }
+  try { await pose.send({ image: video }); } catch(e) {} finally { isBusy = false; }
 }
 
 async function loop() {
@@ -484,7 +420,6 @@ function updateSeekBar() {
   }
 }
 
-// スライダー移動
 seekSlider.addEventListener('input', () => {
   if (video.duration) {
     video.pause();
@@ -493,7 +428,6 @@ seekSlider.addEventListener('input', () => {
   }
 });
 
-// シーク完了時にフレーム解析を実行
 video.addEventListener('seeked', async () => {
   if (video.paused) {
     updateSeekBar();
@@ -501,7 +435,6 @@ video.addEventListener('seeked', async () => {
   }
 });
 
-// 再生 / 一時停止
 btnPlayPause.addEventListener('click', () => {
   if (video.paused) {
     video.play();
@@ -512,27 +445,23 @@ btnPlayPause.addEventListener('click', () => {
   }
 });
 
-// 1コマ進む
 btnStepForward.addEventListener('click', () => {
   video.pause();
   btnPlayPause.textContent = '再生';
   video.currentTime = Math.min(video.duration, video.currentTime + 0.033);
 });
 
-// 1コマ戻る
 btnStepBack.addEventListener('click', () => {
   video.pause();
   btnPlayPause.textContent = '再生';
   video.currentTime = Math.max(0, video.currentTime - 0.033);
 });
 
-// カメラ起動
 btnCamera.addEventListener('click', async () => {
   if (isProcessing && !isVideoMode) {
     location.reload();
     return;
   }
-  log('カメラへのアクセスを要求中...');
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } },
@@ -540,31 +469,28 @@ btnCamera.addEventListener('click', async () => {
     });
     video.srcObject = stream;
     await video.play();
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
     btnCamera.textContent = '停止';
     btnCamera.style.background = '#dc2626';
     isProcessing = true;
     isVideoMode = false;
-    document.getElementById('videoControls').style.display = 'none';
-    log('カメラリアルタイム解析中');
     loop();
   } catch (err) {
-    log('カメラエラー: ' + err.message);
+    alert('カメラエラー: ' + err.message);
   }
 });
 
-// 動画ファイル選択（iOS対応のFileReader & DataURL方式）
 inputFile.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
-  log('動画を読み込み中...');
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
   if (video.srcObject) {
     video.srcObject.getTracks().forEach(t => t.stop());
     video.srcObject = null;
   }
 
-  // iOSで安全にバイナリを読み込む
   const reader = new FileReader();
   reader.onload = (event) => {
     video.src = event.target.result;
@@ -573,24 +499,15 @@ inputFile.addEventListener('change', (e) => {
   reader.readAsDataURL(file);
 
   video.onloadedmetadata = () => {
-    log('メタデータ取得完了。描画準備中...');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    document.getElementById('videoControls').style.display = 'flex';
     isProcessing = true;
     isVideoMode = true;
     btnCamera.textContent = 'リセット';
     btnCamera.style.background = '#333';
     btnPlayPause.textContent = '再生';
-    
-    // 最初のフレームへシークして描画
     video.currentTime = 0.01;
-    log('解析準備完了：再生またはスライダーで操作できます');
     loop();
-  };
-
-  video.onerror = () => {
-    log('動画読み込みエラーが発生しました');
   };
 });
 </script>
