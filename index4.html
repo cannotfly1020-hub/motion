@@ -50,18 +50,15 @@
     .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 14px; flex-shrink: 0; text-align: center; }
     input[type=range] { flex: 1; height: 18px; accent-color: #007aff; }
 
-    /* 手動ジャンプボタン */
     .jump-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
     .jump-btn { background: #2c2c2e; color: #888; border: 1.5px solid #444; padding: 8px 0; border-radius: 6px; font-size: 12px; font-weight: bold; text-align: center; cursor: pointer; transition: all 0.2s; }
     .jump-btn.active-takeoff { background: #ff375f; color: #fff; border-color: #ff375f; box-shadow: 0 0 8px rgba(255, 55, 95, 0.5); }
     .jump-btn.active-peak { background: #007aff; color: #fff; border-color: #007aff; box-shadow: 0 0 8px rgba(0, 122, 255, 0.5); }
     .jump-btn.active-landing { background: #30d158; color: #000; border-color: #30d158; box-shadow: 0 0 8px rgba(48, 209, 88, 0.5); }
     
-    /* 自動解析エリア */
     .auto-actions { display: none; grid-template-columns: 1fr; gap: 4px; }
     .auto-start-btn { background: #00ffcc; color: #000; border: none; padding: 10px 0; border-radius: 6px; font-size: 13px; font-weight: bold; text-align: center; cursor: pointer; }
 
-    /* 4列にすっきり配置 */
     .mode-grid { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
     button.ctrl-btn { -webkit-appearance: none; appearance: none; width: 100%; padding: 6px 0; background: #2c2c2e; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; }
     button.ctrl-btn:active { background: #444; }
@@ -123,7 +120,6 @@
 </div>
 
 <div id="controls">
-    <!-- モード切り替えタブ -->
     <div class="analysis-tabs">
         <button id="tabManual" class="tab-btn" onclick="switchAnalysisMode('manual')">✋ 手動解析</button>
         <button id="tabAuto" class="tab-btn active-auto" onclick="switchAnalysisMode('auto')">🤖 自動解析(AI)</button>
@@ -134,19 +130,16 @@
         <input type="range" id="seekSlider" min="0" max="100" value="0" step="0.05">
     </div>
 
-    <!-- 手動ジャンプボタン -->
     <div class="jump-actions" id="manualControls" style="display:none;">
         <button class="jump-btn" id="btnTakeoff" onclick="markJumpPhase('takeoff')">🛫 離地を記録</button>
         <button class="jump-btn" id="btnPeak" onclick="markJumpPhase('peak')">⛰️ 頂点を記録</button>
         <button class="jump-btn" id="btnLanding" onclick="markJumpPhase('landing')">🛬 着地を記録</button>
     </div>
 
-    <!-- 自動ジャンプボタン -->
     <div class="auto-actions" id="autoControls" style="display:grid;">
         <button class="auto-start-btn" id="btnAutoStart" onclick="startAutoAnalysis()">▶ 再生してAI自動検知を開始</button>
     </div>
 
-    <!-- スッキリ4ボタン配置 -->
     <div class="mode-grid">
         <button class="ctrl-btn" id="btnModeScale" onclick="toggleScaleMode()">📏 物差し</button>
         <button class="ctrl-btn" id="btnModeFloor" onclick="toggleFloorMode()">🟦 地面</button>
@@ -241,7 +234,8 @@ let pxPerCm = null;
 let isZoomMode = false;
 let isScaleMode = false;
 let isFloorMode = false;
-let userFloorY = null; 
+let isFloorDragging = false;
+let userFloorY = null; // 画面比率 (0.0 - 1.0)
 let scalePoints = [];
 let zoomScale = 1.0;
 let panOffsetX = 0, panOffsetY = 0;
@@ -262,7 +256,7 @@ let currentLandmarks = null;
 let currentCoM = null;
 let currentFeetCenter = null;
 
-// AI State Machine (Floor Linked)
+// AI State Machine
 let autoJumpState = 'GROUND'; 
 let lastGroundedState = null;
 
@@ -294,7 +288,7 @@ function switchAnalysisMode(mode) {
         updateJumpBtnStyles();
     } else {
         mainResult.innerHTML = "<span style='color:#00ffcc;'>🤖 自動解析(AI)モード</span>";
-        subResult.innerText = userFloorY !== null ? "「▶ 再生」を押すと地面ライン連動で高精度自動検知します" : "先に「🟦 地面」ボタンで地面の高さをタップしてください";
+        subResult.innerText = userFloorY !== null ? "「▶ 再生」を押すと地面ライン連動で高精度自動検知します" : "先に「🟦 地面」ボタンで地面の高さを設定してください";
     }
 }
 
@@ -304,7 +298,7 @@ function startAutoAnalysis() {
         return;
     }
     if (userFloorY === null) {
-        alert("先に「🟦 地面」ボタンを押し、地面の位置をタップして床面ラインを設定してください");
+        alert("先に「🟦 地面」ボタンを押し、地面の位置を設定してください");
         toggleFloorMode();
         return;
     }
@@ -365,8 +359,8 @@ function toggleFloorMode() {
     isFloorMode = !isFloorMode;
     if (isFloorMode) {
         isZoomMode = isRoiMode = isScaleMode = false;
-        mainResult.innerHTML = "<span style='color:#00ffcc;'>🟦 地面ライン設定</span>";
-        subResult.innerText = "画面上で足元（地面）の位置をタップしてください";
+        mainResult.innerHTML = "<span style='color:#00ffcc;'>🟦 地面ライン設定 (ドラッグ可能)</span>";
+        subResult.innerText = "画面をタップまたはラインを上下にドラッグして地面に合わせ、「🟦 地面」を再タップで確定";
     } else {
         switchAnalysisMode(analysisMode);
     }
@@ -406,9 +400,8 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
     if (isFloorMode) {
         const p = getPointerNorm(e);
         userFloorY = p.y;
-        toggleFloorMode();
-        mainResult.innerHTML = "<span style='color:#30d158;'>✅ 地面ライン設定完了</span>";
-        subResult.innerText = "「▶ 再生」を押すと高精度なAI自動検知が始まります";
+        isFloorDragging = true;
+        try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
         redrawOverlay();
         return;
     }
@@ -432,6 +425,12 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
 });
 
 interactionCanvas.addEventListener('pointermove', (e) => {
+    if (isFloorMode && isFloorDragging) {
+        const p = getPointerNorm(e);
+        userFloorY = p.y;
+        redrawOverlay();
+        return;
+    }
     if (isRoiDrawing && isRoiMode) {
         const p = getPointerNorm(e);
         roiNorm.x = Math.min(roiStart.x, p.x); roiNorm.y = Math.min(roiStart.y, p.y);
@@ -442,6 +441,13 @@ interactionCanvas.addEventListener('pointermove', (e) => {
 });
 
 interactionCanvas.addEventListener('pointerup', (e) => {
+    if (isFloorMode && isFloorDragging) {
+        isFloorDragging = false;
+        try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){}
+        mainResult.innerHTML = "<span style='color:#30d158;'>✅ 地面ライン調整完了</span>";
+        subResult.innerText = "位置が決まったら「🟦 地面」ボタンを押して確定してください";
+        return;
+    }
     if (isRoiDrawing) { isRoiDrawing = false; try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){} toggleRoiMode(); renderCurrentFrame(); }
     if (isPanning) { isPanning = false; try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){} }
 });
@@ -478,17 +484,25 @@ function redrawOverlay() {
     if (userFloorY !== null) {
         const fy = userFloorY * interactionCanvas.height;
         intCtx.save();
-        intCtx.strokeStyle = '#00ffcc';
-        intCtx.lineWidth = 2.5 / zoomScale;
-        intCtx.setLineDash([6 / zoomScale, 4 / zoomScale]);
+        intCtx.strokeStyle = isFloorMode ? '#00ffcc' : 'rgba(0, 255, 204, 0.7)';
+        intCtx.lineWidth = (isFloorMode ? 3.5 : 2.5) / zoomScale;
+        intCtx.setLineDash(isFloorMode ? [] : [6 / zoomScale, 4 / zoomScale]);
         intCtx.beginPath();
         intCtx.moveTo(0, fy);
         intCtx.lineTo(interactionCanvas.width, fy);
         intCtx.stroke();
         
+        // ハンドルマーク（ドラッグ中・地面モード中）
+        if (isFloorMode) {
+            intCtx.fillStyle = '#00ffcc';
+            intCtx.beginPath();
+            intCtx.arc(interactionCanvas.width / 2, fy, 8 / zoomScale, 0, Math.PI * 2);
+            intCtx.fill();
+        }
+        
         intCtx.fillStyle = '#00ffcc';
         intCtx.font = `bold ${Math.max(10, 11/zoomScale)}px sans-serif`;
-        intCtx.fillText("🟦 地面基準ライン", 10/zoomScale, fy - 6/zoomScale);
+        intCtx.fillText(isFloorMode ? "↕️ 地面ライン (ドラッグして移動)" : "🟦 地面基準ライン", 10/zoomScale, fy - 8/zoomScale);
         intCtx.restore();
     }
 
@@ -562,7 +576,6 @@ function onResults(results) {
         const frame = Math.round(time * currentFPS);
         const floorYpx = userFloorY * h;
 
-        // つま先・かかと・足首のうち、最も地面に近い点を取得
         const footPoints = [toeL, toeR, heelL, heelR, ankleL, ankleR].filter(p => p && p.visibility > 0.4);
         let lowestFootY = 0;
         if (footPoints.length > 0) {
@@ -574,25 +587,20 @@ function onResults(results) {
         const distanceFromFloor = floorYpx - lowestFootY; // 地面ラインより上ならプラス(px)
 
         if (autoJumpState === 'GROUND') {
-            // 地面ライン上（0.5cm以内）にいる間は、直近の接地フレームを常に更新
             if (distanceFromFloor <= pxPerCm * 0.5) {
                 lastGroundedState = { time, frame, com: {...currentCoM}, feet: {...currentFeetCenter} };
             } 
-            // 足先が地面ラインを上に抜けた瞬間（1.5cm以上浮いた）に「離地」を確定！
             else if (distanceFromFloor > pxPerCm * 1.5) {
                 autoJumpState = 'FLIGHT';
-                // 地面ラインを抜ける直前のフレームを離地とする
                 jumpData.takeoff = lastGroundedState || { time, frame, com: {...currentCoM}, feet: {...currentFeetCenter} };
                 jumpData.peak = { time, frame, com: {...currentCoM}, feet: {...currentFeetCenter} };
                 jumpData.landing = null;
             }
         } else if (autoJumpState === 'FLIGHT') {
-            // 空中での最高到達点を更新
             if (currentCoM.y < jumpData.peak.com.y) {
                 jumpData.peak = { time, frame, com: {...currentCoM}, feet: {...currentFeetCenter} };
             }
             
-            // 落下中に足先が地面ラインに再び触れた瞬間を「着地」と判定！
             if (distanceFromFloor <= pxPerCm * 0.5) {
                 autoJumpState = 'GROUND';
                 jumpData.landing = { time, frame, com: {...currentCoM}, feet: {...currentFeetCenter} };
