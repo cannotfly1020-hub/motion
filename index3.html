@@ -259,11 +259,21 @@ let recordCanvas = null;
 let recordCtx = null;
 let recordAnimId = null;
 
+// 力学計算用の変数と定数
 const BSIP = { trunk: 0.678, thigh: 0.100, shank: 0.046, foot: 0.014 };
-let prevCoM = null, prevVelCoM = null, prevTime = null;
+let prevCoM = null, prevVelCoM = null;
 let filteredGRF = { x: 0, y: 0 };
-const LPF_ALPHA = 0.35;
-let comHistory = []; // 追加：重心の座標履歴
+const LPF_ALPHA = 0.15; // 力の平滑化フィルタ係数
+const GRAVITY = 9.81; // 必須の重力加速度
+let comHistory = []; // 重心座標の移動平均用
+
+// タイムラインを飛ばした時に物理演算のバグを防ぐリセット関数
+function resetPhysics() {
+  prevCoM = null;
+  prevVelCoM = null;
+  filteredGRF = { x: 0, y: 0 };
+  comHistory = [];
+}
 
 const pose = new Pose({
  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
@@ -349,8 +359,8 @@ function toggleRoiMode() {
  btnModeZoom.classList.remove('mode-active');
  zoomControls.style.display = 'none';
  btnToggleRoi.classList.add('roi-active');
- document.getElementById('main-result').innerHTML = "🔲 画面をドラッグして患者さんを四角く囲んでください";
- document.getElementById('sub-result').innerHTML = "囲んだ枠内のみをAIが追跡します（介助者を除外）";
+ document.getElementById('main-result').innerHTML = "🔲 画面をドラッグして対象者を四角く囲んでください";
+ document.getElementById('sub-result').innerHTML = "囲んだ枠内のみをAIが追跡します（背景の人物を除外）";
  } else {
  btnToggleRoi.classList.remove('roi-active');
  document.getElementById('main-result').innerHTML = "解析待機中";
@@ -492,7 +502,6 @@ function onResults(results) {
 
  const mass = parseFloat(inputMass.value) || 47;
  const heightM = (parseFloat(inputHeight.value) || 140) / 100.0;
- const now = video.currentTime;
 
  const pxBodyHeight = Math.abs(lm[0].y - (lm[27].y + lm[28].y) / 2) * outputCanvas.height;
  const meterPerPixel = (heightM * 0.85) / (pxBodyHeight || 1);
@@ -524,7 +533,7 @@ function onResults(results) {
 
  // 1. 重心座標の移動平均（ノイズ除去）
  comHistory.push(currentCoM);
- if (comHistory.length > 5) comHistory.shift(); // 5フレームの移動平均
+ if (comHistory.length > 5) comHistory.shift(); 
  
  const avgCoM = { x: 0, y: 0 };
  for(let p of comHistory) { avgCoM.x += p.x; avgCoM.y += p.y; }
@@ -533,7 +542,7 @@ function onResults(results) {
 
  let totalGrf = { x: 0, y: mass * GRAVITY };
  if (prevCoM) {
-   // 2. ブラウザの時間ではなく、設定したFPSを基準に固定時間を算出
+   // 2. ブラウザの時間ではなく設定したFPSを基準に固定時間を算出
    const fixedDt = 1.0 / currentFPS; 
    
    const velCoM = { 
@@ -549,16 +558,14 @@ function onResults(results) {
      const rawGrfX = mass * accCoM.x;
      const rawGrfY = Math.max(0, mass * (accCoM.y + GRAVITY));
 
-     // 3. 出力フィルターも少し強めに設定（0.15）
-     const strongAlpha = 0.15;
-     filteredGRF.x = filteredGRF.x * (1 - strongAlpha) + rawGrfX * strongAlpha;
-     filteredGRF.y = filteredGRF.y * (1 - strongAlpha) + rawGrfY * strongAlpha;
+     // 3. フィルタリングで動きを滑らかに
+     filteredGRF.x = filteredGRF.x * (1 - LPF_ALPHA) + rawGrfX * LPF_ALPHA;
+     filteredGRF.y = filteredGRF.y * (1 - LPF_ALPHA) + rawGrfY * LPF_ALPHA;
      totalGrf = filteredGRF;
    }
    prevVelCoM = velCoM;
  }
  prevCoM = avgCoM; 
- prevTime = now;
 
  // 4. 接地判定と重心距離ベースの動的な力分配
  const rContact = ankleR.y < ankleL.y + 0.08 ? 1.0 : 0.0;
@@ -785,7 +792,9 @@ seekSlider.addEventListener('input', () => {
  }
 });
 
+// シーク（飛ばし）操作時に物理演算履歴をリセットして暴れを防ぐ
 video.addEventListener('seeked', () => {
+ resetPhysics();
  if (video.paused) {
  updateSeekBar();
  renderCurrentFrame();
@@ -946,8 +955,8 @@ inputFile.addEventListener('change', (e) => {
  currentBlobUrl = null;
  }
  video.pause();
-
  resetZoom();
+ resetPhysics(); // 新しい動画読み込み時も物理演算をリセット
 
  currentBlobUrl = URL.createObjectURL(file);
  video.src = currentBlobUrl;
