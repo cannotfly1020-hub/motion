@@ -229,6 +229,33 @@ const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@med
 pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
 pose.onResults(onResults);
 
+// ★ 映像の実際の表示エリア（黒帯を除いたRect）を正確に算出する
+function getVideoRenderBox() {
+    const cWidth = outputCanvas.width;
+    const cHeight = outputCanvas.height;
+    if (!video.videoWidth || !video.videoHeight || cWidth === 0 || cHeight === 0) {
+        return { x: 0, y: 0, w: cWidth, h: cHeight };
+    }
+    const videoRatio = video.videoWidth / video.videoHeight;
+    const canvasRatio = cWidth / cHeight;
+    let renderW, renderH, offsetX, offsetY;
+
+    if (canvasRatio > videoRatio) {
+        // 左右に黒帯
+        renderH = cHeight;
+        renderW = cHeight * videoRatio;
+        offsetX = (cWidth - renderW) / 2;
+        offsetY = 0;
+    } else {
+        // 上下に黒帯
+        renderW = cWidth;
+        renderH = cWidth / videoRatio;
+        offsetX = 0;
+        offsetY = (cHeight - renderH) / 2;
+    }
+    return { x: offsetX, y: offsetY, w: renderW, h: renderH };
+}
+
 function fitCanvases() {
     const rect = video.parentElement.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
@@ -291,7 +318,12 @@ function getPointerNorm(e) {
     const clickRelX = e.clientX - (rect.left + rect.width / 2), clickRelY = e.clientY - (rect.top + rect.height / 2);
     const cvsX = (clickRelX - panOffsetX) / zoomScale + interactionCanvas.width / 2;
     const cvsY = (clickRelY - panOffsetY) / zoomScale + interactionCanvas.height / 2;
-    return { x: Math.max(0, Math.min(1.0, cvsX / interactionCanvas.width)), y: Math.max(0, Math.min(1.0, cvsY / interactionCanvas.height)) };
+    
+    // 映像エリアに対する正規化座標
+    const box = getVideoRenderBox();
+    const normX = Math.max(0, Math.min(1.0, (cvsX - box.x) / box.w));
+    const normY = Math.max(0, Math.min(1.0, (cvsY - box.y) / box.h));
+    return { x: normX, y: normY };
 }
 
 interactionCanvas.addEventListener('pointerdown', (e) => {
@@ -324,8 +356,12 @@ interactionCanvas.addEventListener('pointerup', (e) => {
 function redrawOverlay() {
     intCtx.clearRect(0, 0, interactionCanvas.width, interactionCanvas.height);
     if (isRoiEnabled && roiNorm.w > 0.05) {
-        const rx = roiNorm.x * interactionCanvas.width, ry = roiNorm.y * interactionCanvas.height;
-        const rw = roiNorm.w * interactionCanvas.width, rh = roiNorm.h * interactionCanvas.height;
+        const box = getVideoRenderBox();
+        const rx = box.x + roiNorm.x * box.w;
+        const ry = box.y + roiNorm.y * box.h;
+        const rw = roiNorm.w * box.w;
+        const rh = roiNorm.h * box.h;
+
         intCtx.save();
         intCtx.fillStyle = 'rgba(0, 0, 0, 0.35)'; intCtx.fillRect(0, 0, interactionCanvas.width, interactionCanvas.height);
         intCtx.clearRect(rx, ry, rw, rh);
@@ -350,55 +386,65 @@ function onResults(results) {
 
     const rawLm = results.poseLandmarks;
     const lm = rawLm.map(p => {
-        if (isRoiEnabled && roiNorm.w > 0.05) { return { x: roiNorm.x + p.x * roiNorm.w, y: roiNorm.y + p.y * roiNorm.h, z: p.z, visibility: p.visibility }; }
+        if (isRoiEnabled && roiNorm.w > 0.05) { 
+            return { x: roiNorm.x + p.x * roiNorm.w, y: roiNorm.y + p.y * roiNorm.h, z: p.z, visibility: p.visibility }; 
+        }
         return p;
     });
 
-    const w = outputCanvas.width, h = outputCanvas.height;
-    drawBiomechanics(lm, w, h);
+    drawBiomechanics(lm);
 }
 
-function drawBiomechanics(lm, w, h) {
-    outCtx.clearRect(0, 0, w, h);
+function drawBiomechanics(lm) {
+    outCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
     outCtx.save();
     outCtx.lineWidth = 3 / zoomScale;
+
+    const box = getVideoRenderBox();
+
+    // 座標をキャンバス上の実際の映像エリアに正確に変換する関数
+    const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
 
     const nose = lm[0], shL = lm[11], shR = lm[12], hipL = lm[23], hipR = lm[24];
     
     if (shL && shR && hipL && hipR) {
+        const pShL = toPx(shL), pShR = toPx(shR);
+        const pHipL = toPx(hipL), pHipR = toPx(hipR);
+
         // 肩ライン・骨盤ライン
         outCtx.strokeStyle = '#00ffcc';
-        outCtx.beginPath(); outCtx.moveTo(shL.x * w, shL.y * h); outCtx.lineTo(shR.x * w, shR.y * h); outCtx.stroke();
+        outCtx.beginPath(); outCtx.moveTo(pShL.x, pShL.y); outCtx.lineTo(pShR.x, pShR.y); outCtx.stroke();
         
         outCtx.strokeStyle = '#ffd60a';
-        outCtx.beginPath(); outCtx.moveTo(hipL.x * w, hipL.y * h); outCtx.lineTo(hipR.x * w, hipR.y * h); outCtx.stroke();
+        outCtx.beginPath(); outCtx.moveTo(pHipL.x, pHipL.y); outCtx.lineTo(pHipR.x, pHipR.y); outCtx.stroke();
 
         // 体幹中心線
-        const midSh = { x: (shL.x + shR.x) * 0.5 * w, y: (shL.y + shR.y) * 0.5 * h };
-        const midHip = { x: (hipL.x + hipR.x) * 0.5 * w, y: (hipL.y + hipR.y) * 0.5 * h };
+        const midSh = { x: (pShL.x + pShR.x) * 0.5, y: (pShL.y + pShR.y) * 0.5 };
+        const midHip = { x: (pHipL.x + pHipR.x) * 0.5, y: (pHipL.y + pHipR.y) * 0.5 };
         
         outCtx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
         outCtx.setLineDash([4 / zoomScale, 4 / zoomScale]);
         outCtx.beginPath(); outCtx.moveTo(midSh.x, midSh.y); outCtx.lineTo(midHip.x, midHip.y); outCtx.stroke();
         outCtx.setLineDash([]);
 
-        // 捻転差（X-Factor）推定計算 (肩ベクトルと腰ベクトルの回旋差)
+        // 捻転差（X-Factor）計算 (2D平面投影角の差)
         const shAngle = Math.atan2((shR.z || 0) - (shL.z || 0), (shR.x - shL.x)) * (180 / Math.PI);
         const hipAngle = Math.atan2((hipR.z || 0) - (hipL.z || 0), (hipR.x - hipL.x)) * (180 / Math.PI);
         let xFactor = Math.abs(shAngle - hipAngle);
         if (xFactor > 90) xFactor = 180 - xFactor;
 
-        // 体幹側屈・前傾角
+        // 体幹側屈角（垂直からの傾き）
         const trunkLateral = Math.abs(Math.atan2(midSh.x - midHip.x, midHip.y - midSh.y) * (180 / Math.PI));
         
         // 頭部位置追従
-        if (nose) {
-            if (!initialHeadPos && !video.paused) initialHeadPos = { x: nose.x * w, y: nose.y * h };
-            const headDrift = initialHeadPos ? Math.hypot(nose.x * w - initialHeadPos.x, nose.y * h - initialHeadPos.y) : 0;
+        if (nose && nose.visibility > 0.5) {
+            const pNose = toPx(nose);
+            if (!initialHeadPos && !video.paused) initialHeadPos = { x: pNose.x, y: pNose.y };
+            const headDrift = initialHeadPos ? Math.hypot(pNose.x - initialHeadPos.x, pNose.y - initialHeadPos.y) : 0;
             document.getElementById('res_head_drift').innerText = `${headDrift.toFixed(1)} px`;
 
             outCtx.fillStyle = '#ff375f';
-            outCtx.beginPath(); outCtx.arc(nose.x * w, nose.y * h, 5 / zoomScale, 0, Math.PI * 2); outCtx.fill();
+            outCtx.beginPath(); outCtx.arc(pNose.x, pNose.y, 5 / zoomScale, 0, Math.PI * 2); outCtx.fill();
         }
 
         if (xFactor > maxRecordedXFactor && !video.paused) {
@@ -414,9 +460,10 @@ function drawBiomechanics(lm, w, h) {
 
     // 四肢の描画
     const drawL = (p1, p2, color) => {
-        if (lm[p1] && lm[p2]) {
+        if (lm[p1] && lm[p2] && lm[p1].visibility > 0.3 && lm[p2].visibility > 0.3) {
+            const pt1 = toPx(lm[p1]), pt2 = toPx(lm[p2]);
             outCtx.strokeStyle = color; outCtx.beginPath();
-            outCtx.moveTo(lm[p1].x * w, lm[p1].y * h); outCtx.lineTo(lm[p2].x * w, lm[p2].y * h); outCtx.stroke();
+            outCtx.moveTo(pt1.x, pt1.y); outCtx.lineTo(pt2.x, pt2.y); outCtx.stroke();
         }
     };
     drawL(12, 14, '#00ffcc'); drawL(14, 16, '#00ffcc'); // 右腕
