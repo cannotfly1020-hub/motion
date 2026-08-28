@@ -29,7 +29,7 @@
     flex-direction: column; 
     justify-content: space-between;
     padding: calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
-    overflow-y: auto; /* 縦・横どちらでもスクロールを許可 */
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -145,7 +145,6 @@
     flex-shrink: 0;
   }
 
-  /* 横画面（ランドスケープ）時のレイアウト最適化 */
   @media (orientation: landscape) and (max-height: 500px) {
     body {
       justify-content: flex-start;
@@ -174,12 +173,12 @@
   </div>
 
   <div class="menu-grid">
-    <!-- 1番目: 体幹傾斜 & 捻転差解析 (index2.html) -->
+    <!-- 1番目: 動作観察 (index2.html) -->
     <a href="index2.html" class="menu-card card-rotation">
       <div class="card-content">
-        <span class="card-tag tag-rotation">MODULE 01 ｜ ROTATION & TORSION</span>
-        <div class="card-title">🔄 体幹傾斜 & 捻転差解析</div>
-        <div class="card-desc">胸郭・骨盤回旋角（X-Factor）、体幹側屈・前傾、頭部ブレ幅</div>
+        <span class="card-tag tag-rotation">MODULE 01 ｜ MOTION OBSERVATION</span>
+        <div class="card-title">👀 動作観察</div>
+        <div class="card-desc">角度・速度・加速度測定、垂直線比較、可動域予測、重心移動軌跡</div>
       </div>
       <div class="card-arrow">❯</div>
     </a>
