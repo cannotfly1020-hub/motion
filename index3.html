@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>下肢バイオメカニクス動作分析</title>
+  <title>下肢動作分析 & 対象者ロックオン</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -55,6 +55,8 @@
     }
     .btn-blue { background: #0070f3; color: #fff; }
     .btn-gray { background: #333; color: #fff; border: 1px solid #555; }
+    .btn-target { background: #8b5cf6; color: #fff; }
+    .btn-target.active { background: #ef4444; }
     
     .viewport {
       flex: 1 1 auto;
@@ -156,7 +158,7 @@
     .step-row {
       display: flex;
       justify-content: center;
-      gap: 12px;
+      gap: 8px;
     }
     .btn-step {
       padding: 4px 10px;
@@ -194,6 +196,22 @@
       padding: 1px 0;
     }
     .metric-val { font-weight: bold; font-family: monospace; }
+    
+    #targetGuide {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(139, 92, 246, 0.85);
+      color: #fff;
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+      pointer-events: none;
+      display: none;
+      z-index: 20;
+    }
   </style>
 </head>
 <body>
@@ -204,10 +222,11 @@
       <label>体重:<input type="number" id="inputMass" value="47">kg</label>
       <label style="margin-left:4px;">身長:<input type="number" id="inputHeight" value="140">cm</label>
     </div>
-    <div style="display:flex; gap:6px;">
-      <button id="btnCamera" class="btn btn-blue">カメラ起動</button>
+    <div style="display:flex; gap:4px;">
+      <button id="btnSelectTarget" class="btn btn-target">🎯 対象指定</button>
+      <button id="btnCamera" class="btn btn-blue">カメラ</button>
       <label class="btn btn-gray" style="display:flex; align-items:center; cursor:pointer;">
-        動画を選択
+        動画
         <input type="file" id="inputFile" accept="video/*" style="display:none;">
       </label>
     </div>
@@ -217,6 +236,8 @@
     <video id="videoElement" playsinline webkit-playsinline muted preload="auto" style="display:none;"></video>
     <canvas id="outputCanvas"></canvas>
     
+    <div id="targetGuide">解析したい人物をタップしてください</div>
+
     <div class="hud-overlay">
       <div class="hud-badge hud-r">右膝: <span id="hud_r_knee">0</span> N·m</div>
       <div class="hud-badge hud-l">左膝: <span id="hud_l_knee">0</span> N·m</div>
@@ -267,6 +288,8 @@ const ctx = canvas.getContext('2d');
 const viewportArea = document.getElementById('viewportArea');
 const controllerArea = document.getElementById('controllerArea');
 
+const btnSelectTarget = document.getElementById('btnSelectTarget');
+const targetGuide = document.getElementById('targetGuide');
 const btnCamera = document.getElementById('btnCamera');
 const inputFile = document.getElementById('inputFile');
 const seekSlider = document.getElementById('seekSlider');
@@ -284,6 +307,12 @@ let isCameraMode = false;
 let isBusy = false;
 let animationFrameId = null;
 let currentBlobUrl = null;
+
+// ROI（関心領域：指定人物クロップ）管理
+let isSelectingTarget = false;
+let roiRect = null; // { x, y, width, height } （0.0〜1.0 の相対座標）
+const roiCanvas = document.createElement('canvas');
+const roiCtx = roiCanvas.getContext('2d');
 
 // ズーム & パン管理
 let zoomScale = 1.0;
@@ -318,7 +347,69 @@ function resetState() {
   zoomScale = 1.0;
   panOffsetX = 0;
   panOffsetY = 0;
+  roiRect = null;
+  btnSelectTarget.classList.remove('active');
+  btnSelectTarget.textContent = '🎯 対象指定';
+  targetGuide.style.display = 'none';
+  isSelectingTarget = false;
 }
+
+// 対象者指定モードの切り替え
+btnSelectTarget.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (isSelectingTarget) {
+    // キャンセル
+    isSelectingTarget = false;
+    targetGuide.style.display = 'none';
+    btnSelectTarget.classList.remove('active');
+    btnSelectTarget.textContent = '🎯 対象指定';
+  } else if (roiRect) {
+    // 枠解除
+    roiRect = null;
+    btnSelectTarget.classList.remove('active');
+    btnSelectTarget.textContent = '🎯 対象指定';
+    renderCurrentFrame();
+  } else {
+    // 指定モード開始
+    isSelectingTarget = true;
+    targetGuide.style.display = 'block';
+    btnSelectTarget.classList.add('active');
+    btnSelectTarget.textContent = 'タップして選択';
+  }
+});
+
+// タップして対象者を中心としたROIを設定
+viewportArea.addEventListener('click', (e) => {
+  if (!isSelectingTarget || !video.videoWidth) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const clickY = e.clientY - rect.top;
+
+  // キャンバス座標系への正規化
+  const normX = clickX / rect.width;
+  const normY = clickY / rect.height;
+
+  // タップ位置を中心に人物を囲む枠（幅45%、高さ80%）を設定
+  const boxW = 0.45;
+  const boxH = 0.85;
+  const minX = Math.max(0, normX - boxW / 2);
+  const minY = Math.max(0, normY - boxH / 2);
+
+  roiRect = {
+    x: minX,
+    y: minY,
+    width: Math.min(1.0 - minX, boxW),
+    height: Math.min(1.0 - minY, boxH)
+  };
+
+  isSelectingTarget = false;
+  targetGuide.style.display = 'none';
+  btnSelectTarget.classList.remove('active');
+  btnSelectTarget.textContent = '🔒 指定解除';
+
+  renderCurrentFrame();
+});
 
 function onResults(results) {
   if (video.videoWidth && canvas.width !== video.videoWidth) {
@@ -334,14 +425,41 @@ function onResults(results) {
   ctx.scale(zoomScale, zoomScale);
   ctx.translate(-canvas.width / 2, -canvas.height / 2);
 
-  ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+  // 全画面映像の描画
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  // ROI枠がある場合はガイド線を描画
+  if (roiRect) {
+    ctx.strokeStyle = '#8b5cf6';
+    ctx.lineWidth = 2 / zoomScale;
+    ctx.setLineDash([6, 6]);
+    ctx.strokeRect(
+      roiRect.x * canvas.width,
+      roiRect.y * canvas.height,
+      roiRect.width * canvas.width,
+      roiRect.height * canvas.height
+    );
+    ctx.setLineDash([]);
+  }
 
   if (!results.poseLandmarks) {
     ctx.restore();
     return;
   }
 
-  const lm = results.poseLandmarks;
+  // 骨格座標のグローバル座標系への復元
+  const rawLm = results.poseLandmarks;
+  const lm = rawLm.map(p => {
+    if (roiRect) {
+      return {
+        x: roiRect.x + p.x * roiRect.width,
+        y: roiRect.y + p.y * roiRect.height,
+        z: p.z
+      };
+    }
+    return p;
+  });
+
   const mass = parseFloat(document.getElementById('inputMass').value) || 47;
   const heightM = (parseFloat(document.getElementById('inputHeight').value) || 140) / 100.0;
   const now = isCameraMode ? performance.now() / 1000.0 : video.currentTime;
@@ -543,6 +661,7 @@ btnZoomOut.addEventListener('click', (e) => { e.stopPropagation(); updateZoom(zo
 btnZoomReset.addEventListener('click', (e) => { e.stopPropagation(); updateZoom(1.0); });
 
 viewportArea.addEventListener('pointerdown', (e) => {
+  if (isSelectingTarget) return;
   if (zoomScale > 1.0) {
     isDragging = true;
     startX = e.clientX - panOffsetX;
@@ -565,16 +684,31 @@ window.addEventListener('pointermove', (e) => {
 window.addEventListener('pointerup', () => { isDragging = false; });
 window.addEventListener('pointercancel', () => { isDragging = false; });
 
-// 基本ループ & 安全レンダリング
+// AI推論（ROI切り出し処理）
 async function renderCurrentFrame() {
   if (isBusy || video.readyState < 2) return;
   isBusy = true;
-  try { 
-    await pose.send({ image: video }); 
+  try {
+    let inputSource = video;
+    
+    // ROIが指定されている場合、その部分だけを切り取ってAIに渡す
+    if (roiRect) {
+      const sx = roiRect.x * video.videoWidth;
+      const sy = roiRect.y * video.videoHeight;
+      const sw = roiRect.width * video.videoWidth;
+      const sh = roiRect.height * video.videoHeight;
+
+      roiCanvas.width = sw;
+      roiCanvas.height = sh;
+      roiCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+      inputSource = roiCanvas;
+    }
+
+    await pose.send({ image: inputSource });
   } catch(e) {
     console.error("Frame render error:", e);
-  } finally { 
-    isBusy = false; 
+  } finally {
+    isBusy = false;
   }
 }
 
@@ -594,7 +728,6 @@ function updateSeekBar() {
   }
 }
 
-// スライダー操作
 seekSlider.addEventListener('input', () => {
   if (video.duration) {
     video.pause();
@@ -603,7 +736,6 @@ seekSlider.addEventListener('input', () => {
   }
 });
 
-// シーク完了時の安全描画
 video.addEventListener('seeked', () => {
   if (video.paused) {
     updateSeekBar();
@@ -611,7 +743,6 @@ video.addEventListener('seeked', () => {
   }
 });
 
-// 再生 / 一時停止
 btnPlayPause.addEventListener('click', async () => {
   if (video.paused) {
     try {
@@ -648,7 +779,7 @@ btnCamera.addEventListener('click', async () => {
     }
     isProcessing = false;
     isCameraMode = false;
-    btnCamera.textContent = 'カメラ起動';
+    btnCamera.textContent = 'カメラ';
     btnCamera.classList.remove('btn-red');
     btnCamera.classList.add('btn-blue');
     return;
@@ -678,7 +809,7 @@ btnCamera.addEventListener('click', async () => {
     
     isProcessing = true;
     isCameraMode = true;
-    btnCamera.textContent = 'カメラ停止';
+    btnCamera.textContent = '停止';
     controllerArea.style.opacity = '0.3';
     controllerArea.style.pointerEvents = 'none';
     loop();
@@ -687,12 +818,11 @@ btnCamera.addEventListener('click', async () => {
   }
 });
 
-// 動画ファイルの安全読み込み (Blob URL & canplay 方式)
+// 動画ファイル読み込み
 inputFile.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
-  // 1. 既存リソースの完全停止 & メモリ解放
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
   if (video.srcObject) {
     video.srcObject.getTracks().forEach(t => t.stop());
@@ -706,34 +836,25 @@ inputFile.addEventListener('change', (e) => {
   resetState();
 
   isCameraMode = false;
-  btnCamera.textContent = 'カメラ起動';
+  btnCamera.textContent = 'カメラ';
   controllerArea.style.opacity = '1';
   controllerArea.style.pointerEvents = 'auto';
 
-  // 2. 高速 Blob URL 生成
   currentBlobUrl = URL.createObjectURL(file);
   video.src = currentBlobUrl;
   video.load();
 
-  // 3. 動画フレームが完全にデコードされた時点で初期化
   const onCanPlay = () => {
     video.removeEventListener('canplay', onCanPlay);
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     isProcessing = true;
     btnPlayPause.textContent = '再生';
-    
-    // 最初のフレームを安全にセット
     video.currentTime = 0.001;
     loop();
   };
 
   video.addEventListener('canplay', onCanPlay);
-
-  video.onerror = () => {
-    alert('動画の読み込みに失敗しました。ファイル形式（MP4/MOV等）をご確認ください。');
-  };
-
   inputFile.value = '';
 });
 </script>
