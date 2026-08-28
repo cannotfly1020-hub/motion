@@ -21,13 +21,14 @@
     display: flex; 
     flex-direction: column; 
     justify-content: space-between;
-    padding: calc(16px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom)) 16px;
+    padding: calc(12px + env(safe-area-inset-top)) 16px calc(14px + env(safe-area-inset-bottom)) 16px;
     overflow: hidden;
   }
 
   .header-area {
     text-align: center;
-    margin-top: 6px;
+    margin-top: 2px;
+    flex-shrink: 0;
   }
   .app-badge {
     display: inline-block;
@@ -36,12 +37,12 @@
     border: 1px solid #00ffcc;
     font-size: 11px;
     font-weight: bold;
-    padding: 3px 10px;
+    padding: 2px 10px;
     border-radius: 20px;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
   }
   h1 {
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 800;
     letter-spacing: 0.5px;
     background: linear-gradient(135deg, #fff 40%, #aaa 100%);
@@ -49,37 +50,44 @@
     -webkit-text-fill-color: transparent;
   }
   .subtitle {
-    font-size: 12px;
+    font-size: 11px;
     color: #888;
-    margin-top: 4px;
+    margin-top: 2px;
   }
 
   .menu-grid {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     max-width: 420px;
     width: 100%;
     margin: 0 auto;
     overflow-y: auto;
+    padding: 4px 0;
+    flex: 1;
+    min-height: 0;
   }
 
   .menu-card {
     background: #1c1c1e;
     border: 1px solid #333;
-    border-radius: 14px;
-    padding: 14px 16px;
+    border-radius: 12px;
+    padding: 12px 14px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     text-decoration: none;
     color: #fff;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
     transition: transform 0.15s ease, background 0.15s ease;
+    flex-shrink: 0;
   }
   .menu-card:active {
     transform: scale(0.97);
     background: #262629;
+  }
+  .menu-card.card-pitch {
+    border-left: 5px solid #ff375f;
   }
   .menu-card.card-rotation {
     border-left: 5px solid #00ffcc;
@@ -88,44 +96,46 @@
     border-left: 5px solid #ffd60a;
   }
   .menu-card.card-jump {
-    border-left: 5px solid #ff375f;
+    border-left: 5px solid #5856d6;
   }
 
   .card-content {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
   }
   .card-tag {
-    font-size: 10px;
+    font-size: 9.5px;
     font-weight: bold;
     letter-spacing: 0.5px;
   }
+  .tag-pitch { color: #ff375f; }
   .tag-rotation { color: #00ffcc; }
   .tag-bio { color: #ffd60a; }
-  .tag-jump { color: #ff375f; }
+  .tag-jump { color: #af52de; }
 
   .card-title {
-    font-size: 15px;
+    font-size: 14.5px;
     font-weight: bold;
   }
   .card-desc {
-    font-size: 11px;
+    font-size: 10.5px;
     color: #999;
     line-height: 1.3;
   }
 
   .card-arrow {
-    font-size: 16px;
+    font-size: 15px;
     color: #555;
-    padding-left: 8px;
+    padding-left: 6px;
   }
 
   .footer-area {
     text-align: center;
-    font-size: 10px;
+    font-size: 9.5px;
     color: #555;
-    margin-bottom: 4px;
+    margin-top: 4px;
+    flex-shrink: 0;
   }
 </style>
 </head>
@@ -138,39 +148,49 @@
   </div>
 
   <div class="menu-grid">
-    <!-- モジュール1: 体幹・捻転差解析 (index2.html) -->
-    <a href="index2.html" class="menu-card card-rotation">
+    <!-- モジュール01: 投手バイオメカニクス解析 (index5.html) -->
+    <a href="index5.html" class="menu-card card-pitch">
       <div class="card-content">
-        <span class="card-tag tag-rotation">MODULE 01 ｜ ROTATION & TORSION</span>
-        <div class="card-title">⚾️ 体幹傾斜 & 捻転差解析</div>
-        <div class="card-desc">胸郭・骨盤の回旋角度（X-Factor）、体幹軸の傾き、キーフレーム補正</div>
+        <span class="card-tag tag-pitch">MODULE 01 ｜ PITCHING BIOMECHANICS</span>
+        <div class="card-title">⚾️ 投手バイオメカニクス解析</div>
+        <div class="card-desc">FC歩幅、MER肘屈曲角、BRリリース点、前足制動床反力（GRF）</div>
       </div>
       <div class="card-arrow">❯</div>
     </a>
 
-    <!-- モジュール2: 下肢バイオメカニクス (index3.html) -->
+    <!-- モジュール02: 体幹・捻転差解析 (index2.html) -->
+    <a href="index2.html" class="menu-card card-rotation">
+      <div class="card-content">
+        <span class="card-tag tag-rotation">MODULE 02 ｜ ROTATION & TORSION</span>
+        <div class="card-title">🔄 体幹傾斜 & 捻転差解析</div>
+        <div class="card-desc">胸郭・骨盤回旋角（X-Factor）、体幹側屈・前傾、頭部ブレ幅</div>
+      </div>
+      <div class="card-arrow">❯</div>
+    </a>
+
+    <!-- モジュール03: 下肢バイオメカニクス (index3.html) -->
     <a href="index3.html" class="menu-card card-bio">
       <div class="card-content">
-        <span class="card-tag tag-bio">MODULE 02 ｜ STS & LOWER LIMBS</span>
+        <span class="card-tag tag-bio">MODULE 03 ｜ STS & LOWER LIMBS</span>
         <div class="card-title">🦵 下肢関節モーメント & 床反力</div>
         <div class="card-desc">立ち上がり・スクワットの床反力ベクトル、股・膝・足関節トルク算出</div>
       </div>
       <div class="card-arrow">❯</div>
     </a>
 
-    <!-- モジュール3: 跳躍・リバウンド解析 (index4.html) -->
+    <!-- モジュール04: 跳躍・リバウンド解析 (index4.html) -->
     <a href="index4.html" class="menu-card card-jump">
       <div class="card-content">
-        <span class="card-tag tag-jump">MODULE 03 ｜ JUMP & REBOUND</span>
+        <span class="card-tag tag-jump">MODULE 04 ｜ JUMP & REBOUND</span>
         <div class="card-title">🚀 連続跳躍 & リバウンド解析</div>
-        <div class="card-desc">1回目・2回目の跳躍高（4点重心実測）、接地時間（CT）、バネ指数（RSI）</div>
+        <div class="card-desc">1回目・2回目跳躍高（4点重心実測）、接地時間（CT）、バネ指数（RSI）</div>
       </div>
       <div class="card-arrow">❯</div>
     </a>
   </div>
 
   <div class="footer-area">
-    動作分析 Pro v2.0 ｜ Clinical & Sports Biomechanics
+    動作分析 Pro v2.1 ｜ Clinical & Sports Biomechanics
   </div>
 
 </body>
