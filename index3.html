@@ -214,7 +214,7 @@
   </div>
 
   <div class="viewport" id="viewportArea">
-    <video id="videoElement" playsinline webkit-playsinline muted style="display:none;"></video>
+    <video id="videoElement" playsinline webkit-playsinline muted preload="auto" style="display:none;"></video>
     <canvas id="outputCanvas"></canvas>
     
     <div class="hud-overlay">
@@ -283,6 +283,7 @@ let isProcessing = false;
 let isCameraMode = false;
 let isBusy = false;
 let animationFrameId = null;
+let currentBlobUrl = null;
 
 // ズーム & パン管理
 let zoomScale = 1.0;
@@ -527,7 +528,7 @@ function drawDynamicForceArrow(fromX, fromY, fx, fy, mag) {
   ctx.restore();
 }
 
-// ズーム & パン操作
+// ズーム & パン
 function updateZoom(newScale) {
   zoomScale = Math.max(1.0, Math.min(3.5, newScale));
   if (zoomScale === 1.0) {
@@ -564,32 +565,17 @@ window.addEventListener('pointermove', (e) => {
 window.addEventListener('pointerup', () => { isDragging = false; });
 window.addEventListener('pointercancel', () => { isDragging = false; });
 
-viewportArea.addEventListener('touchstart', (e) => {
-  if (e.touches.length === 2) {
-    initialDistance = Math.hypot(
-      e.touches[0].clientX - e.touches[1].clientX,
-      e.touches[0].clientY - e.touches[1].clientY
-    );
-  }
-}, { passive: true });
-
-viewportArea.addEventListener('touchmove', (e) => {
-  if (e.touches.length === 2 && initialDistance > 0) {
-    const currentDist = Math.hypot(
-      e.touches[0].clientX - e.touches[1].clientX,
-      e.touches[0].clientY - e.touches[1].clientY
-    );
-    const scaleDiff = (currentDist - initialDistance) * 0.005;
-    updateZoom(zoomScale + scaleDiff);
-    initialDistance = currentDist;
-  }
-}, { passive: true });
-
-// 基本ループ
+// 基本ループ & 安全レンダリング
 async function renderCurrentFrame() {
   if (isBusy || video.readyState < 2) return;
   isBusy = true;
-  try { await pose.send({ image: video }); } catch(e) {} finally { isBusy = false; }
+  try { 
+    await pose.send({ image: video }); 
+  } catch(e) {
+    console.error("Frame render error:", e);
+  } finally { 
+    isBusy = false; 
+  }
 }
 
 async function loop() {
@@ -608,6 +594,7 @@ function updateSeekBar() {
   }
 }
 
+// スライダー操作
 seekSlider.addEventListener('input', () => {
   if (video.duration) {
     video.pause();
@@ -616,17 +603,23 @@ seekSlider.addEventListener('input', () => {
   }
 });
 
-video.addEventListener('seeked', async () => {
+// シーク完了時の安全描画
+video.addEventListener('seeked', () => {
   if (video.paused) {
     updateSeekBar();
-    await renderCurrentFrame();
+    renderCurrentFrame();
   }
 });
 
-btnPlayPause.addEventListener('click', () => {
+// 再生 / 一時停止
+btnPlayPause.addEventListener('click', async () => {
   if (video.paused) {
-    video.play();
-    btnPlayPause.textContent = '一時停止';
+    try {
+      await video.play();
+      btnPlayPause.textContent = '一時停止';
+    } catch (e) {
+      console.error(e);
+    }
   } else {
     video.pause();
     btnPlayPause.textContent = '再生';
@@ -645,10 +638,9 @@ btnStepBack.addEventListener('click', () => {
   video.currentTime = Math.max(0, video.currentTime - 0.033);
 });
 
-// カメラ起動・停止トグル
+// カメラ起動
 btnCamera.addEventListener('click', async () => {
   if (isProcessing && isCameraMode) {
-    // カメラ停止
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     if (video.srcObject) {
       video.srcObject.getTracks().forEach(t => t.stop());
@@ -662,11 +654,14 @@ btnCamera.addEventListener('click', async () => {
     return;
   }
 
-  // 以前の動画やカメラをクリーンアップ
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
   if (video.srcObject) {
     video.srcObject.getTracks().forEach(t => t.stop());
     video.srcObject = null;
+  }
+  if (currentBlobUrl) {
+    URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = null;
   }
   video.src = '';
   resetState();
@@ -692,44 +687,53 @@ btnCamera.addEventListener('click', async () => {
   }
 });
 
-// 動画ファイルの選択・連続変更対応
+// 動画ファイルの安全読み込み (Blob URL & canplay 方式)
 inputFile.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
-  // 1. 前の動画・カメラストリームを完全停止
+  // 1. 既存リソースの完全停止 & メモリ解放
   if (animationFrameId) cancelAnimationFrame(animationFrameId);
   if (video.srcObject) {
     video.srcObject.getTracks().forEach(t => t.stop());
     video.srcObject = null;
   }
+  if (currentBlobUrl) {
+    URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = null;
+  }
   video.pause();
   resetState();
 
-  // 2. カメラボタンの状態を戻す
   isCameraMode = false;
   btnCamera.textContent = 'カメラ起動';
   controllerArea.style.opacity = '1';
   controllerArea.style.pointerEvents = 'auto';
 
-  // 3. 動画バイナリ読み込み
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    video.src = event.target.result;
-    video.load();
-  };
-  reader.readAsDataURL(file);
+  // 2. 高速 Blob URL 生成
+  currentBlobUrl = URL.createObjectURL(file);
+  video.src = currentBlobUrl;
+  video.load();
 
-  video.onloadedmetadata = () => {
+  // 3. 動画フレームが完全にデコードされた時点で初期化
+  const onCanPlay = () => {
+    video.removeEventListener('canplay', onCanPlay);
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     isProcessing = true;
     btnPlayPause.textContent = '再生';
-    video.currentTime = 0.01;
+    
+    // 最初のフレームを安全にセット
+    video.currentTime = 0.001;
     loop();
   };
 
-  // 重要: 次の動画選択を正常に発火させるためvalueをクリア
+  video.addEventListener('canplay', onCanPlay);
+
+  video.onerror = () => {
+    alert('動画の読み込みに失敗しました。ファイル形式（MP4/MOV等）をご確認ください。');
+  };
+
   inputFile.value = '';
 });
 </script>
