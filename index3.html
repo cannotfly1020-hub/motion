@@ -76,7 +76,7 @@
       object-fit: contain;
     }
     
-    /* ターゲット指定枠（リサイズ・移動可能） */
+    /* ターゲット指定枠 */
     #roiBox {
       position: absolute;
       border: 2px dashed #a855f7;
@@ -336,7 +336,7 @@ let currentBlobUrl = null;
 
 // ROI（四角枠）の管理
 let isRoiEnabled = false;
-let roiNorm = { x: 0.25, y: 0.1, w: 0.5, h: 0.8 }; // 画面に対する相対座標 (0.0〜1.0)
+let roiNorm = { x: 0.25, y: 0.1, w: 0.5, h: 0.8 };
 const roiCanvas = document.createElement('canvas');
 const roiCtx = roiCanvas.getContext('2d');
 
@@ -352,7 +352,7 @@ let filteredGRF = { x: 0, y: 0 };
 const LPF_ALPHA = 0.35;
 const GRAVITY = 9.81;
 
-// MediaPipe Pose
+// MediaPipe Pose 初期化
 const pose = new Pose({
   locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
 });
@@ -374,9 +374,8 @@ function resetState() {
   panOffsetY = 0;
 }
 
-// ================= ターゲット四角枠のUI操作 =================
+// ターゲット枠UIの同期
 function updateRoiBoxDOM() {
-  const vpRect = viewportArea.getBoundingClientRect();
   roiBox.style.left = `${roiNorm.x * 100}%`;
   roiBox.style.top = `${roiNorm.y * 100}%`;
   roiBox.style.width = `${roiNorm.w * 100}%`;
@@ -426,7 +425,7 @@ roiBox.addEventListener('pointermove', (e) => {
 roiBox.addEventListener('pointerup', () => { isMovingRoi = false; });
 roiBox.addEventListener('pointercancel', () => { isMovingRoi = false; });
 
-// 枠のサイズ変更 (ハンドル操作)
+// 枠のサイズ変更 (ハンドル)
 let isResizingRoi = false;
 let roiStartSize = { w: 0, h: 0 };
 
@@ -474,7 +473,7 @@ function onResults(results) {
     return;
   }
 
-  // 枠内座標から全画面座標系へマッピング
+  // 1. 骨格座標を全画面（0.0〜1.0）の正規化座標に完全復元
   const rawLm = results.poseLandmarks;
   const lm = rawLm.map(p => {
     if (isRoiEnabled) {
@@ -494,6 +493,7 @@ function onResults(results) {
   const pxBodyHeight = Math.abs(lm[0].y - (lm[27].y + lm[28].y) / 2) * canvas.height;
   const meterPerPixel = (heightM * 0.85) / (pxBodyHeight || 1);
 
+  // 物理計算用（メートル座標、上向き正）
   const getPoint = (idx) => ({
     x: lm[idx].x * canvas.width * meterPerPixel,
     y: (1.0 - lm[idx].y) * canvas.height * meterPerPixel
@@ -569,12 +569,13 @@ function onResults(results) {
   document.getElementById('l_knee').textContent = `${torqueKneeL.toFixed(1)} N·m`;
   document.getElementById('l_hip').textContent = `${torqueHipL.toFixed(1)} N·m`;
 
-  drawVisuals(lm, comFootR, grfR, magGrfR, comFootL, grfL, magGrfL, meterPerPixel);
+  // 描画（作用点はlmから直接キャンバスピクセル位置を取得）
+  drawVisuals(lm, grfR, magGrfR, grfL, magGrfL);
   ctx.restore();
 }
 
-function drawVisuals(lm, copR, grfR, magR, copL, grfL, magL, meterPerPixel) {
-  // 右骨格
+function drawVisuals(lm, grfR, magR, grfL, magL) {
+  // 1. 右骨格
   ctx.strokeStyle = '#00e5ff';
   ctx.lineWidth = 3 / zoomScale;
   ctx.beginPath();
@@ -584,7 +585,7 @@ function drawVisuals(lm, copR, grfR, magR, copL, grfL, magL, meterPerPixel) {
   ctx.lineTo(lm[32].x * canvas.width, lm[32].y * canvas.height);
   ctx.stroke();
 
-  // 左骨格
+  // 2. 左骨格
   ctx.strokeStyle = '#ff9100';
   ctx.lineWidth = 3 / zoomScale;
   ctx.beginPath();
@@ -594,20 +595,21 @@ function drawVisuals(lm, copR, grfR, magR, copL, grfL, magL, meterPerPixel) {
   ctx.lineTo(lm[31].x * canvas.width, lm[31].y * canvas.height);
   ctx.stroke();
 
-  // 左右床反力矢印
-  const rPxX = copR.x / meterPerPixel;
-  const rPxY = canvas.height - (copR.y / meterPerPixel);
-  if (magR > 25) drawDynamicForceArrow(rPxX, rPxY, grfR.x, grfR.y, magR);
+  // 3. 右足の正確な作用点 (足首とつま先の中間ピクセル座標)
+  const rCopPxX = (lm[28].x + lm[32].x) * 0.5 * canvas.width;
+  const rCopPxY = (lm[28].y + lm[32].y) * 0.5 * canvas.height;
+  if (magR > 25) drawDynamicForceArrow(rCopPxX, rCopPxY, grfR.x, grfR.y, magR);
 
-  const lPxX = copL.x / meterPerPixel;
-  const lPxY = canvas.height - (copL.y / meterPerPixel);
-  if (magL > 25) drawDynamicForceArrow(lPxX, lPxY, grfL.x, grfL.y, magL);
+  // 4. 左足の正確な作用点 (足首とつま先の中間ピクセル座標)
+  const lCopPxX = (lm[27].x + lm[31].x) * 0.5 * canvas.width;
+  const lCopPxY = (lm[27].y + lm[31].y) * 0.5 * canvas.height;
+  if (magL > 25) drawDynamicForceArrow(lCopPxX, lCopPxY, grfL.x, grfL.y, magL);
 }
 
 function drawDynamicForceArrow(fromX, fromY, fx, fy, mag) {
   const scale = 0.28;
   const toX = fromX + fx * scale;
-  const toY = fromY - fy * scale;
+  const toY = fromY - fy * scale; // 画面上向きが-Y
   const angle = Math.atan2(toY - fromY, toX - fromX);
   
   const headLen = Math.min(36, Math.max(14, mag * 0.045));
@@ -672,7 +674,7 @@ function drawDynamicForceArrow(fromX, fromY, fx, fy, mag) {
   ctx.restore();
 }
 
-// ================= ズーム & 基本ループ =================
+// ズーム & パン
 function updateZoom(newScale) {
   zoomScale = Math.max(1.0, Math.min(3.5, newScale));
   if (zoomScale === 1.0) { panOffsetX = 0; panOffsetY = 0; }
@@ -707,13 +709,13 @@ window.addEventListener('pointermove', (e) => {
 window.addEventListener('pointerup', () => { isDraggingViewport = false; });
 window.addEventListener('pointercancel', () => { isDraggingViewport = false; });
 
+// AI推論
 async function renderCurrentFrame() {
   if (isBusy || video.readyState < 2) return;
   isBusy = true;
   try {
     let inputSource = video;
     
-    // 枠指定が有効な場合、その領域だけを切り出してMediaPipeへ渡す
     if (isRoiEnabled) {
       const sx = roiNorm.x * video.videoWidth;
       const sy = roiNorm.y * video.videoHeight;
