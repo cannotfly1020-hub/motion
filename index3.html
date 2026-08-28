@@ -43,10 +43,7 @@
  video { width: 100%; height: 100%; object-fit: contain; display: block; }
  canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
  
- /* 骨格・ベクトル描画用Canvas */
  #outputCanvas { z-index: 1; pointer-events: none; }
- 
- /* ROI操作・タッチイベント用Canvas */
  #interactionCanvas { z-index: 10; touch-action: none; cursor: crosshair; }
 
  .hud-overlay { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; pointer-events: none; z-index: 20; }
@@ -60,6 +57,11 @@
  .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 14px; flex-shrink: 0; text-align: center; }
  input[type=range] { flex: 1; height: 18px; accent-color: #007aff; }
 
+ .mode-grid { width: 100%; display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+ button.ctrl-btn { -webkit-appearance: none; appearance: none; width: 100%; padding: 6px 0; background: #2c2c2e; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; }
+ button.ctrl-btn:active { background: #444; }
+ button.mode-active { background: #007aff; color: white; font-weight: bold; }
+
  .dashboard-grid { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
  .side-box { background: #262629; border-radius: 6px; padding: 4px 6px; border: 1px solid #3a3a3c; }
  .side-box.right { border-top: 2px solid #00e5ff; }
@@ -69,8 +71,6 @@
  .metric-val { font-weight: bold; font-family: monospace; }
 
  .playback-row { width: 100%; display: grid; grid-template-columns: 1fr 1.3fr 1fr 0.9fr 1fr; gap: 4px; }
- button.ctrl-btn { -webkit-appearance: none; appearance: none; width: 100%; padding: 6px 0; background: #2c2c2e; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; }
- button.ctrl-btn:active { background: #444; }
  #btnPlayPause { background: #34c759; color: #000; font-weight: bold; }
 
  .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
@@ -128,6 +128,18 @@
  </div>
  </div>
 
+ <div class="mode-grid">
+ <button class="ctrl-btn" id="btnModeZoom" onclick="toggleZoomMode()">🔍 ズーム</button>
+ <button class="ctrl-btn" id="btnClearRoi" onclick="clearRoi()">🔲 枠クリア</button>
+ </div>
+
+ <!-- ズーム操作バー -->
+ <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
+ <span style="font-size:11px; font-weight:bold; color:#007aff; white-space:nowrap;">倍率</span>
+ <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1">
+ <button class="ctrl-btn" style="width:auto; padding:4px 10px; background:#444;" onclick="resetZoom()">リセット</button>
+ </div>
+
  <div class="dashboard-grid">
  <div class="side-box right">
  <div class="side-title" style="color:#00e5ff;">右脚 (Right)</div>
@@ -151,7 +163,7 @@
  <button class="ctrl-btn" id="btnPlayPause">▶ 再生</button>
  <button class="ctrl-btn" id="btnStepForward">+1 ▶</button>
  <button class="ctrl-btn" id="btnSpeed" onclick="togglePlaybackRate()">1.0x</button>
- <button class="ctrl-btn" id="btnClearRoi" onclick="clearRoi()">枠クリア</button>
+ <button class="ctrl-btn" id="btnResetView" onclick="resetZoom()">1x 表示</button>
  </div>
 </div>
 
@@ -205,6 +217,10 @@ const btnRecord = document.getElementById('btnRecord');
 const btnSpeed = document.getElementById('btnSpeed');
 const bodyInfoText = document.getElementById('body-info-text');
 
+const btnModeZoom = document.getElementById('btnModeZoom');
+const zoomControls = document.getElementById('zoom-controls');
+const zoomSlider = document.getElementById('zoom-slider');
+
 const inputMass = document.getElementById('inputMass');
 const inputHeight = document.getElementById('inputHeight');
 
@@ -220,15 +236,19 @@ let fpsIdx = 0;
 const playbackRates = [1.0, 0.5, 0.25];
 let currentRateIdx = 0;
 
+// ズーム & パン管理
+let isZoomMode = false;
 let zoomScale = 1.0;
 let panOffsetX = 0, panOffsetY = 0;
+let isPanning = false;
+let panStartX = 0, panStartY = 0;
 
 // ROI（患者さん枠）
 let isRoiMode = false;
 let isRoiDrawing = false;
 let isRoiEnabled = false;
 let roiStart = { x: 0, y: 0 };
-let roiNorm = { x: 0.2, y: 0.1, w: 0.6, h: 0.8 }; // 0.0〜1.0正規化
+let roiNorm = { x: 0.2, y: 0.1, w: 0.6, h: 0.8 };
 const roiCanvas = document.createElement('canvas');
 const roiCtx = roiCanvas.getContext('2d');
 
@@ -287,9 +307,47 @@ function closeBodyModal() {
  bodyInfoText.innerText = `${inputMass.value}kg/${inputHeight.value}cm ⚙️`;
 }
 
+function toggleZoomMode() {
+ isZoomMode = !isZoomMode;
+ if (isZoomMode) {
+ isRoiMode = false;
+ btnToggleRoi.classList.remove('roi-active');
+ btnModeZoom.classList.add('mode-active');
+ zoomControls.style.display = 'flex';
+ document.getElementById('main-result').innerHTML = "🔍 ズーム操作中（スライダーまたは画面ドラッグで移動）";
+ } else {
+ btnModeZoom.classList.remove('mode-active');
+ zoomControls.style.display = 'none';
+ document.getElementById('main-result').innerHTML = "解析待機中";
+ }
+}
+
+function applyZoom() {
+ zoomTarget.style.transform = `translate(${panOffsetX}px, ${panOffsetY}px) scale(${zoomScale})`;
+ redrawSkeletons();
+ redrawOverlay();
+}
+
+function resetZoom() {
+ zoomScale = 1.0;
+ panOffsetX = 0;
+ panOffsetY = 0;
+ zoomSlider.value = 1.0;
+ applyZoom();
+}
+
+zoomSlider.addEventListener('input', (e) => {
+ zoomScale = parseFloat(e.target.value);
+ if (zoomScale === 1.0) { panOffsetX = 0; panOffsetY = 0; }
+ applyZoom();
+});
+
 function toggleRoiMode() {
  isRoiMode = !isRoiMode;
  if (isRoiMode) {
+ isZoomMode = false;
+ btnModeZoom.classList.remove('mode-active');
+ zoomControls.style.display = 'none';
  btnToggleRoi.classList.add('roi-active');
  document.getElementById('main-result').innerHTML = "🔲 画面をドラッグして患者さんを四角く囲んでください";
  document.getElementById('sub-result').innerHTML = "囲んだ枠内のみをAIが追跡します（介助者を除外）";
@@ -311,15 +369,22 @@ function clearRoi() {
 
 function getPointerNorm(e) {
  const rect = interactionCanvas.getBoundingClientRect();
- const x = Math.max(0, Math.min(1.0, (e.clientX - rect.left) / rect.width));
- const y = Math.max(0, Math.min(1.0, (e.clientY - rect.top) / rect.height));
- return { x, y };
+ const clickRelX = e.clientX - (rect.left + rect.width / 2);
+ const clickRelY = e.clientY - (rect.top + rect.height / 2);
+ const targetRelX = (clickRelX - panOffsetX) / zoomScale;
+ const targetRelY = (clickRelY - panOffsetY) / zoomScale;
+ const cvsX = targetRelX + interactionCanvas.width / 2;
+ const cvsY = targetRelY + interactionCanvas.height / 2;
+
+ return {
+ x: Math.max(0, Math.min(1.0, cvsX / interactionCanvas.width)),
+ y: Math.max(0, Math.min(1.0, cvsY / interactionCanvas.height))
+ };
 }
 
-// interactionCanvas 上で確実にドラッグ判定
 interactionCanvas.addEventListener('pointerdown', (e) => {
  e.preventDefault();
- if (!isRoiMode) return;
+ if (isRoiMode) {
  isRoiDrawing = true;
  const p = getPointerNorm(e);
  roiStart = p;
@@ -327,24 +392,45 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
  isRoiEnabled = true;
  try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
  redrawOverlay();
+ return;
+ }
+
+ if (isZoomMode || zoomScale > 1.0) {
+ isPanning = true;
+ panStartX = e.clientX - panOffsetX;
+ panStartY = e.clientY - panOffsetY;
+ try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
+ }
 });
 
 interactionCanvas.addEventListener('pointermove', (e) => {
- if (!isRoiDrawing || !isRoiMode) return;
+ if (isRoiDrawing && isRoiMode) {
  const p = getPointerNorm(e);
  roiNorm.x = Math.min(roiStart.x, p.x);
  roiNorm.y = Math.min(roiStart.y, p.y);
  roiNorm.w = Math.abs(p.x - roiStart.x);
  roiNorm.h = Math.abs(p.y - roiStart.y);
  redrawOverlay();
+ return;
+ }
+
+ if (isPanning && (isZoomMode || zoomScale > 1.0)) {
+ panOffsetX = e.clientX - panStartX;
+ panOffsetY = e.clientY - panStartY;
+ applyZoom();
+ }
 });
 
 interactionCanvas.addEventListener('pointerup', (e) => {
  if (isRoiDrawing) {
  isRoiDrawing = false;
  try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){}
- toggleRoiMode(); // 囲み完了でモードOFF
+ toggleRoiMode();
  renderCurrentFrame();
+ }
+ if (isPanning) {
+ isPanning = false;
+ try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){}
  }
 });
 
@@ -360,23 +446,22 @@ function redrawOverlay() {
  if (rw < 5 || rh < 5) return;
 
  intCtx.save();
- // 枠外を少し暗くする
  intCtx.fillStyle = 'rgba(0, 0, 0, 0.35)';
  intCtx.fillRect(0, 0, interactionCanvas.width, interactionCanvas.height);
  intCtx.clearRect(rx, ry, rw, rh);
 
- // オレンジの破線枠
  intCtx.strokeStyle = '#ff9500';
- intCtx.lineWidth = 2.5;
- intCtx.setLineDash([6, 4]);
+ intCtx.lineWidth = 2.5 / zoomScale;
+ intCtx.setLineDash([6 / zoomScale, 4 / zoomScale]);
  intCtx.strokeRect(rx, ry, rw, rh);
 
- // バッジ表示
+ const badgeH = 18 / zoomScale;
+ const badgeW = 70 / zoomScale;
  intCtx.fillStyle = '#ff9500';
- intCtx.fillRect(rx, Math.max(0, ry - 18), 70, 18);
+ intCtx.fillRect(rx, Math.max(0, ry - badgeH), badgeW, badgeH);
  intCtx.fillStyle = '#000';
- intCtx.font = 'bold 10px sans-serif';
- intCtx.fillText("🎯 追跡エリア", rx + 4, Math.max(12, ry - 5));
+ intCtx.font = `bold ${Math.max(8, 10 / zoomScale)}px sans-serif`;
+ intCtx.fillText("🎯 追跡エリア", rx + (4 / zoomScale), Math.max(12 / zoomScale, ry - (5 / zoomScale)));
  intCtx.restore();
 }
 
@@ -497,7 +582,7 @@ function redrawSkeletons() {
 
  outCtx.save();
  outCtx.strokeStyle = '#00e5ff';
- outCtx.lineWidth = 3.5;
+ outCtx.lineWidth = 3.5 / zoomScale;
  outCtx.beginPath();
  outCtx.moveTo(lm[24].x * outputCanvas.width, lm[24].y * outputCanvas.height);
  outCtx.lineTo(lm[26].x * outputCanvas.width, lm[26].y * outputCanvas.height);
@@ -506,7 +591,7 @@ function redrawSkeletons() {
  outCtx.stroke();
 
  outCtx.strokeStyle = '#ffd60a';
- outCtx.lineWidth = 3.5;
+ outCtx.lineWidth = 3.5 / zoomScale;
  outCtx.beginPath();
  outCtx.moveTo(lm[23].x * outputCanvas.width, lm[23].y * outputCanvas.height);
  outCtx.lineTo(lm[25].x * outputCanvas.width, lm[25].y * outputCanvas.height);
@@ -517,13 +602,13 @@ function redrawSkeletons() {
  [24, 26, 28, 32].forEach(idx => {
  outCtx.fillStyle = '#00e5ff';
  outCtx.beginPath();
- outCtx.arc(lm[idx].x * outputCanvas.width, lm[idx].y * outputCanvas.height, 4.5, 0, Math.PI * 2);
+ outCtx.arc(lm[idx].x * outputCanvas.width, lm[idx].y * outputCanvas.height, 4.5 / zoomScale, 0, Math.PI * 2);
  outCtx.fill();
  });
  [23, 25, 27, 31].forEach(idx => {
  outCtx.fillStyle = '#ffd60a';
  outCtx.beginPath();
- outCtx.arc(lm[idx].x * outputCanvas.width, lm[idx].y * outputCanvas.height, 4.5, 0, Math.PI * 2);
+ outCtx.arc(lm[idx].x * outputCanvas.width, lm[idx].y * outputCanvas.height, 4.5 / zoomScale, 0, Math.PI * 2);
  outCtx.fill();
  });
 
@@ -544,8 +629,8 @@ function drawDynamicForceArrow(fromX, fromY, fx, fy, mag) {
  const toY = fromY - fy * scale;
  const angle = Math.atan2(toY - fromY, toX - fromX);
  
- const headLen = Math.min(36, Math.max(14, mag * 0.045));
- const lineWidth = Math.min(12, Math.max(3.5, mag * 0.015));
+ const headLen = Math.min(36, Math.max(14, mag * 0.045)) / zoomScale;
+ const lineWidth = Math.min(12, Math.max(3.5, mag * 0.015)) / zoomScale;
 
  let color = '#38bdf8';
  if (mag > 900) color = '#ff1744';
@@ -573,16 +658,16 @@ function drawDynamicForceArrow(fromX, fromY, fx, fy, mag) {
  outCtx.fill();
 
  const text = `${Math.round(mag)} N`;
- outCtx.font = `bold 11px monospace`;
+ outCtx.font = `bold ${Math.max(8, Math.round(11 / zoomScale))}px monospace`;
  const textMetrics = outCtx.measureText(text);
- const badgeW = textMetrics.width + 8;
- const badgeH = 16;
- const badgeX = toX + 10 * Math.cos(angle) - badgeW / 2;
- const badgeY = toY + 10 * Math.sin(angle) - badgeH / 2;
+ const badgeW = textMetrics.width + (8 / zoomScale);
+ const badgeH = 16 / zoomScale;
+ const badgeX = toX + (10 / zoomScale) * Math.cos(angle) - badgeW / 2;
+ const badgeY = toY + (10 / zoomScale) * Math.sin(angle) - badgeH / 2;
 
  outCtx.fillStyle = 'rgba(0, 0, 0, 0.85)';
  outCtx.strokeStyle = color;
- outCtx.lineWidth = 1.2;
+ outCtx.lineWidth = 1.2 / zoomScale;
  outCtx.beginPath();
  outCtx.rect(badgeX, badgeY, badgeW, badgeH);
  outCtx.fill();
@@ -594,7 +679,7 @@ function drawDynamicForceArrow(fromX, fromY, fx, fy, mag) {
  outCtx.fillText(text, badgeX + badgeW / 2, badgeY + badgeH / 2);
 
  outCtx.beginPath();
- outCtx.arc(fromX, fromY, Math.min(7, Math.max(3.5, mag * 0.009)), 0, 2 * Math.PI);
+ outCtx.arc(fromX, fromY, Math.min(7, Math.max(3.5, mag * 0.009)) / zoomScale, 0, 2 * Math.PI);
  outCtx.fillStyle = color;
  outCtx.fill();
 
@@ -813,6 +898,8 @@ inputFile.addEventListener('change', (e) => {
  currentBlobUrl = null;
  }
  video.pause();
+
+ resetZoom();
 
  currentBlobUrl = URL.createObjectURL(file);
  video.src = currentBlobUrl;
