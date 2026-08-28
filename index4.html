@@ -24,6 +24,8 @@
     .hdr-btn.secondary { background: #3a3a3c; }
     .hdr-btn.fps-badge { background: #30d158; color: #000; font-size: 10px; }
     .hdr-btn.roi-active { background: #ff9500 !important; color: #000 !important; font-weight: bold; }
+    .hdr-btn.rec-active { background: #ff3b30 !important; animation: pulse-red 1s infinite; }
+    @keyframes pulse-red { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
     
     #result-box { width: 100%; background: #262629; border-radius: 6px; padding: 5px 8px; border: 1px solid #3a3a3c; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
     .result-text-area { flex: 1; min-width: 0; }
@@ -45,7 +47,6 @@
     .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 14px; flex-shrink: 0; text-align: center; }
     input[type=range] { flex: 1; height: 18px; accent-color: #007aff; }
 
-    /* 連続ジャンプ用ステップボタン */
     .jump-actions-container { display: flex; flex-direction: column; gap: 3px; width: 100%; }
     .jump-actions-row { display: grid; grid-template-columns: 0.7fr repeat(3, 1fr); gap: 3px; align-items: center; }
     .row-label { font-size: 10px; font-weight: bold; text-align: center; color: #aaa; }
@@ -62,7 +63,6 @@
     button.mode-floor-active { background: #00ffcc; color: #000; font-weight: bold; }
     #btnModeZoom.mode-active { background: #007aff; color: #fff; }
 
-    /* 1回目と2回目の比較ダッシュボード */
     .dashboard-grid { width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
     .side-box { background: #262629; border-radius: 6px; padding: 4px 5px; border: 1px solid #3a3a3c; }
     .side-box.j1 { border-top: 2.5px solid #00ffcc; }
@@ -97,6 +97,7 @@
             <button class="hdr-btn fps-badge" id="btnFps" onclick="toggleFPS()">60fps</button>
             <button class="hdr-btn secondary" id="btnToggleRoi" onclick="toggleRoiMode()">🔲 対象者指定</button>
             <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 静止画</button>
+            <button class="hdr-btn" id="btnRecord" style="background:#ff3b30;" onclick="toggleRecording()">🎥 録画開始</button>
         </div>
         <span id="scale-info-text">物差し: 未設定</span>
     </div>
@@ -126,14 +127,12 @@
 
     <!-- 1回目＆2回目 記録ボタン群 -->
     <div class="jump-actions-container">
-        <!-- 1回目 -->
         <div class="jump-actions-row">
             <span class="row-label" style="color:#00ffcc;">1回目</span>
             <button class="jump-btn" id="btnJ1Takeoff" onclick="markJumpPhase('j1_takeoff')">🛫 離地</button>
             <button class="jump-btn" id="btnJ1Peak" onclick="markJumpPhase('j1_peak')">⛰️ 頂点</button>
             <button class="jump-btn" id="btnJ1Landing" onclick="markJumpPhase('j1_landing')">🛬 着地(接地)</button>
         </div>
-        <!-- 2回目 -->
         <div class="jump-actions-row">
             <span class="row-label" style="color:#ffd60a;">2回目</span>
             <button class="jump-btn" id="btnJ2Takeoff" onclick="markJumpPhase('j2_takeoff')">🛫 離地(再跳躍)</button>
@@ -262,6 +261,13 @@ const jumps = {
 let currentLandmarks = null;
 let currentCoM = null;
 let currentFeetCenter = null;
+
+// Screen Recording
+let mediaRecorder = null;
+let recordedChunks = [];
+let isRecording = false;
+const recCanvas = document.createElement('canvas');
+const recCtx = recCanvas.getContext('2d');
 
 const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
 pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
@@ -572,7 +578,6 @@ function drawSkeleton(lm, w, h) {
     outCtx.restore();
 }
 
-// ジャンプフェーズ記録
 function markJumpPhase(key) {
     if (!currentCoM || !currentFeetCenter) {
         alert("人物が検出できていません"); return;
@@ -677,7 +682,31 @@ async function renderCurrentFrame() {
 }
 
 async function loop() {
-    if (!video.paused && !video.ended) { await renderCurrentFrame(); updateSeekBar(); }
+    if (!video.paused && !video.ended) { 
+        await renderCurrentFrame(); 
+        updateSeekBar(); 
+    }
+    
+    // 録画合成処理
+    if (isRecording) {
+        recCanvas.width = outputCanvas.width;
+        recCanvas.height = outputCanvas.height + 70;
+        recCtx.fillStyle = '#000';
+        recCtx.fillRect(0, 0, recCanvas.width, recCanvas.height);
+        recCtx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
+        recCtx.drawImage(outputCanvas, 0, 0);
+        recCtx.drawImage(interactionCanvas, 0, 0);
+
+        recCtx.fillStyle = '#1c1c1e';
+        recCtx.fillRect(0, outputCanvas.height, recCanvas.width, 70);
+        recCtx.fillStyle = '#00ffcc';
+        recCtx.font = 'bold 13px sans-serif';
+        recCtx.fillText(`1回目高: ${document.getElementById('res_j1_h').innerText} ｜ 2回目高: ${document.getElementById('res_j2_h').innerText}`, 15, outputCanvas.height + 26);
+        recCtx.fillStyle = '#ff375f';
+        recCtx.font = 'bold 12px sans-serif';
+        recCtx.fillText(`接地時間: ${document.getElementById('res_contact_t').innerText} ｜ RSI: ${document.getElementById('res_rsi').innerText}`, 15, outputCanvas.height + 50);
+    }
+
     animationFrameId = requestAnimationFrame(loop);
 }
 
@@ -708,6 +737,7 @@ function captureSnapshot() {
     snapCanvas.width = outputCanvas.width; snapCanvas.height = outputCanvas.height + 70;
     snapCtx.fillStyle = '#000'; snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
     snapCtx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height); snapCtx.drawImage(outputCanvas, 0, 0);
+    snapCtx.drawImage(interactionCanvas, 0, 0);
     snapCtx.fillStyle = '#1c1c1e'; snapCtx.fillRect(0, outputCanvas.height, snapCanvas.width, 70);
     snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 13px sans-serif';
     snapCtx.fillText(`1回目高: ${document.getElementById('res_j1_h').innerText} ｜ 2回目高: ${document.getElementById('res_j2_h').innerText}`, 15, outputCanvas.height + 26);
@@ -716,6 +746,58 @@ function captureSnapshot() {
     document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); document.getElementById('snapshot-modal-overlay').style.display = 'flex';
 }
 function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
+
+// 録画機能 (MediaRecorder)
+function toggleRecording() {
+    if (!video.videoWidth) { alert("動画が読み込まれていません"); return; }
+    const btn = document.getElementById('btnRecord');
+    
+    if (!isRecording) {
+        recordedChunks = [];
+        const stream = recCanvas.captureStream(30);
+        
+        let mimeType = 'video/webm;codecs=vp9';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = 'video/webm';
+            if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4';
+        }
+        
+        try {
+            mediaRecorder = new MediaRecorder(stream, { mimeType });
+        } catch (e) {
+            mediaRecorder = new MediaRecorder(stream);
+        }
+        
+        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `RJ_Analysis_${Date.now()}.mp4`;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+        };
+        
+        mediaRecorder.start();
+        isRecording = true;
+        btn.innerText = "⏹ 録画停止";
+        btn.classList.add('rec-active');
+        
+        if (video.paused) {
+            video.play();
+            btnPlayPause.innerText = '⏸ 停止';
+            btnPlayPause.style.background = '#ff9500';
+        }
+    } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        btn.innerText = "🎥 録画開始";
+        btn.classList.remove('rec-active');
+    }
+}
 
 document.getElementById('inputFile').addEventListener('change', (e) => {
     const file = e.target.files[0]; if (!file) return;
