@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>単眼カメラ動作分析 & 関節トルク解析</title>
+  <!-- MediaPipe Pose CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 16px;
+      background-color: #121212;
+      color: #e0e0e0;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .controls {
+      background: #1e1e1e;
+      padding: 12px 16px;
+      border-radius: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+    }
+    .controls label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+    .controls input {
+      background: #2a2a2a;
+      border: 1px solid #444;
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      width: 70px;
+    }
+    .viewport {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    video, canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      background: #1e1e1e;
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .card .title {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+    .card .value {
+      font-size: 22px;
+      font-weight: bold;
+    }
+    .chart-container {
+      background: #1e1e1e;
+      padding: 16px;
+      border-radius: 8px;
+      height: 220px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>下肢バイオメカニクス解析（GRF & 関節トルク）</h2>
+  
+  <div class="controls">
+    <label>体重 (kg): <input type="number" id="inputMass" value="70" step="1"></label>
+    <label>身長 (cm): <input type="number" id="inputHeight" value="175" step="1"></label>
+    <button id="btnToggle" style="padding: 6px 16px; border-radius: 4px; background: #0070f3; color: #fff; border: none; cursor: pointer;">カメラ起動</button>
+  </div>
+
+  <div class="viewport">
+    <video id="webcam" playsinline style="display: none;"></video>
+    <canvas id="outputCanvas"></canvas>
+  </div>
+
+  <div class="dashboard">
+    <div class="card">
+      <div class="title">推定垂直床反力 (GRF-Y)</div>
+      <div class="value" id="valGrfY" style="color: #4ade80;">0 N</div>
+    </div>
+    <div class="card">
+      <div class="title">足関節トルク (伸展/屈曲)</div>
+      <div class="value" id="valAnkle" style="color: #60a5fa;">0 N·m</div>
+    </div>
+    <div class="card">
+      <div class="title">膝関節トルク (伸展/屈曲)</div>
+      <div class="value" id="valKnee" style="color: #f87171;">0 N·m</div>
+    </div>
+    <div class="card">
+      <div class="title">股関節トルク (伸展/屈曲)</div>
+      <div class="value" id="valHip" style="color: #fbbf24;">0 N·m</div>
+    </div>
+  </div>
+
+  <div class="chart-container">
+    <canvas id="torqueChart"></canvas>
+  </div>
+</div>
+
+<script>
+const video = document.getElementById('webcam');
+const canvas = document.getElementById('outputCanvas');
+const ctx = canvas.getContext('2d');
+const btnToggle = document.getElementById('btnToggle');
+
+let camera = null;
+let isRunning = false;
+
+// 身体セグメントパラメータ (BSIP: Dempster比率)
+const BSIP = {
+  trunk: 0.678,
+  thigh: 0.100,
+  shank: 0.046,
+  foot: 0.014
+};
+
+// 状態追跡用変数
+let prevCoM = null;
+let prevVelCoM = null;
+let prevTime = null;
+const GRAVITY = 9.81;
+
+// 簡易1次ローパスフィルタ
+let filteredGRF = { x: 0, y: 0 };
+const LPF_ALPHA = 0.35;
+
+// Chart.js の初期化
+const chartCtx = document.getElementById('torqueChart').getContext('2d');
+const maxDataPoints = 60;
+const torqueChart = new Chart(chartCtx, {
+  type: 'line',
+  data: {
+    labels: Array(maxDataPoints).fill(''),
+    datasets: [
+      { label: '足関節 (N·m)', borderColor: '#60a5fa', data: Array(maxDataPoints).fill(0), borderWidth: 2, pointRadius: 0 },
+      { label: '膝関節 (N·m)', borderColor: '#f87171', data: Array(maxDataPoints).fill(0), borderWidth: 2, pointRadius: 0 },
+      { label: '股関節 (N·m)', borderColor: '#fbbf24', data: Array(maxDataPoints).fill(0), borderWidth: 2, pointRadius: 0 }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    scales: {
+      y: { grid: { color: '#333' }, ticks: { color: '#888' } },
+      x: { display: false }
+    },
+    plugins: { legend: { labels: { color: '#ccc' } } }
+  }
+});
+
+function onResults(results) {
+  canvas.width = video.videoWidth || 640;
+  canvas.height = video.videoHeight || 480;
+  ctx.save();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+  if (!results.poseLandmarks) {
+    ctx.restore();
+    return;
+  }
+
+  const lm = results.poseLandmarks;
+  const mass = parseFloat(document.getElementById('inputMass').value) || 70;
+  const heightM = (parseFloat(document.getElementById('inputHeight').value) || 175) / 100.0;
+  const now = performance.now() / 1000.0;
+
+  // 画面内の身体長からピクセル->実長(m)のスケールを算出 (鼻から足首の平均長基準)
+  const pxBodyHeight = Math.abs(lm[0].y - (lm[27].y + lm[28].y) / 2) * canvas.height;
+  const meterPerPixel = (heightM * 0.85) / (pxBodyHeight || 1);
+
+  // 2D座標ヘルパー (右側下肢を基準に解析: 24:Hip, 26:Knee, 28:Ankle, 32:Toe)
+  const getPoint = (idx) => ({
+    x: lm[idx].x * canvas.width * meterPerPixel,
+    y: (1.0 - lm[idx].y) * canvas.height * meterPerPixel // 上向きを正
+  });
+
+  const shoulder = getPoint(12);
+  const hip = getPoint(24);
+  const knee = getPoint(26);
+  const ankle = getPoint(28);
+  const toe = getPoint(32);
+
+  // 1. 各部位の重心位置
+  const comTrunk = { x: (shoulder.x + hip.x) * 0.5, y: (shoulder.y + hip.y) * 0.5 };
+  const comThigh = { x: hip.x * 0.433 + knee.x * 0.567, y: hip.y * 0.433 + knee.y * 0.567 };
+  const comShank = { x: knee.x * 0.433 + ankle.x * 0.567, y: knee.y * 0.433 + ankle.y * 0.567 };
+  const comFoot  = { x: (ankle.x + toe.x) * 0.5, y: (ankle.y + toe.y) * 0.5 };
+
+  // 全身重心 (CoM)
+  const currentCoM = {
+    x: BSIP.trunk * comTrunk.x + 2 * (BSIP.thigh * comThigh.x + BSIP.shank * comShank.x + BSIP.foot * comFoot.x),
+    y: BSIP.trunk * comTrunk.y + 2 * (BSIP.thigh * comThigh.y + BSIP.shank * comShank.y + BSIP.foot * comFoot.y)
+  };
+
+  // 2. 加速度および床反力 (GRF) 推定
+  let grf = { x: 0, y: 0 };
+  if (prevCoM && prevTime) {
+    const dt = Math.max(now - prevTime, 0.001);
+    const velCoM = {
+      x: (currentCoM.x - prevCoM.x) / dt,
+      y: (currentCoM.y - prevCoM.y) / dt
+    };
+
+    if (prevVelCoM) {
+      const accCoM = {
+        x: (velCoM.x - prevVelCoM.x) / dt,
+        y: (velCoM.y - prevVelCoM.y) / dt
+      };
+
+      // F = m * a - m * g
+      const rawGrfX = mass * accCoM.x;
+      const rawGrfY = Math.max(0, mass * (accCoM.y + GRAVITY));
+
+      // ローパスフィルタ
+      filteredGRF.x = filteredGRF.x * (1 - LPF_ALPHA) + rawGrfX * LPF_ALPHA;
+      filteredGRF.y = filteredGRF.y * (1 - LPF_ALPHA) + rawGrfY * LPF_ALPHA;
+      grf = filteredGRF;
+    }
+    prevVelCoM = velCoM;
+  }
+  prevCoM = currentCoM;
+  prevTime = now;
+
+  // 3. 逆動力学による関節トルク算出 (準静的モーメントアーム計算)
+  // CoP (圧力中心) を足裏中心に設定
+  const cop = comFoot;
+  
+  // 各関節からCoPへのモーメントアームベクトル: r = CoP - Joint
+  const rAnkle = { x: cop.x - ankle.x, y: cop.y - ankle.y };
+  const rKnee  = { x: cop.x - knee.x,  y: cop.y - knee.y };
+  const rHip   = { x: cop.x - hip.x,   y: cop.y - hip.y };
+
+  // 2D外積: τ = r_x * F_y - r_y * F_x (反力による外力モーメントの打ち消し = 筋トルク)
+  const torqueAnkle = (rAnkle.x * grf.y - rAnkle.y * grf.x);
+  const torqueKnee  = (rKnee.x * grf.y - rKnee.y * grf.x);
+  const torqueHip   = (rHip.x * grf.y - rHip.y * grf.x);
+
+  // 4. UI・グラフの更新
+  document.getElementById('valGrfY').textContent = `${Math.round(grf.y)} N`;
+  document.getElementById('valAnkle').textContent = `${torqueAnkle.toFixed(1)} N·m`;
+  document.getElementById('valKnee').textContent = `${torqueKnee.toFixed(1)} N·m`;
+  document.getElementById('valHip').textContent = `${torqueHip.toFixed(1)} N·m`;
+
+  updateChart(torqueAnkle, torqueKnee, torqueHip);
+
+  // 5. キャンバスへの描画 (骨格 & GRFベクトル)
+  drawSkeletonAndGRF(lm, cop, grf, meterPerPixel);
+  ctx.restore();
+}
+
+function drawSkeletonAndGRF(lm, cop, grf, meterPerPixel) {
+  // 関節点の描画
+  [24, 26, 28, 32].forEach(idx => {
+    ctx.beginPath();
+    ctx.arc(lm[idx].x * canvas.width, lm[idx].y * canvas.height, 6, 0, 2 * Math.PI);
+    ctx.fillStyle = '#00e5ff';
+    ctx.fill();
+  });
+
+  // 骨格リンクの描画
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(lm[24].x * canvas.width, lm[24].y * canvas.height);
+  ctx.lineTo(lm[26].x * canvas.width, lm[26].y * canvas.height);
+  ctx.lineTo(lm[28].x * canvas.width, lm[28].y * canvas.height);
+  ctx.lineTo(lm[32].x * canvas.width, lm[32].y * canvas.height);
+  ctx.stroke();
+
+  // GRF（床反力）ベクトルの描画 (足元から上向き)
+  const copPxX = (cop.x / meterPerPixel);
+  const copPxY = canvas.height - (cop.y / meterPerPixel);
+  const grfScale = 0.2; // 描画スケーリング
+
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(copPxX, copPxY);
+  ctx.lineTo(copPxX + grf.x * grfScale, copPxY - grf.y * grfScale);
+  ctx.stroke();
+}
+
+function updateChart(tA, tK, tH) {
+  const d = torqueChart.data.datasets;
+  d[0].data.push(tA); d[0].data.shift();
+  d[1].data.push(tK); d[1].data.shift();
+  d[2].data.push(tH); d[2].data.shift();
+  torqueChart.update('none');
+}
+
+// MediaPipe Pose 初期化
+const pose = new Pose({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+});
+pose.setOptions({
+  modelComplexity: 1,
+  smoothLandmarks: true,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5
+});
+pose.onResults(onResults);
+
+btnToggle.addEventListener('click', async () => {
+  if (!isRunning) {
+    camera = new Camera(video, {
+      onFrame: async () => { await pose.send({ image: video }); },
+      width: 640,
+      height: 480
+    });
+    await camera.start();
+    btnToggle.textContent = '停止';
+    btnToggle.style.background = '#dc2626';
+    isRunning = true;
+  } else {
+    window.location.reload();
+  }
+});
+</script>
+</body>
+</html>
