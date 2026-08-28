@@ -255,8 +255,11 @@
  let isRoiDrawing = false;
  let roiStart = null;
  let userRoi = null; 
- let roiCropCanvas = document.createElement('canvas');
- let roiCropCtx = roiCropCanvas.getContext('2d');
+ const roiCropCanvas = document.createElement('canvas');
+ const roiCropCtx = roiCropCanvas.getContext('2d');
+
+ // メモリ管理用: Object URLの追跡オブジェクト
+ const currentBlobUrls = { 1: null, 2: null };
 
  const state = {
    1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
@@ -487,10 +490,17 @@
  window.addEventListener('resize', fitCanvases);
 
  function resetState(idx) {
+   // メモリ解放: 旧Blob URLのRevoke
+   if (currentBlobUrls[idx]) {
+     URL.revokeObjectURL(currentBlobUrls[idx]);
+     currentBlobUrls[idx] = null;
+   }
+
    state[idx] = { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" };
    if (idx === 1) {
      currentTorsionAngle = 0;
      userRoi = null;
+     isAiDetecting = false;
    }
    updateScaleInfoText();
    updateDisplayResult();
@@ -500,11 +510,18 @@
  function triggerPickVideo(idx) { idx === 1 ? fileInput1.click() : fileInput2.click(); }
  
  function loadVideoFile(file, vidElem, idx) { 
-   if (file) { 
-     resetState(idx);
-     vidElem.src = URL.createObjectURL(file); 
-     vidElem.load(); 
-   } 
+   if (!file) return;
+
+   if (isPlaying) togglePlay();
+
+   resetState(idx);
+   currentBlobUrls[idx] = URL.createObjectURL(file);
+   vidElem.src = currentBlobUrls[idx]; 
+   vidElem.load(); 
+
+   // 同じファイルを再選択できるようにvalueをクリア
+   if (idx === 1) fileInput1.value = '';
+   else fileInput2.value = '';
  }
  fileInput1.addEventListener('change', e => loadVideoFile(e.target.files[0], video1, 1));
  fileInput2.addEventListener('change', e => loadVideoFile(e.target.files[0], video2, 2));
@@ -549,18 +566,24 @@
 
  async function togglePlay() {
    if (!video1.duration && !video2.duration) return;
-   isPlaying = !isPlaying;
-   if (isPlaying) {
+   
+   if (!isPlaying) {
      try {
        const playPromises = [];
        if (video1.duration) playPromises.push(video1.play());
        if (compareMode > 0 && video2.duration) playPromises.push(video2.play());
        await Promise.all(playPromises);
-     } catch (err) {}
-     btnPlay.innerText = '⏸ 停止'; btnPlay.style.background = '#ff9500';
+       isPlaying = true;
+       btnPlay.innerText = '⏸ 停止'; btnPlay.style.background = '#ff9500';
+     } catch (err) {
+       console.error("Playback error:", err);
+       isPlaying = false;
+       btnPlay.innerText = '▶ 再生'; btnPlay.style.background = '#34c759';
+     }
    } else {
      if (video1.duration) video1.pause();
      if (compareMode > 0 && video2.duration) video2.pause();
+     isPlaying = false;
      btnPlay.innerText = '▶ 再生'; btnPlay.style.background = '#34c759';
    }
  }
@@ -752,7 +775,7 @@
  }
 
  function findHitPoint(s, pos, mode, currentScale = 1) {
-   const HIT_RADIUS = 28 / currentScale; // ズーム倍率に合わせて当たり判定も最適化
+   const HIT_RADIUS = 28 / currentScale;
    if (mode === 'ai') {
      if (s.aiJoints && s.aiJoints.length === 4) {
        for (let i = 0; i < s.aiJoints.length; i++) {
@@ -788,13 +811,17 @@
      isRoiDrawing = true;
      roiStart = pos;
      userRoi = { x: pos.x, y: pos.y, w: 0, h: 0 };
-     try { cvs.setPointerCapture(e.pointerId); } catch(err){}
+     if (e.pointerId) { try { cvs.setPointerCapture(e.pointerId); } catch(err){} }
      redraw();
      return;
    }
 
    const hit = findHitPoint(s, pos, currentMode, viewState[targetIdx].scale);
-   if (hit) { draggingPoint = { targetIdx, arrayName: hit.arrayName, index: hit.index }; try { cvs.setPointerCapture(e.pointerId); } catch(err){} return; }
+   if (hit) { 
+     draggingPoint = { targetIdx, arrayName: hit.arrayName, index: hit.index }; 
+     if (e.pointerId) { try { cvs.setPointerCapture(e.pointerId); } catch(err){} }
+     return; 
+   }
    if (currentMode === 'ai') return; 
 
    if (currentMode === 'scale') {
@@ -803,7 +830,7 @@
      s.scalePoints.push({ x: pos.x, y: pos.y });
      if (s.scalePoints.length === 1) {
        s.resultMain = "物差し設定: 2点目をタップ";
-       s.resultSub = "タップ後、点をドラッグして位置を微調整できます";
+       s.resultSub = "タップ後、点をドラッグして微調整できます";
      } else if (s.scalePoints.length === 2) {
        s.resultMain = "2点指定完了: 点をドラッグして微調整";
        s.resultSub = "位置が決まったら右上の「📏長さ確定」ボタンを押してください";
@@ -869,12 +896,15 @@
  function handlePointerUp(e, cvs) {
    if (isRoiDrawing) {
      isRoiDrawing = false;
-     try { cvs.releasePointerCapture(e.pointerId); } catch(err){}
+     if (e.pointerId) { try { cvs.releasePointerCapture(e.pointerId); } catch(err){} }
      toggleRoiMode();
      if (video1.readyState >= 2) processAiFrame();
      return;
    }
-   if (draggingPoint) { try { cvs.releasePointerCapture(e.pointerId); } catch(err){} draggingPoint = null; }
+   if (draggingPoint) { 
+     if (e.pointerId) { try { cvs.releasePointerCapture(e.pointerId); } catch(err){} }
+     draggingPoint = null; 
+   }
  }
 
  function openScaleModal() {
@@ -954,15 +984,13 @@
    return { width: renderWidth, height: renderHeight, x: offsetX, y: offsetY };
  }
 
- // ★修正: ズーム倍率（zoomScale）に応じて点・線のサイズを逆スケール補正して描画
  function redraw() {
    [ {idx: 1, c: canvas1, ctx: ctx1, v: video1}, {idx: 2, c: canvas2, ctx: ctx2, v: video2} ].forEach(item => {
      if (compareMode === 0 && item.idx === 2) return;
      const s = state[item.idx];
-     const zoom = viewState[item.idx].scale || 1; // 現在のズーム倍率
+     const zoom = viewState[item.idx].scale || 1;
      item.ctx.clearRect(0, 0, item.c.width, item.c.height);
 
-     // ROI枠の描画
      if (item.idx === 1 && userRoi && userRoi.w > 5 && userRoi.h > 5) {
        item.ctx.save();
        item.ctx.strokeStyle = isRoiMode ? '#ff9500' : 'rgba(255, 149, 0, 0.4)';
@@ -1296,7 +1324,12 @@
    document.body.appendChild(a);
    a.click();
    document.body.removeChild(a);
-   setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+   // メモリ解放: 録画チャンクと生成URLのクリーンアップ
+   recordedChunks = [];
+   recordCanvas = null;
+   recordCtx = null;
+   setTimeout(() => URL.revokeObjectURL(url), 1000);
  }
 
  const pose = new Pose({locateFile: (file) => {
