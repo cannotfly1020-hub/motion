@@ -148,9 +148,9 @@
             <div class="metric-row"><span>最大 捻転差:</span><span id="res_max_xfactor" class="metric-val">0.0°</span></div>
         </div>
         <div class="side-box kinetics">
-            <div class="side-title" style="color:#ff9500;">⚡ 支持脚床反力 ＆ リリース</div>
-            <div class="metric-row"><span>前足 制動GRF:</span><span id="res_grf_braking" class="metric-val" style="color:#ff375f;">--- N/kg</span></div>
-            <div class="metric-row"><span>前足 鉛直GRF:</span><span id="res_grf_vertical" class="metric-val" style="color:#ff9500;">--- N/kg</span></div>
+            <div class="side-title" style="color:#ff9500;">⚡ 下半身ブロック ＆ リリース</div>
+            <div class="metric-row"><span>FC 前足膝角度:</span><span id="res_fc_knee" class="metric-val" style="color:#007aff;">---°</span></div>
+            <div class="metric-row"><span>BR 体幹前傾角:</span><span id="res_trunk_tilt" class="metric-val" style="color:#ff9500;">---°</span></div>
             <div class="metric-row"><span>リリース地上高:</span><span id="res_release_h" class="metric-val" style="color:#30d158;">--- cm</span></div>
         </div>
     </div>
@@ -207,7 +207,6 @@ const btnConfirmScale = document.getElementById('btn-confirm-scale');
 const btnStepForward = document.getElementById('btnStepForward');
 const btnStepBack = document.getElementById('btnStepBack');
 
-// 基本設定
 let currentFPS = 60.0;
 const fpsList = [30, 60, 120, 240];
 let fpsIdx = 1;
@@ -217,7 +216,6 @@ let currentRateIdx = 0;
 let isProcessing = false;
 let animationFrameId = null;
 
-// 計測モード・ズーム・物差し
 let pxPerCm = null;
 let isZoomMode = false;
 let isScaleMode = false;
@@ -225,25 +223,19 @@ let isReleaseMode = false;
 let scalePoints = [];
 let draggingScaleIdx = -1;
 
-// リリース点と地面ラインの調整用
 let manualReleasePoint = null; 
-let manualGroundYNorm = null; // 地面の高さ（Y座標）
+let manualGroundYNorm = null;
 let isDraggingRelease = false;
 let isDraggingGround = false;
 
 let zoomScale = 1.0;
 let panOffsetX = 0, panOffsetY = 0;
 
-// 分析データ
 const phases = { fc: null, mer: null, ft: null };
 let maxRecordedXFactor = 0;
-let previousCoM = null;
-let prevTime = null;
-let currentCoM = null;
 let latestLandmarks = null;
-let grfFilterBuffer = [];
+let trunkTiltAtRelease = null;
 
-// 録画機能
 let mediaRecorder = null;
 let recordedChunks = [];
 let isRecording = false;
@@ -254,7 +246,6 @@ const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@med
 pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
 pose.onResults(onResults);
 
-// キャンバス内の動画描画領域を計算（レターボックス対応）
 function getVideoRenderBox() {
     const cWidth = outputCanvas.width, cHeight = outputCanvas.height;
     if (!video.videoWidth || !video.videoHeight || cWidth === 0 || cHeight === 0) {
@@ -297,7 +288,6 @@ function togglePlaybackRate() {
     document.getElementById('btnSpeed').innerText = `${video.playbackRate}x`;
 }
 
-// モード切替管理（排他制御）
 function toggleZoomMode() {
     isZoomMode = !isZoomMode;
     const controls = document.getElementById('zoom-controls');
@@ -305,11 +295,9 @@ function toggleZoomMode() {
         isScaleMode = isReleaseMode = false;
         controls.style.display = 'flex';
         mainResult.innerText = "🔍 ズームモード: ピンチ / ドラッグで画面操作";
-        subResult.innerText = "※拡大表示したまま物差しの設定やリリース点を打てます";
     } else {
         controls.style.display = 'none';
         mainResult.innerText = "投手バイオメカニクス解析";
-        subResult.innerText = "「📏 物差し設定」後、FC・MER・リリース点・FTを記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -324,7 +312,6 @@ function toggleScaleMode() {
         subResult.innerText = "位置確定後、右上の「長さ確定」ボタンを押してください";
     } else {
         mainResult.innerText = "投手バイオメカニクス解析";
-        subResult.innerText = "「📏 物差し設定」後、FC・MER・リリース点・FTを記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -336,10 +323,9 @@ function toggleReleaseMode() {
         isZoomMode = isScaleMode = false;
         document.getElementById('zoom-controls').style.display = 'none';
         mainResult.innerText = "⚾️ リリース点: ボールを離した瞬間をタップ";
-        subResult.innerText = "上の点(リリース)と下の緑の横線(地面)をドラッグして正確な高さを測ります";
+        subResult.innerText = "リリース点と緑の横線(地面)をドラッグして正確な高さを測ります";
     } else {
         mainResult.innerText = "投手バイオメカニクス解析";
-        subResult.innerText = "「📏 物差し設定」後、FC・MER・リリース点・FTを記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -368,7 +354,6 @@ document.getElementById('zoom-slider').addEventListener('input', (e) => {
     redrawOverlay();
 });
 
-// キャンバス上のタッチ・マウスクリック座標取得
 function getCanvasPoint(e) {
     const rect = interactionCanvas.getBoundingClientRect();
     const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
@@ -379,7 +364,6 @@ function getCanvasPoint(e) {
     };
 }
 
-// ピンチズーム ＆ スワイプ操作
 let isTouchPanning = false;
 let panStartX = 0, panStartY = 0;
 let initialPinchDist = 0, initialPinchScale = 1.0;
@@ -420,24 +404,20 @@ stage.addEventListener('touchend', (e) => {
     if (e.touches.length === 0) isTouchPanning = false;
 });
 
-// ポインター操作（物差し・リリース点の配置とドラッグ）
 interactionCanvas.addEventListener('pointerdown', (e) => {
     const pt = getCanvasPoint(e);
     const box = getVideoRenderBox();
 
-    // 1. リリース点 ＆ 地面ラインモード
     if (isReleaseMode || manualReleasePoint) {
         if (manualReleasePoint && manualGroundYNorm !== null) {
             const curRelPx = { x: box.x + manualReleasePoint.x * box.w, y: box.y + manualReleasePoint.y * box.h };
             const curGndPxY = box.y + manualGroundYNorm * box.h;
 
-            // リリース点のタップ判定（ズーム時は厳密に判定）
             if (Math.hypot(curRelPx.x - pt.x, curRelPx.y - pt.y) * zoomScale < 30) {
                 isDraggingRelease = true;
                 try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
                 return;
             }
-            // 地面ラインのタップ判定
             if (Math.abs(curGndPxY - pt.y) * zoomScale < 30 && Math.abs(curRelPx.x - pt.x) * zoomScale < 60) {
                 isDraggingGround = true;
                 try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
@@ -449,22 +429,31 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
                 x: Math.max(0, Math.min(1.0, (pt.x - box.x) / box.w)),
                 y: Math.max(0, Math.min(1.0, (pt.y - box.y) / box.h))
             };
-            // 初期値はFCの足か、動画の下端
             manualGroundYNorm = (phases.fc && phases.fc.groundYNorm) ? phases.fc.groundYNorm : 1.0;
             isDraggingRelease = true;
             try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
+
+            // リリース時の体幹前傾角を即座に記録
+            if (latestLandmarks) {
+                const lm = latestLandmarks;
+                const shL = lm[11], shR = lm[12], hipL = lm[23], hipR = lm[24];
+                if (shL && shR && hipL && hipR) {
+                    const midSh = { x: (shL.x + shR.x) / 2, y: (shL.y + shR.y) / 2 };
+                    const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
+                    const angleRad = Math.atan2(midSh.x - midHip.x, -(midSh.y - midHip.y));
+                    trunkTiltAtRelease = Math.abs(angleRad * (180 / Math.PI));
+                }
+            }
+
             recalcPitchMetrics();
             redrawOverlay();
             return;
         }
     }
 
-    // 2. 物差しモード
     if (isScaleMode) {
         let hitIndex = -1;
         for (let i = 0; i < scalePoints.length; i++) {
-            // ヒット半径をズーム倍率で補正。画面上で15px以内ならドラッグ可能
-            // これにより、ズーム時に点1のすぐ隣に点2を配置できるようになります。
             if (Math.hypot(scalePoints[i].x - pt.x, scalePoints[i].y - pt.y) * zoomScale < 15) {
                 hitIndex = i;
                 break;
@@ -529,7 +518,6 @@ interactionCanvas.addEventListener('pointerup', (e) => {
     }
 });
 
-// モーダル関連処理
 function openScaleModal() {
     if (scalePoints.length !== 2) return;
     document.getElementById('scale-modal-overlay').style.display = 'flex';
@@ -561,26 +549,21 @@ function submitScaleModal() {
     }
 }
 
-// ユーザー操作のオーバーレイ描画
 function redrawOverlay() {
     intCtx.clearRect(0, 0, interactionCanvas.width, interactionCanvas.height);
     const box = getVideoRenderBox();
 
-    // 1. 物差し点
     if (scalePoints.length > 0) {
         intCtx.save();
         intCtx.fillStyle = '#ff9500'; 
         intCtx.strokeStyle = '#ff9500';
-        // ズーム時に線が太くならないように調整
         intCtx.lineWidth = Math.max(1, 3 / zoomScale); 
         
         scalePoints.forEach((pt, i) => {
             intCtx.beginPath(); 
-            // ズーム時に点が巨大化しないようにサイズを動的調整
             intCtx.arc(pt.x, pt.y, 8 / zoomScale, 0, Math.PI * 2); 
             intCtx.fill();
             intCtx.fillStyle = '#fff';
-            // フォントサイズもズームに合わせて調整（最小値9px）
             intCtx.font = `bold ${Math.max(9, 12 / zoomScale)}px sans-serif`;
             intCtx.fillText(`点${i + 1}`, pt.x + (10 / zoomScale), pt.y - (6 / zoomScale));
             intCtx.fillStyle = '#ff9500';
@@ -595,7 +578,6 @@ function redrawOverlay() {
         intCtx.restore();
     }
 
-    // 2. リリース点 ＆ 地面ドラッグライン
     if (manualReleasePoint && manualGroundYNorm !== null) {
         const rx = box.x + manualReleasePoint.x * box.w;
         const ry = box.y + manualReleasePoint.y * box.h;
@@ -607,7 +589,6 @@ function redrawOverlay() {
         intCtx.setLineDash([4 / zoomScale, 4 / zoomScale]);
         intCtx.beginPath(); intCtx.moveTo(rx, ry); intCtx.lineTo(rx, groundY); intCtx.stroke(); intCtx.setLineDash([]);
 
-        // 地面をつかむための緑のバー
         intCtx.fillStyle = '#30d158'; 
         intCtx.fillRect(rx - (20 / zoomScale), groundY - (3 / zoomScale), 40 / zoomScale, 6 / zoomScale);
         
@@ -639,7 +620,6 @@ function calcAngle(p1, p2, p3) {
     return Math.acos(Math.max(-1, Math.min(1, dot / (mag1 * mag2)))) * (180 / Math.PI);
 }
 
-// Pose 推論完了時コールバック
 function onResults(results) {
     if (!results.poseLandmarks) {
         outCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
@@ -649,25 +629,18 @@ function onResults(results) {
     drawPitchingBiomechanics(latestLandmarks);
 }
 
-// 骨格とバイオメカニクス指標の描画
 function drawPitchingBiomechanics(lm) {
     outCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
     outCtx.save();
-    outCtx.lineWidth = Math.max(1, 3 / zoomScale); // ズーム時に骨格線が太くなりすぎないように調整
+    outCtx.lineWidth = Math.max(1, 3 / zoomScale);
 
     const box = getVideoRenderBox();
     const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
 
     const shL = lm[11], shR = lm[12], hipL = lm[23], hipR = lm[24];
-    const ankL = lm[27], ankR = lm[28];
 
-    // 重心と捻転差 (X-Factor)
     if (shL && shR && hipL && hipR) {
         const pShL = toPx(shL), pShR = toPx(shR), pHipL = toPx(hipL), pHipR = toPx(hipR);
-        currentCoM = {
-            x: (pShL.x + pShR.x + pHipL.x + pHipR.x) * 0.25,
-            y: (pShL.y + pShR.y + pHipL.y + pHipR.y) * 0.25
-        };
 
         const shAngle = Math.atan2((shR.z || 0) - (shL.z || 0), (shR.x - shL.x)) * (180 / Math.PI);
         const hipAngle = Math.atan2((hipR.z || 0) - (hipL.z || 0), (hipR.x - hipL.x)) * (180 / Math.PI);
@@ -693,62 +666,15 @@ function drawPitchingBiomechanics(lm) {
     drawL(24, 26, '#ffd60a'); drawL(26, 28, '#ffd60a');
     drawL(23, 25, '#ffd60a'); drawL(25, 27, '#ffd60a');
 
-    // 床反力 (GRF) - フィルタによる安定化
-    if (ankL && ankR && currentCoM) {
-        const pAnkL = toPx(ankL), pAnkR = toPx(ankR);
-        const leadFoot = Math.abs(pAnkL.x - currentCoM.x) > Math.abs(pAnkR.x - currentCoM.x) ? pAnkL : pAnkR;
-
-        if (previousCoM && prevTime && pxPerCm) {
-            const dt = (video.currentTime - prevTime) || (1 / currentFPS);
-            if (dt > 0 && dt < 0.1) {
-                const ax = ((currentCoM.x - previousCoM.x) / pxPerCm / 100) / (dt * dt);
-                const ay = ((currentCoM.y - previousCoM.y) / pxPerCm / 100) / (dt * dt);
-                
-                let rawGrfX = -ax * 0.45;
-                let rawGrfY = -(ay - 9.80665);
-
-                grfFilterBuffer.push({ x: rawGrfX, y: rawGrfY });
-                if (grfFilterBuffer.length > 4) grfFilterBuffer.shift();
-
-                const avgGrfX = grfFilterBuffer.reduce((acc, v) => acc + v.x, 0) / grfFilterBuffer.length;
-                const avgGrfY = grfFilterBuffer.reduce((acc, v) => acc + v.y, 0) / grfFilterBuffer.length;
-
-                document.getElementById('res_grf_braking').innerText = `${Math.abs(avgGrfX).toFixed(1)} N/kg`;
-                document.getElementById('res_grf_vertical').innerText = `${Math.max(0, avgGrfY).toFixed(1)} N/kg`;
-
-                outCtx.save();
-                outCtx.strokeStyle = '#ff375f'; outCtx.fillStyle = '#ff375f'; 
-                outCtx.lineWidth = Math.max(1, 3.5 / zoomScale);
-                const clampX = Math.max(-25, Math.min(25, avgGrfX));
-                const clampY = Math.max(0, Math.min(30, avgGrfY));
-                const targetX = leadFoot.x - (clampX * 2.5 * (pxPerCm / 10));
-                const targetY = leadFoot.y - (clampY * 2.5 * (pxPerCm / 10));
-
-                outCtx.beginPath(); outCtx.moveTo(leadFoot.x, leadFoot.y); outCtx.lineTo(targetX, targetY); outCtx.stroke();
-                
-                // ズーム時に矢印の先端が巨大化しないようにサイズ調整
-                const arrowSize = 10 / zoomScale;
-                const angle = Math.atan2(targetY - leadFoot.y, targetX - leadFoot.x);
-                outCtx.beginPath(); outCtx.moveTo(targetX, targetY);
-                outCtx.lineTo(targetX - arrowSize * Math.cos(angle - Math.PI / 6), targetY - arrowSize * Math.sin(angle - Math.PI / 6));
-                outCtx.lineTo(targetX - arrowSize * Math.cos(angle + Math.PI / 6), targetY - arrowSize * Math.sin(angle + Math.PI / 6));
-                outCtx.fill();
-                outCtx.restore();
-            }
-        }
-        previousCoM = { ...currentCoM };
-        prevTime = video.currentTime;
-    }
-
     outCtx.restore();
 }
 
-// フェーズ（FC, MER, FT）の記録
 function markPhase(key) {
     if (!video.videoWidth || !latestLandmarks) return;
     const frame = Math.round(video.currentTime * currentFPS);
     const box = getVideoRenderBox();
     const lm = latestLandmarks;
+    const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
 
     phases[key] = { time: frame / currentFPS, frame: frame };
 
@@ -757,19 +683,27 @@ function markPhase(key) {
         const p1 = (ankL && ankL.visibility > 0.3) ? ankL : heelL;
         const p2 = (ankR && ankR.visibility > 0.3) ? ankR : heelR;
         if (p1 && p2) {
-            // 正規化座標ではなく、ピクセルに変換してから距離を計算する（アスペクト比の歪み防止）
-            const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
             const px1 = toPx(p1);
             const px2 = toPx(p2);
             phases.fc.stridePx = Math.hypot(px1.x - px2.x, px1.y - px2.y);
-            // 画面内で最も下（Y値が最大）の足の位置を地面の基準として記憶
             phases.fc.groundYNorm = Math.max(p1.y, p2.y);
+            if (manualGroundYNorm === null) manualGroundYNorm = phases.fc.groundYNorm;
+        }
+
+        // 前足の膝角度を計算（着地脚を判定）
+        const hipL = lm[23], hipR = lm[24], kneeL = lm[25], kneeR = lm[26];
+        if (hipL && hipR && kneeL && kneeR && ankL && ankR) {
+            // 前足（重心から進行方向により遠い方の足）
+            const isLeftLead = ankL.y > ankR.y || Math.abs(ankL.x - (hipL.x + hipR.x)/2) > Math.abs(ankR.x - (hipL.x + hipR.x)/2);
+            const leadHip = isLeftLead ? toPx(hipL) : toPx(hipR);
+            const leadKnee = isLeftLead ? toPx(kneeL) : toPx(kneeR);
+            const leadAnk = isLeftLead ? toPx(ankL) : toPx(ankR);
+            phases.fc.leadKneeAngle = calcAngle(leadHip, leadKnee, leadAnk);
         }
     }
     if (key === 'mer') {
         const shR = lm[12], elR = lm[14], wrR = lm[16];
         if (shR && elR && wrR) {
-            const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
             phases.mer.elbowAngle = calcAngle(toPx(shR), toPx(elR), toPx(wrR));
         }
     }
@@ -782,11 +716,10 @@ function markPhase(key) {
     mainResult.innerHTML = `<span style='color:#00ffcc;'>${names[key]} を記録しました</span>`;
 }
 
-// サイドパネル数値の再計算
 function recalcPitchMetrics() {
     const box = getVideoRenderBox();
     
-    // 1. FC 足移動幅（ピクセル距離を直接変換）
+    // 1. FC 足移動幅
     if (phases.fc && phases.fc.stridePx && pxPerCm) {
         document.getElementById('res_stride').innerText = `${(phases.fc.stridePx / pxPerCm).toFixed(1)} cm`;
     } else {
@@ -800,7 +733,21 @@ function recalcPitchMetrics() {
         document.getElementById('res_mer_elbow').innerText = "---°";
     }
 
-    // 3. リリース地上高
+    // 3. FC 前足膝角度
+    if (phases.fc && phases.fc.leadKneeAngle) {
+        document.getElementById('res_fc_knee').innerText = `${phases.fc.leadKneeAngle.toFixed(1)}°`;
+    } else {
+        document.getElementById('res_fc_knee').innerText = "---°";
+    }
+
+    // 4. BR 体幹前傾角
+    if (trunkTiltAtRelease !== null) {
+        document.getElementById('res_trunk_tilt').innerText = `${trunkTiltAtRelease.toFixed(1)}°`;
+    } else {
+        document.getElementById('res_trunk_tilt').innerText = "---°";
+    }
+
+    // 5. リリース地上高
     if (manualReleasePoint && manualGroundYNorm !== null && pxPerCm) {
         const wristY = box.y + manualReleasePoint.y * box.h;
         const groundY = box.y + manualGroundYNorm * box.h;
@@ -816,18 +763,16 @@ function clearAllData() {
     manualReleasePoint = null;
     manualGroundYNorm = null;
     maxRecordedXFactor = 0;
-    previousCoM = null;
-    prevTime = null;
-    grfFilterBuffer = [];
+    trunkTiltAtRelease = null;
     scalePoints = [];
     pxPerCm = null;
     document.getElementById('scale-info-text').innerText = "物差し: 未設定";
     document.getElementById('res_max_xfactor').innerText = "0.0°";
     document.getElementById('res_stride').innerText = "--- cm";
     document.getElementById('res_mer_elbow').innerText = "---°";
+    document.getElementById('res_fc_knee').innerText = "---°";
+    document.getElementById('res_trunk_tilt').innerText = "---°";
     document.getElementById('res_release_h').innerText = "--- cm";
-    document.getElementById('res_grf_braking').innerText = "--- N/kg";
-    document.getElementById('res_grf_vertical').innerText = "--- N/kg";
     updatePhaseBtnStyles();
     updateButtons();
     redrawOverlay();
@@ -866,7 +811,7 @@ async function loop() {
         recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText}`, 15, outputCanvas.height + 26);
         recCtx.fillStyle = '#ff9500';
         recCtx.font = 'bold 12px sans-serif';
-        recCtx.fillText(`制動GRF: ${document.getElementById('res_grf_braking').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+        recCtx.fillText(`FC膝角: ${document.getElementById('res_fc_knee').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
     }
     animationFrameId = requestAnimationFrame(loop);
 }
@@ -874,10 +819,7 @@ async function loop() {
 function updateSeekBar() { if (video.duration) seekSlider.value = (video.currentTime / video.duration) * 100; }
 seekSlider.addEventListener('input', () => { if (video.duration) { video.pause(); btnPlayPause.innerText = '▶ 再生'; video.currentTime = (seekSlider.value / 100) * video.duration; } });
 
-// シーク（時間移動）が発生した際はGRFの計算バッファを消去して暴走を防ぐ
 video.addEventListener('seeked', () => { 
-    grfFilterBuffer = [];
-    previousCoM = null;
     if (video.paused) { updateSeekBar(); renderCurrentFrame(); } 
 });
 
@@ -912,7 +854,7 @@ function captureSnapshot() {
     snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 13px sans-serif';
     snapCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText}`, 15, outputCanvas.height + 26);
     snapCtx.fillStyle = '#ff9500'; snapCtx.font = 'bold 12px sans-serif';
-    snapCtx.fillText(`制動GRF: ${document.getElementById('res_grf_braking').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+    snapCtx.fillText(`FC膝角: ${document.getElementById('res_fc_knee').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
     
     document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); 
     document.getElementById('snapshot-modal-overlay').style.display = 'flex';
