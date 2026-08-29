@@ -22,6 +22,7 @@
     
     .hdr-btn { -webkit-appearance: none; appearance: none; background: #007aff; color: white; border: none; padding: 5px 8px; border-radius: 6px; font-weight: bold; font-size: 11px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
     .hdr-btn.secondary { background: #3a3a3c; }
+    .hdr-btn.plane-btn { background: #af52de; color: #fff; }
     .hdr-btn.rec-active { background: #ff3b30 !important; animation: pulse-red 1s infinite; }
     @keyframes pulse-red { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
     
@@ -51,6 +52,8 @@
     .phase-btn.active-fc { background: #007aff; color: #fff; border-color: #007aff; }
     .phase-btn.active-ff { background: #5e5ce6; color: #fff; border-color: #5e5ce6; }
     .phase-btn.active-mer { background: #ff9500; color: #000; border-color: #ff9500; }
+    .phase-btn.active-pk { background: #30d158; color: #000; border-color: #30d158; }
+    .phase-btn.active-br { background: #ff375f; color: #fff; border-color: #ff375f; }
 
     .mode-grid { width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 4px; }
     button.ctrl-btn { -webkit-appearance: none; appearance: none; width: 100%; padding: 6px 0; background: #2c2c2e; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; }
@@ -89,6 +92,7 @@
         <div class="btn-group-header">
             <button class="hdr-btn" onclick="document.getElementById('inputFile').click()">動画選択</button>
             <input type="file" id="inputFile" accept="video/*" style="display:none;">
+            <button class="hdr-btn plane-btn" id="btnTogglePlane" onclick="togglePlaneMode()">🔄 観察面: 矢状面(横)</button>
             <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 静止画</button>
             <button class="hdr-btn" id="btnRecord" style="background:#ff3b30;" onclick="toggleRecording()">🎥 録画開始</button>
         </div>
@@ -96,8 +100,8 @@
     </div>
     <div id="result-box">
         <div class="result-text-area">
-            <div id="main-result">投手バイオメカニクス解析</div>
-            <div id="sub-result">「📏 物差し設定」後、FC・FF・MER・リリース点を記録してください</div>
+            <div id="main-result">投手バイオメカニクス解析 (矢状面)</div>
+            <div id="sub-result">「📏 物差し設定」後、各フェーズ・リリース点を記録してください</div>
         </div>
         <button id="btn-confirm-scale" onclick="openScaleModal()">📏 長さ確定</button>
     </div>
@@ -119,10 +123,9 @@
         <input type="range" id="seekSlider" min="0" max="100" value="0" step="0.05">
     </div>
 
-    <div class="phase-actions">
-        <button class="phase-btn" id="btnFC" onclick="markPhase('fc')">① FC (接地)</button>
-        <button class="phase-btn" id="btnFF" onclick="markPhase('ff')">② FF (完全接地)</button>
-        <button class="phase-btn" id="btnMER" onclick="markPhase('mer')">③ MER (最大外旋)</button>
+    <!-- フェーズボタン（矢状面 / 前額面 で動的切り替え） -->
+    <div class="phase-actions" id="phaseContainer">
+        <!-- JSで動的にボタン生成 -->
     </div>
 
     <div class="mode-grid">
@@ -138,19 +141,9 @@
         <button class="ctrl-btn" style="width:auto; padding:4px 10px; background:#444;" onclick="resetZoom()">等倍リセット</button>
     </div>
 
-    <div class="dashboard-grid">
-        <div class="side-box kinematics">
-            <div class="side-title" style="color:#00ffcc;">🎯 投球キネマティクス</div>
-            <div class="metric-row"><span>FC足移動幅(歩幅):</span><span id="res_stride" class="metric-val highlight-val">--- cm</span></div>
-            <div class="metric-row"><span>MER 肘屈曲角度:</span><span id="res_mer_elbow" class="metric-val" style="color:#ffd60a;">---°</span></div>
-            <div class="metric-row"><span>最大 捻転差:</span><span id="res_max_xfactor" class="metric-val">0.0°</span></div>
-        </div>
-        <div class="side-box kinetics">
-            <div class="side-title" style="color:#ff9500;">⚡ 下半身ブロック ＆ リリース</div>
-            <div class="metric-row"><span>FF 前足膝角度:</span><span id="res_ff_knee" class="metric-val" style="color:#5e5ce6;">---°</span></div>
-            <div class="metric-row"><span>BR 前足膝角度:</span><span id="res_br_knee" class="metric-val" style="color:#ff375f;">---°</span></div>
-            <div class="metric-row"><span>リリース地上高:</span><span id="res_release_h" class="metric-val" style="color:#30d158;">--- cm</span></div>
-        </div>
+    <!-- ダッシュボード（矢状面 / 前額面 で動的切り替え） -->
+    <div class="dashboard-grid" id="dashboardContainer">
+        <!-- JSで動的にパネル生成 -->
     </div>
 
     <div class="playback-row">
@@ -203,6 +196,9 @@ const subResult = document.getElementById('sub-result');
 const btnConfirmScale = document.getElementById('btn-confirm-scale');
 const btnStepForward = document.getElementById('btnStepForward');
 const btnStepBack = document.getElementById('btnStepBack');
+const btnTogglePlane = document.getElementById('btnTogglePlane');
+const phaseContainer = document.getElementById('phaseContainer');
+const dashboardContainer = document.getElementById('dashboardContainer');
 
 const STEP_SEC = 0.0166;
 const playbackRates = [1.0, 0.5, 0.25];
@@ -211,26 +207,33 @@ let currentRateIdx = 0;
 let isProcessing = false;
 let animationFrameId = null;
 
-let pxPerCm = null;
+// 観察面モード: 'sagittal' (矢状面/横) または 'frontal' (前額面/正面)
+let currentPlane = 'sagittal';
+
+// 面ごとの個別データ保持
+const planeData = {
+    sagittal: {
+        pxPerCm: null, scalePoints: [], manualReleasePoint: null, manualGroundYNorm: null,
+        phases: { fc: null, ff: null, mer: null },
+        maxRecordedXFactor: 0, leadLegSide: null, brKneeAngle: null
+    },
+    frontal: {
+        pxPerCm: null, scalePoints: [], manualReleasePoint: null, manualGroundYNorm: null,
+        phases: { pk: null, fc: null, br: null },
+        shoulderElbowAngle: null, trunkTiltFrontal: null, stepWidthPx: null, pelvisObliquity: null
+    }
+};
+
 let isZoomMode = false;
 let isScaleMode = false;
 let isReleaseMode = false;
-let scalePoints = [];
 let draggingScaleIdx = -1;
-
-let manualReleasePoint = null; 
-let manualGroundYNorm = null;
 let isDraggingRelease = false;
 let isDraggingGround = false;
 
 let zoomScale = 1.0;
 let panOffsetX = 0, panOffsetY = 0;
-
-const phases = { fc: null, ff: null, mer: null };
-let maxRecordedXFactor = 0;
 let latestLandmarks = null;
-let leadLegSide = null;
-let brKneeAngle = null;
 
 let mediaRecorder = null;
 let recordedChunks = [];
@@ -241,6 +244,71 @@ const recCtx = recCanvas.getContext('2d');
 const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
 pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
 pose.onResults(onResults);
+
+// UIの初期構築
+function buildUI() {
+    if (currentPlane === 'sagittal') {
+        btnTogglePlane.innerText = '🔄 観察面: 矢状面(横)';
+        btnTogglePlane.style.background = '#af52de';
+        phaseContainer.innerHTML = `
+            <button class="phase-btn" id="btnFC" onclick="markPhase('fc')">① FC (接地)</button>
+            <button class="phase-btn" id="btnFF" onclick="markPhase('ff')">② FF (完全接地)</button>
+            <button class="phase-btn" id="btnMER" onclick="markPhase('mer')">③ MER (最大外旋)</button>
+        `;
+        dashboardContainer.innerHTML = `
+            <div class="side-box kinematics">
+                <div class="side-title" style="color:#00ffcc;">🎯 投球キネマティクス (横)</div>
+                <div class="metric-row"><span>FC足移動幅(歩幅):</span><span id="res_stride" class="metric-val highlight-val">--- cm</span></div>
+                <div class="metric-row"><span>MER 肘屈曲角度:</span><span id="res_mer_elbow" class="metric-val" style="color:#ffd60a;">---°</span></div>
+                <div class="metric-row"><span>最大 捻転差:</span><span id="res_max_xfactor" class="metric-val">0.0°</span></div>
+            </div>
+            <div class="side-box kinetics">
+                <div class="side-title" style="color:#ff9500;">⚡ 下半身ブロック ＆ リリース</div>
+                <div class="metric-row"><span>FF 前足膝角度:</span><span id="res_ff_knee" class="metric-val" style="color:#5e5ce6;">---°</span></div>
+                <div class="metric-row"><span>BR 前足膝角度:</span><span id="res_br_knee" class="metric-val" style="color:#ff375f;">---°</span></div>
+                <div class="metric-row"><span>リリース地上高:</span><span id="res_release_h" class="metric-val" style="color:#30d158;">--- cm</span></div>
+            </div>
+        `;
+        mainResult.innerText = "投手バイオメカニクス解析 (矢状面/横)";
+    } else {
+        btnTogglePlane.innerText = '🔄 観察面: 前額面(正面)';
+        btnTogglePlane.style.background = '#007aff';
+        phaseContainer.innerHTML = `
+            <button class="phase-btn" id="btnPK" onclick="markPhase('pk')">① PK (足上げ頂点)</button>
+            <button class="phase-btn" id="btnFC" onclick="markPhase('fc')">② FC (接地時)</button>
+            <button class="phase-btn" id="btnBR" onclick="markPhase('br')">③ BR (リリース時)</button>
+        `;
+        dashboardContainer.innerHTML = `
+            <div class="side-box kinematics">
+                <div class="side-title" style="color:#00ffcc;">🎯 アライメント (正面)</div>
+                <div class="metric-row"><span>FC ステップ幅:</span><span id="res_step_width" class="metric-val highlight-val">--- cm</span></div>
+                <div class="metric-row"><span>FC 骨盤水平傾斜:</span><span id="res_pelvis_tilt" class="metric-val" style="color:#ffd60a;">---°</span></div>
+                <div class="metric-row"><span>BR 体幹側屈角度:</span><span id="res_trunk_lateral" class="metric-val">---°</span></div>
+            </div>
+            <div class="side-box kinetics">
+                <div class="side-title" style="color:#ff9500;">⚡ 腕のアライメント ＆ リリース</div>
+                <div class="metric-row"><span>BR 肘高(肩-肘線):</span><span id="res_shoulder_elbow" class="metric-val" style="color:#ff375f;">---°</span></div>
+                <div class="metric-row"><span>リリース地上高:</span><span id="res_release_h" class="metric-val" style="color:#30d158;">--- cm</span></div>
+                <div class="metric-row"><span>PK 軸足傾斜:</span><span id="res_pk_tilt" class="metric-val" style="color:#30d158;">---°</span></div>
+            </div>
+        `;
+        mainResult.innerText = "投手バイオメカニクス解析 (前額面/正面)";
+    }
+    updateScaleInfo();
+    updatePhaseBtnStyles();
+    recalcPitchMetrics();
+    redrawOverlay();
+}
+
+function togglePlaneMode() {
+    currentPlane = (currentPlane === 'sagittal') ? 'frontal' : 'sagittal';
+    buildUI();
+}
+
+function updateScaleInfo() {
+    const cur = planeData[currentPlane];
+    document.getElementById('scale-info-text').innerText = cur.pxPerCm ? `物差し: ${(cur.pxPerCm).toFixed(1)}px/cm` : "物差し: 未設定";
+}
 
 function getVideoRenderBox() {
     const cWidth = outputCanvas.width, cHeight = outputCanvas.height;
@@ -285,11 +353,9 @@ function toggleZoomMode() {
         isScaleMode = isReleaseMode = false;
         controls.style.display = 'flex';
         mainResult.innerText = "🔍 ズームモード: ピンチ / ドラッグで画面操作";
-        subResult.innerText = "※拡大表示したまま物差しの設定やリリース点を打てます";
     } else {
         controls.style.display = 'none';
-        mainResult.innerText = "投手バイオメカニクス解析";
-        subResult.innerText = "「📏 物差し設定」後、FC・FF・MER・リリース点を記録してください";
+        buildUI();
     }
     updateButtons();
     redrawOverlay();
@@ -303,22 +369,22 @@ function toggleScaleMode() {
         mainResult.innerText = "📏 物差し: 基準の2点をタップ（ドラッグで微調整）";
         subResult.innerText = "位置確定後、右上の「長さ確定」ボタンを押してください";
     } else {
-        mainResult.innerText = "投手バイオメカニクス解析";
-        subResult.innerText = "「📏 物差し設定」後、FC・FF・MER・リリース点を記録してください";
+        buildUI();
     }
     updateButtons();
     redrawOverlay();
 }
 
 function toggleReleaseMode() {
+    const cur = planeData[currentPlane];
     if (isReleaseMode) {
-        // すでにONの状態で押された場合はリリース点をリセット
-        manualReleasePoint = null;
-        manualGroundYNorm = null;
-        brKneeAngle = null;
+        cur.manualReleasePoint = null;
+        cur.manualGroundYNorm = null;
+        cur.brKneeAngle = null;
+        cur.shoulderElbowAngle = null;
+        cur.trunkTiltFrontal = null;
         isReleaseMode = false;
         mainResult.innerText = "⚾️ リリース点を解除しました";
-        subResult.innerText = "再度タップして設定してください";
     } else {
         isReleaseMode = true;
         isZoomMode = isScaleMode = false;
@@ -332,10 +398,11 @@ function toggleReleaseMode() {
 }
 
 function updateButtons() {
+    const cur = planeData[currentPlane];
     document.getElementById('btnModeZoom').classList.toggle('mode-active', isZoomMode);
     document.getElementById('btnModeScale').classList.toggle('mode-active', isScaleMode);
     document.getElementById('btnModeRelease').classList.toggle('mode-active', isReleaseMode);
-    btnConfirmScale.style.display = (isScaleMode && scalePoints.length === 2) ? 'inline-block' : 'none';
+    btnConfirmScale.style.display = (isScaleMode && cur.scalePoints.length === 2) ? 'inline-block' : 'none';
 }
 
 function applyZoom() { 
@@ -410,8 +477,9 @@ function calcCurrentLeadKneeAngle(lm, box) {
     const hipL = lm[23], hipR = lm[24], kneeL = lm[25], kneeR = lm[26], ankL = lm[27], ankR = lm[28];
     if (!hipL || !hipR || !kneeL || !kneeR || !ankL || !ankR) return null;
 
-    let useLeft = (leadLegSide === 'left');
-    if (!leadLegSide) {
+    const cur = planeData[currentPlane];
+    let useLeft = (cur.leadLegSide === 'left');
+    if (!cur.leadLegSide) {
         useLeft = ankL.y > ankR.y || Math.abs(ankL.x - (hipL.x + hipR.x)/2) > Math.abs(ankR.x - (hipL.x + hipR.x)/2);
     }
     const leadHip = useLeft ? toPx(hipL) : toPx(hipR);
@@ -423,11 +491,12 @@ function calcCurrentLeadKneeAngle(lm, box) {
 interactionCanvas.addEventListener('pointerdown', (e) => {
     const pt = getCanvasPoint(e);
     const box = getVideoRenderBox();
+    const cur = planeData[currentPlane];
 
-    if (isReleaseMode || manualReleasePoint) {
-        if (manualReleasePoint && manualGroundYNorm !== null) {
-            const curRelPx = { x: box.x + manualReleasePoint.x * box.w, y: box.y + manualReleasePoint.y * box.h };
-            const curGndPxY = box.y + manualGroundYNorm * box.h;
+    if (isReleaseMode || cur.manualReleasePoint) {
+        if (cur.manualReleasePoint && cur.manualGroundYNorm !== null) {
+            const curRelPx = { x: box.x + cur.manualReleasePoint.x * box.w, y: box.y + cur.manualReleasePoint.y * box.h };
+            const curGndPxY = box.y + cur.manualGroundYNorm * box.h;
 
             if (Math.hypot(curRelPx.x - pt.x, curRelPx.y - pt.y) * zoomScale < 30) {
                 isDraggingRelease = true;
@@ -441,15 +510,36 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
             }
         }
         if (isReleaseMode) {
-            manualReleasePoint = {
+            cur.manualReleasePoint = {
                 x: Math.max(0, Math.min(1.0, (pt.x - box.x) / box.w)),
                 y: Math.max(0, Math.min(1.0, (pt.y - box.y) / box.h))
             };
-            manualGroundYNorm = (phases.fc && phases.fc.groundYNorm) ? phases.fc.groundYNorm : 1.0;
+            cur.manualGroundYNorm = (cur.phases.fc && cur.phases.fc.groundYNorm) ? cur.phases.fc.groundYNorm : 1.0;
             isDraggingRelease = true;
             try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
 
-            brKneeAngle = calcCurrentLeadKneeAngle(latestLandmarks, box);
+            if (currentPlane === 'sagittal') {
+                cur.brKneeAngle = calcCurrentLeadKneeAngle(latestLandmarks, box);
+            } else {
+                // 正面でのBR時体幹側屈・肘高さ
+                if (latestLandmarks) {
+                    const lm = latestLandmarks;
+                    const shL = lm[11], shR = lm[12], elR = lm[14], hipL = lm[23], hipR = lm[24];
+                    if (shL && shR && hipL && hipR) {
+                        const midSh = { x: (shL.x + shR.x) / 2, y: (shL.y + shR.y) / 2 };
+                        const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
+                        const spineAngle = Math.atan2(midSh.x - midHip.x, -(midSh.y - midHip.y)) * (180 / Math.PI);
+                        cur.trunkTiltFrontal = Math.abs(spineAngle);
+                    }
+                    if (shL && shR && elR) {
+                        const shVec = { x: shR.x - shL.x, y: shR.y - shL.y };
+                        const armVec = { x: elR.x - shR.x, y: elR.y - shR.y };
+                        const dot = shVec.x * armVec.x + shVec.y * armVec.y;
+                        const mag = Math.hypot(shVec.x, shVec.y) * Math.hypot(armVec.x, armVec.y);
+                        if (mag > 0) cur.shoulderElbowAngle = Math.acos(Math.max(-1, Math.min(1, dot / mag))) * (180 / Math.PI);
+                    }
+                }
+            }
 
             recalcPitchMetrics();
             redrawOverlay();
@@ -459,8 +549,8 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
 
     if (isScaleMode) {
         let hitIndex = -1;
-        for (let i = 0; i < scalePoints.length; i++) {
-            if (Math.hypot(scalePoints[i].x - pt.x, scalePoints[i].y - pt.y) * zoomScale < 15) {
+        for (let i = 0; i < cur.scalePoints.length; i++) {
+            if (Math.hypot(cur.scalePoints[i].x - pt.x, cur.scalePoints[i].y - pt.y) * zoomScale < 15) {
                 hitIndex = i;
                 break;
             }
@@ -470,10 +560,10 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
             draggingScaleIdx = hitIndex;
             try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
         } else {
-            if (scalePoints.length < 2) {
-                scalePoints.push(pt);
+            if (cur.scalePoints.length < 2) {
+                cur.scalePoints.push(pt);
             } else {
-                scalePoints = [pt];
+                cur.scalePoints = [pt];
             }
             updateButtons();
             redrawOverlay();
@@ -484,9 +574,10 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
 interactionCanvas.addEventListener('pointermove', (e) => {
     const pt = getCanvasPoint(e);
     const box = getVideoRenderBox();
+    const cur = planeData[currentPlane];
 
-    if (isDraggingRelease && manualReleasePoint) {
-        manualReleasePoint = {
+    if (isDraggingRelease && cur.manualReleasePoint) {
+        cur.manualReleasePoint = {
             x: Math.max(0, Math.min(1.0, (pt.x - box.x) / box.w)),
             y: Math.max(0, Math.min(1.0, (pt.y - box.y) / box.h))
         };
@@ -495,15 +586,15 @@ interactionCanvas.addEventListener('pointermove', (e) => {
         return;
     }
 
-    if (isDraggingGround && manualGroundYNorm !== null) {
-        manualGroundYNorm = Math.max(0, Math.min(1.0, (pt.y - box.y) / box.h));
+    if (isDraggingGround && cur.manualGroundYNorm !== null) {
+        cur.manualGroundYNorm = Math.max(0, Math.min(1.0, (pt.y - box.y) / box.h));
         recalcPitchMetrics();
         redrawOverlay();
         return;
     }
 
     if (isScaleMode && draggingScaleIdx !== -1) {
-        scalePoints[draggingScaleIdx] = pt;
+        cur.scalePoints[draggingScaleIdx] = pt;
         redrawOverlay();
     }
 });
@@ -525,7 +616,8 @@ interactionCanvas.addEventListener('pointerup', (e) => {
 });
 
 function openScaleModal() {
-    if (scalePoints.length !== 2) return;
+    const cur = planeData[currentPlane];
+    if (cur.scalePoints.length !== 2) return;
     document.getElementById('scale-modal-overlay').style.display = 'flex';
     document.getElementById('scale-input-value').focus();
 }
@@ -534,20 +626,20 @@ function closeScaleModal() {
 }
 
 function submitScaleModal() {
+    const cur = planeData[currentPlane];
     const realCm = parseFloat(document.getElementById('scale-input-value').value);
-    if (realCm && realCm > 0 && scalePoints.length === 2) {
+    if (realCm && realCm > 0 && cur.scalePoints.length === 2) {
         const box = getVideoRenderBox();
-        const normP1 = { x: (scalePoints[0].x - box.x) / box.w, y: (scalePoints[0].y - box.y) / box.h };
-        const normP2 = { x: (scalePoints[1].x - box.x) / box.w, y: (scalePoints[1].y - box.y) / box.h };
+        const normP1 = { x: (cur.scalePoints[0].x - box.x) / box.w, y: (cur.scalePoints[0].y - box.y) / box.h };
+        const normP2 = { x: (cur.scalePoints[1].x - box.x) / box.w, y: (cur.scalePoints[1].y - box.y) / box.h };
         const distPx = Math.hypot((normP2.x - normP1.x) * box.w, (normP2.y - normP1.y) * box.h);
         
-        pxPerCm = distPx / realCm;
-        document.getElementById('scale-info-text').innerText = `物差し: ${(pxPerCm).toFixed(1)}px/cm`;
+        cur.pxPerCm = distPx / realCm;
+        updateScaleInfo();
         closeScaleModal(); 
         isScaleMode = false;
         updateButtons();
         mainResult.innerHTML = "<span style='color:#30d158;'>✅ 物差し設定完了</span>";
-        subResult.innerText = "投球キーフェーズ（FC・FF・MER・リリース点）を記録してください";
         recalcPitchMetrics();
         redrawOverlay();
     } else {
@@ -558,15 +650,17 @@ function submitScaleModal() {
 function redrawOverlay() {
     intCtx.clearRect(0, 0, interactionCanvas.width, interactionCanvas.height);
     const box = getVideoRenderBox();
+    const cur = planeData[currentPlane];
 
-    if (scalePoints.length > 0) {
+    // 1. 物差し点
+    if (cur.scalePoints.length > 0) {
         intCtx.save();
         if (isScaleMode) {
             intCtx.fillStyle = '#ff9500'; 
             intCtx.strokeStyle = '#ff9500';
             intCtx.lineWidth = Math.max(1, 3 / zoomScale); 
             
-            scalePoints.forEach((pt, i) => {
+            cur.scalePoints.forEach((pt, i) => {
                 intCtx.beginPath(); 
                 intCtx.arc(pt.x, pt.y, 8 / zoomScale, 0, Math.PI * 2); 
                 intCtx.fill();
@@ -576,10 +670,10 @@ function redrawOverlay() {
                 intCtx.fillStyle = '#ff9500';
             });
 
-            if (scalePoints.length === 2) {
+            if (cur.scalePoints.length === 2) {
                 intCtx.beginPath(); 
-                intCtx.moveTo(scalePoints[0].x, scalePoints[0].y); 
-                intCtx.lineTo(scalePoints[1].x, scalePoints[1].y); 
+                intCtx.moveTo(cur.scalePoints[0].x, cur.scalePoints[0].y); 
+                intCtx.lineTo(cur.scalePoints[1].x, cur.scalePoints[1].y); 
                 intCtx.stroke();
             }
         } else {
@@ -588,26 +682,27 @@ function redrawOverlay() {
             intCtx.lineWidth = Math.max(1, 1.5 / zoomScale);
             intCtx.setLineDash([4 / zoomScale, 4 / zoomScale]);
             
-            scalePoints.forEach(pt => {
+            cur.scalePoints.forEach(pt => {
                 intCtx.beginPath();
                 intCtx.arc(pt.x, pt.y, 4 / zoomScale, 0, Math.PI * 2);
                 intCtx.fill();
             });
 
-            if (scalePoints.length === 2) {
+            if (cur.scalePoints.length === 2) {
                 intCtx.beginPath(); 
-                intCtx.moveTo(scalePoints[0].x, scalePoints[0].y); 
-                intCtx.lineTo(scalePoints[1].x, scalePoints[1].y); 
+                intCtx.moveTo(cur.scalePoints[0].x, cur.scalePoints[0].y); 
+                intCtx.lineTo(cur.scalePoints[1].x, cur.scalePoints[1].y); 
                 intCtx.stroke();
             }
         }
         intCtx.restore();
     }
 
-    if (manualReleasePoint && manualGroundYNorm !== null) {
-        const rx = box.x + manualReleasePoint.x * box.w;
-        const ry = box.y + manualReleasePoint.y * box.h;
-        const groundY = box.y + manualGroundYNorm * box.h;
+    // 2. リリース点 ＆ 地面ドラッグライン
+    if (cur.manualReleasePoint && cur.manualGroundYNorm !== null) {
+        const rx = box.x + cur.manualReleasePoint.x * box.w;
+        const ry = box.y + cur.manualReleasePoint.y * box.h;
+        const groundY = box.y + cur.manualGroundYNorm * box.h;
 
         intCtx.save();
         intCtx.strokeStyle = '#30d158'; 
@@ -623,7 +718,7 @@ function redrawOverlay() {
         intCtx.beginPath(); intCtx.arc(rx, ry, 9 / zoomScale, 0, Math.PI * 2); intCtx.stroke();
         intCtx.beginPath(); intCtx.arc(rx, ry, 3.5 / zoomScale, 0, Math.PI * 2); intCtx.fill();
 
-        const heightCm = pxPerCm ? ((groundY - ry) / pxPerCm).toFixed(1) : null;
+        const heightCm = cur.pxPerCm ? ((groundY - ry) / cur.pxPerCm).toFixed(1) : null;
         intCtx.fillStyle = '#fff'; 
         intCtx.font = `bold ${Math.max(9, 12 / zoomScale)}px sans-serif`;
         intCtx.fillText(`⚾️ リリース高: ${heightCm ? heightCm + 'cm' : '物差し未設定'}`, rx + (12 / zoomScale), ry - (6 / zoomScale));
@@ -632,9 +727,16 @@ function redrawOverlay() {
 }
 
 function updatePhaseBtnStyles() {
-    document.getElementById('btnFC').className = `phase-btn ${phases.fc ? 'active-fc' : ''}`;
-    document.getElementById('btnFF').className = `phase-btn ${phases.ff ? 'active-ff' : ''}`;
-    document.getElementById('btnMER').className = `phase-btn ${phases.mer ? 'active-mer' : ''}`;
+    const cur = planeData[currentPlane];
+    if (currentPlane === 'sagittal') {
+        document.getElementById('btnFC').className = `phase-btn ${cur.phases.fc ? 'active-fc' : ''}`;
+        document.getElementById('btnFF').className = `phase-btn ${cur.phases.ff ? 'active-ff' : ''}`;
+        document.getElementById('btnMER').className = `phase-btn ${cur.phases.mer ? 'active-mer' : ''}`;
+    } else {
+        document.getElementById('btnPK').className = `phase-btn ${cur.phases.pk ? 'active-pk' : ''}`;
+        document.getElementById('btnFC').className = `phase-btn ${cur.phases.fc ? 'active-fc' : ''}`;
+        document.getElementById('btnBR').className = `phase-btn ${cur.phases.br ? 'active-br' : ''}`;
+    }
 }
 
 function calcAngle(p1, p2, p3) {
@@ -662,19 +764,23 @@ function drawPitchingBiomechanics(lm) {
 
     const box = getVideoRenderBox();
     const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
+    const cur = planeData[currentPlane];
 
     const shL = lm[11], shR = lm[12], hipL = lm[23], hipR = lm[24];
 
     if (shL && shR && hipL && hipR) {
         const pShL = toPx(shL), pShR = toPx(shR), pHipL = toPx(hipL), pHipR = toPx(hipR);
 
-        const shAngle = Math.atan2((shR.z || 0) - (shL.z || 0), (shR.x - shL.x)) * (180 / Math.PI);
-        const hipAngle = Math.atan2((hipR.z || 0) - (hipL.z || 0), (hipR.x - hipL.x)) * (180 / Math.PI);
-        let xFactor = Math.abs(shAngle - hipAngle);
-        if (xFactor > 90) xFactor = 180 - xFactor;
-        if (xFactor > maxRecordedXFactor && !video.paused) {
-            maxRecordedXFactor = xFactor;
-            document.getElementById('res_max_xfactor').innerText = `${maxRecordedXFactor.toFixed(1)}°`;
+        if (currentPlane === 'sagittal') {
+            const shAngle = Math.atan2((shR.z || 0) - (shL.z || 0), (shR.x - shL.x)) * (180 / Math.PI);
+            const hipAngle = Math.atan2((hipR.z || 0) - (hipL.z || 0), (hipR.x - hipL.x)) * (180 / Math.PI);
+            let xFactor = Math.abs(shAngle - hipAngle);
+            if (xFactor > 90) xFactor = 180 - xFactor;
+            if (xFactor > cur.maxRecordedXFactor && !video.paused) {
+                cur.maxRecordedXFactor = xFactor;
+                const elem = document.getElementById('res_max_xfactor');
+                if (elem) elem.innerText = `${cur.maxRecordedXFactor.toFixed(1)}°`;
+            }
         }
 
         outCtx.strokeStyle = '#00ffcc'; outCtx.beginPath(); outCtx.moveTo(pShL.x, pShL.y); outCtx.lineTo(pShR.x, pShR.y); outCtx.stroke();
@@ -695,16 +801,20 @@ function drawPitchingBiomechanics(lm) {
     outCtx.restore();
 }
 
-// フェーズ記録＆解除（トグル機能）
+// フェーズ記録＆トグル解除
 function markPhase(key) {
-    const names = { fc: "① 接地(FC)", ff: "② 完全接地(FF)", mer: "③ 最大外旋(MER)" };
+    const cur = planeData[currentPlane];
+    const names = {
+        fc: currentPlane === 'sagittal' ? "① 接地(FC)" : "② 接地時(FC)",
+        ff: "② 完全接地(FF)",
+        mer: "③ 最大外旋(MER)",
+        pk: "① 足上げ頂点(PK)",
+        br: "③ リリース時(BR)"
+    };
 
-    // すでに記録済みのフェーズを再度押した場合は「解除」
-    if (phases[key]) {
-        phases[key] = null;
-        if (key === 'fc') {
-            leadLegSide = null;
-        }
+    if (cur.phases[key]) {
+        cur.phases[key] = null;
+        if (key === 'fc') cur.leadLegSide = null;
         updatePhaseBtnStyles();
         recalcPitchMetrics();
         redrawOverlay();
@@ -717,106 +827,144 @@ function markPhase(key) {
     const lm = latestLandmarks;
     const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
 
-    phases[key] = { time: video.currentTime };
+    cur.phases[key] = { time: video.currentTime };
 
-    if (key === 'fc') {
-        const ankL = lm[27], ankR = lm[28], heelL = lm[29], heelR = lm[30];
-        const p1 = (ankL && ankL.visibility > 0.3) ? ankL : heelL;
-        const p2 = (ankR && ankR.visibility > 0.3) ? ankR : heelR;
-        if (p1 && p2) {
-            const px1 = toPx(p1);
-            const px2 = toPx(p2);
-            phases.fc.stridePx = Math.hypot(px1.x - px2.x, px1.y - px2.y);
-            phases.fc.groundYNorm = Math.max(p1.y, p2.y);
-            if (manualGroundYNorm === null) manualGroundYNorm = phases.fc.groundYNorm;
+    if (currentPlane === 'sagittal') {
+        if (key === 'fc') {
+            const ankL = lm[27], ankR = lm[28], heelL = lm[29], heelR = lm[30];
+            const p1 = (ankL && ankL.visibility > 0.3) ? ankL : heelL;
+            const p2 = (ankR && ankR.visibility > 0.3) ? ankR : heelR;
+            if (p1 && p2) {
+                const px1 = toPx(p1), px2 = toPx(p2);
+                cur.phases.fc.stridePx = Math.hypot(px1.x - px2.x, px1.y - px2.y);
+                cur.phases.fc.groundYNorm = Math.max(p1.y, p2.y);
+                if (cur.manualGroundYNorm === null) cur.manualGroundYNorm = cur.phases.fc.groundYNorm;
+            }
+            const hipL = lm[23], hipR = lm[24];
+            if (hipL && hipR && ankL && ankR) {
+                cur.leadLegSide = (ankL.y > ankR.y || Math.abs(ankL.x - (hipL.x + hipR.x)/2) > Math.abs(ankR.x - (hipL.x + hipR.x)/2)) ? 'left' : 'right';
+            }
         }
-
-        const hipL = lm[23], hipR = lm[24];
-        if (hipL && hipR && ankL && ankR) {
-            const isLeftLead = ankL.y > ankR.y || Math.abs(ankL.x - (hipL.x + hipR.x)/2) > Math.abs(ankR.x - (hipL.x + hipR.x)/2);
-            leadLegSide = isLeftLead ? 'left' : 'right';
+        if (key === 'ff') cur.phases.ff.kneeAngle = calcCurrentLeadKneeAngle(lm, box);
+        if (key === 'mer') {
+            const shR = lm[12], elR = lm[14], wrR = lm[16];
+            if (shR && elR && wrR) cur.phases.mer.elbowAngle = calcAngle(toPx(shR), toPx(elR), toPx(wrR));
         }
-    }
-    if (key === 'ff') {
-        phases.ff.kneeAngle = calcCurrentLeadKneeAngle(lm, box);
-    }
-    if (key === 'mer') {
-        const shR = lm[12], elR = lm[14], wrR = lm[16];
-        if (shR && elR && wrR) {
-            phases.mer.elbowAngle = calcAngle(toPx(shR), toPx(elR), toPx(wrR));
+    } else {
+        // 前額面（正面）の計算
+        if (key === 'pk') {
+            // 軸足の傾き
+            const hipR = lm[24], ankR = lm[28];
+            if (hipR && ankR) {
+                const tilt = Math.atan2(hipR.x - ankR.x, -(hipR.y - ankR.y)) * (180 / Math.PI);
+                cur.phases.pk.tilt = Math.abs(tilt);
+            }
+        }
+        if (key === 'fc') {
+            // ステップ幅（左右の足の横ズレ） ＆ 骨盤の傾斜
+            const ankL = lm[27], ankR = lm[28], hipL = lm[23], hipR = lm[24];
+            if (ankL && ankR) {
+                const px1 = toPx(ankL), px2 = toPx(ankR);
+                cur.stepWidthPx = Math.abs(px1.x - px2.x);
+                cur.phases.fc.groundYNorm = Math.max(ankL.y, ankR.y);
+                if (cur.manualGroundYNorm === null) cur.manualGroundYNorm = cur.phases.fc.groundYNorm;
+            }
+            if (hipL && hipR) {
+                const p1 = toPx(hipL), p2 = toPx(hipR);
+                const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
+                cur.pelvisObliquity = Math.abs(angle);
+            }
+        }
+        if (key === 'br') {
+            const shL = lm[11], shR = lm[12], elR = lm[14], hipL = lm[23], hipR = lm[24];
+            if (shL && shR && hipL && hipR) {
+                const midSh = { x: (shL.x + shR.x) / 2, y: (shL.y + shR.y) / 2 };
+                const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
+                const spineAngle = Math.atan2(midSh.x - midHip.x, -(midSh.y - midHip.y)) * (180 / Math.PI);
+                cur.trunkTiltFrontal = Math.abs(spineAngle);
+            }
+            if (shL && shR && elR) {
+                const shVec = { x: shR.x - shL.x, y: shR.y - shL.y };
+                const armVec = { x: elR.x - shR.x, y: elR.y - shR.y };
+                const dot = shVec.x * armVec.x + shVec.y * armVec.y;
+                const mag = Math.hypot(shVec.x, shVec.y) * Math.hypot(armVec.x, armVec.y);
+                if (mag > 0) cur.shoulderElbowAngle = Math.acos(Math.max(-1, Math.min(1, dot / mag))) * (180 / Math.PI);
+            }
         }
     }
 
     updatePhaseBtnStyles();
     recalcPitchMetrics();
     redrawOverlay();
-
     mainResult.innerHTML = `<span style='color:#00ffcc;'>${names[key]} を記録しました</span>`;
 }
 
 function recalcPitchMetrics() {
     const box = getVideoRenderBox();
+    const cur = planeData[currentPlane];
     
-    // 1. FC 足移動幅
-    if (phases.fc && phases.fc.stridePx && pxPerCm) {
-        document.getElementById('res_stride').innerText = `${(phases.fc.stridePx / pxPerCm).toFixed(1)} cm`;
+    if (currentPlane === 'sagittal') {
+        const resStride = document.getElementById('res_stride');
+        if (resStride) resStride.innerText = (cur.phases.fc && cur.phases.fc.stridePx && cur.pxPerCm) ? `${(cur.phases.fc.stridePx / cur.pxPerCm).toFixed(1)} cm` : "--- cm";
+
+        const resMer = document.getElementById('res_mer_elbow');
+        if (resMer) resMer.innerText = (cur.phases.mer && cur.phases.mer.elbowAngle) ? `${cur.phases.mer.elbowAngle.toFixed(1)}°` : "---°";
+
+        const resFFKnee = document.getElementById('res_ff_knee');
+        if (resFFKnee) resFFKnee.innerText = (cur.phases.ff && cur.phases.ff.kneeAngle) ? `${cur.phases.ff.kneeAngle.toFixed(1)}°` : "---°";
+
+        const resBRKnee = document.getElementById('res_br_knee');
+        if (resBRKnee) resBRKnee.innerText = (cur.brKneeAngle !== null) ? `${cur.brKneeAngle.toFixed(1)}°` : "---°";
     } else {
-        document.getElementById('res_stride').innerText = "--- cm";
+        const resStep = document.getElementById('res_step_width');
+        if (resStep) resStep.innerText = (cur.stepWidthPx && cur.pxPerCm) ? `${(cur.stepWidthPx / cur.pxPerCm).toFixed(1)} cm` : "--- cm";
+
+        const resPelvis = document.getElementById('res_pelvis_tilt');
+        if (resPelvis) resPelvis.innerText = (cur.pelvisObliquity !== null) ? `${cur.pelvisObliquity.toFixed(1)}°` : "---°";
+
+        const resTrunk = document.getElementById('res_trunk_lateral');
+        if (resTrunk) resTrunk.innerText = (cur.trunkTiltFrontal !== null) ? `${cur.trunkTiltFrontal.toFixed(1)}°` : "---°";
+
+        const resShEl = document.getElementById('res_shoulder_elbow');
+        if (resShEl) resShEl.innerText = (cur.shoulderElbowAngle !== null) ? `${cur.shoulderElbowAngle.toFixed(1)}°` : "---°";
+
+        const resPK = document.getElementById('res_pk_tilt');
+        if (resPK) resPK.innerText = (cur.phases.pk && cur.phases.pk.tilt !== undefined) ? `${cur.phases.pk.tilt.toFixed(1)}°` : "---°";
     }
 
-    // 2. MER 肘角度
-    if (phases.mer && phases.mer.elbowAngle) {
-        document.getElementById('res_mer_elbow').innerText = `${phases.mer.elbowAngle.toFixed(1)}°`;
-    } else {
-        document.getElementById('res_mer_elbow').innerText = "---°";
-    }
-
-    // 3. FF 前足膝角度
-    if (phases.ff && phases.ff.kneeAngle) {
-        document.getElementById('res_ff_knee').innerText = `${phases.ff.kneeAngle.toFixed(1)}°`;
-    } else {
-        document.getElementById('res_ff_knee').innerText = "---°";
-    }
-
-    // 4. BR 前足膝角度
-    if (brKneeAngle !== null) {
-        document.getElementById('res_br_knee').innerText = `${brKneeAngle.toFixed(1)}°`;
-    } else {
-        document.getElementById('res_br_knee').innerText = "---°";
-    }
-
-    // 5. リリース地上高
-    if (manualReleasePoint && manualGroundYNorm !== null && pxPerCm) {
-        const wristY = box.y + manualReleasePoint.y * box.h;
-        const groundY = box.y + manualGroundYNorm * box.h;
-        const releaseHCm = (groundY - wristY) / pxPerCm;
-        document.getElementById('res_release_h').innerText = `${Math.max(0, releaseHCm).toFixed(1)} cm`;
-    } else {
-        document.getElementById('res_release_h').innerText = "--- cm";
+    const resRelH = document.getElementById('res_release_h');
+    if (resRelH) {
+        if (cur.manualReleasePoint && cur.manualGroundYNorm !== null && cur.pxPerCm) {
+            const wristY = box.y + cur.manualReleasePoint.y * box.h;
+            const groundY = box.y + cur.manualGroundYNorm * box.h;
+            resRelH.innerText = `${Math.max(0, (groundY - wristY) / cur.pxPerCm).toFixed(1)} cm`;
+        } else {
+            resRelH.innerText = "--- cm";
+        }
     }
 }
 
 function clearAllData() {
-    phases.fc = phases.ff = phases.mer = null;
-    manualReleasePoint = null;
-    manualGroundYNorm = null;
-    maxRecordedXFactor = 0;
-    leadLegSide = null;
-    brKneeAngle = null;
-    scalePoints = [];
-    pxPerCm = null;
-    document.getElementById('scale-info-text').innerText = "物差し: 未設定";
-    document.getElementById('res_max_xfactor').innerText = "0.0°";
-    document.getElementById('res_stride').innerText = "--- cm";
-    document.getElementById('res_mer_elbow').innerText = "---°";
-    document.getElementById('res_ff_knee').innerText = "---°";
-    document.getElementById('res_br_knee').innerText = "---°";
-    document.getElementById('res_release_h').innerText = "--- cm";
-    updatePhaseBtnStyles();
-    updateButtons();
-    redrawOverlay();
-    mainResult.innerText = "データを消去しました";
-    subResult.innerText = "再度「📏 物差し設定」から測定を行ってください";
+    const cur = planeData[currentPlane];
+    if (currentPlane === 'sagittal') {
+        cur.phases = { fc: null, ff: null, mer: null };
+        cur.maxRecordedXFactor = 0;
+        cur.leadLegSide = null;
+        cur.brKneeAngle = null;
+    } else {
+        cur.phases = { pk: null, fc: null, br: null };
+        cur.shoulderElbowAngle = null;
+        cur.trunkTiltFrontal = null;
+        cur.stepWidthPx = null;
+        cur.pelvisObliquity = null;
+    }
+    cur.manualReleasePoint = null;
+    cur.manualGroundYNorm = null;
+    cur.scalePoints = [];
+    cur.pxPerCm = null;
+
+    buildUI();
+    mainResult.innerText = `データを消去しました (${currentPlane === 'sagittal' ? '矢状面' : '前額面'})`;
 }
 
 async function renderCurrentFrame() {
@@ -847,10 +995,10 @@ async function loop() {
         recCtx.fillRect(0, outputCanvas.height, recCanvas.width, 70);
         recCtx.fillStyle = '#00ffcc';
         recCtx.font = 'bold 13px sans-serif';
-        recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText}`, 15, outputCanvas.height + 26);
+        recCtx.fillText(mainResult.innerText, 15, outputCanvas.height + 26);
         recCtx.fillStyle = '#ff9500';
         recCtx.font = 'bold 12px sans-serif';
-        recCtx.fillText(`FF膝角: ${document.getElementById('res_ff_knee').innerText} ｜ BR膝角: ${document.getElementById('res_br_knee').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+        recCtx.fillText(`リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
     }
     animationFrameId = requestAnimationFrame(loop);
 }
@@ -891,9 +1039,9 @@ function captureSnapshot() {
     
     snapCtx.fillStyle = '#1c1c1e'; snapCtx.fillRect(0, outputCanvas.height, snapCanvas.width, 70);
     snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 13px sans-serif';
-    snapCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText}`, 15, outputCanvas.height + 26);
+    snapCtx.fillText(mainResult.innerText, 15, outputCanvas.height + 26);
     snapCtx.fillStyle = '#ff9500'; snapCtx.font = 'bold 12px sans-serif';
-    snapCtx.fillText(`FF膝角: ${document.getElementById('res_ff_knee').innerText} ｜ BR膝角: ${document.getElementById('res_br_knee').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+    snapCtx.fillText(`リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
     
     document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); 
     document.getElementById('snapshot-modal-overlay').style.display = 'flex';
@@ -918,7 +1066,7 @@ function toggleRecording() {
             const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a'); a.style.display = 'none'; a.href = url;
-            a.download = `Pitching_Analysis_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+            a.download = `Pitching_Analysis_${currentPlane}_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
             document.body.appendChild(a); a.click();
             setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
         };
@@ -935,7 +1083,7 @@ function toggleRecording() {
 document.getElementById('inputFile').addEventListener('change', (e) => {
     const file = e.target.files[0]; if (!file) return;
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    video.pause(); resetZoom(); clearAllData();
+    video.pause(); resetZoom();
     video.src = URL.createObjectURL(file); video.load();
     const onCanPlay = () => { 
         video.removeEventListener('canplay', onCanPlay); 
@@ -945,6 +1093,9 @@ document.getElementById('inputFile').addEventListener('change', (e) => {
     video.addEventListener('canplay', onCanPlay); 
     e.target.value = '';
 });
+
+// 起動時にUIを構築
+buildUI();
 </script>
 </body>
 </html>
