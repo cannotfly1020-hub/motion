@@ -311,17 +311,23 @@ function toggleScaleMode() {
 }
 
 function toggleReleaseMode() {
-    isReleaseMode = !isReleaseMode;
     if (isReleaseMode) {
+        // すでにONの状態で押された場合はリリース点をリセット
+        manualReleasePoint = null;
+        manualGroundYNorm = null;
+        brKneeAngle = null;
+        isReleaseMode = false;
+        mainResult.innerText = "⚾️ リリース点を解除しました";
+        subResult.innerText = "再度タップして設定してください";
+    } else {
+        isReleaseMode = true;
         isZoomMode = isScaleMode = false;
         document.getElementById('zoom-controls').style.display = 'none';
         mainResult.innerText = "⚾️ リリース点: ボールを離した瞬間をタップ";
         subResult.innerText = "上の点(リリース)と下の緑の横線(地面)をドラッグして正確な高さを測ります";
-    } else {
-        mainResult.innerText = "投手バイオメカニクス解析";
-        subResult.innerText = "「📏 物差し設定」後、FC・FF・MER・リリース点を記録してください";
     }
     updateButtons();
+    recalcPitchMetrics();
     redrawOverlay();
 }
 
@@ -555,25 +561,45 @@ function redrawOverlay() {
 
     if (scalePoints.length > 0) {
         intCtx.save();
-        intCtx.fillStyle = '#ff9500'; 
-        intCtx.strokeStyle = '#ff9500';
-        intCtx.lineWidth = Math.max(1, 3 / zoomScale); 
-        
-        scalePoints.forEach((pt, i) => {
-            intCtx.beginPath(); 
-            intCtx.arc(pt.x, pt.y, 8 / zoomScale, 0, Math.PI * 2); 
-            intCtx.fill();
-            intCtx.fillStyle = '#fff';
-            intCtx.font = `bold ${Math.max(9, 12 / zoomScale)}px sans-serif`;
-            intCtx.fillText(`点${i + 1}`, pt.x + (10 / zoomScale), pt.y - (6 / zoomScale));
-            intCtx.fillStyle = '#ff9500';
-        });
+        if (isScaleMode) {
+            intCtx.fillStyle = '#ff9500'; 
+            intCtx.strokeStyle = '#ff9500';
+            intCtx.lineWidth = Math.max(1, 3 / zoomScale); 
+            
+            scalePoints.forEach((pt, i) => {
+                intCtx.beginPath(); 
+                intCtx.arc(pt.x, pt.y, 8 / zoomScale, 0, Math.PI * 2); 
+                intCtx.fill();
+                intCtx.fillStyle = '#fff';
+                intCtx.font = `bold ${Math.max(9, 12 / zoomScale)}px sans-serif`;
+                intCtx.fillText(`点${i + 1}`, pt.x + (10 / zoomScale), pt.y - (6 / zoomScale));
+                intCtx.fillStyle = '#ff9500';
+            });
 
-        if (scalePoints.length === 2) {
-            intCtx.beginPath(); 
-            intCtx.moveTo(scalePoints[0].x, scalePoints[0].y); 
-            intCtx.lineTo(scalePoints[1].x, scalePoints[1].y); 
-            intCtx.stroke();
+            if (scalePoints.length === 2) {
+                intCtx.beginPath(); 
+                intCtx.moveTo(scalePoints[0].x, scalePoints[0].y); 
+                intCtx.lineTo(scalePoints[1].x, scalePoints[1].y); 
+                intCtx.stroke();
+            }
+        } else {
+            intCtx.strokeStyle = 'rgba(255, 149, 0, 0.3)';
+            intCtx.fillStyle = 'rgba(255, 149, 0, 0.4)';
+            intCtx.lineWidth = Math.max(1, 1.5 / zoomScale);
+            intCtx.setLineDash([4 / zoomScale, 4 / zoomScale]);
+            
+            scalePoints.forEach(pt => {
+                intCtx.beginPath();
+                intCtx.arc(pt.x, pt.y, 4 / zoomScale, 0, Math.PI * 2);
+                intCtx.fill();
+            });
+
+            if (scalePoints.length === 2) {
+                intCtx.beginPath(); 
+                intCtx.moveTo(scalePoints[0].x, scalePoints[0].y); 
+                intCtx.lineTo(scalePoints[1].x, scalePoints[1].y); 
+                intCtx.stroke();
+            }
         }
         intCtx.restore();
     }
@@ -669,9 +695,24 @@ function drawPitchingBiomechanics(lm) {
     outCtx.restore();
 }
 
+// フェーズ記録＆解除（トグル機能）
 function markPhase(key) {
+    const names = { fc: "① 接地(FC)", ff: "② 完全接地(FF)", mer: "③ 最大外旋(MER)" };
+
+    // すでに記録済みのフェーズを再度押した場合は「解除」
+    if (phases[key]) {
+        phases[key] = null;
+        if (key === 'fc') {
+            leadLegSide = null;
+        }
+        updatePhaseBtnStyles();
+        recalcPitchMetrics();
+        redrawOverlay();
+        mainResult.innerHTML = `<span style='color:#ff9500;'>${names[key]} を解除しました</span>`;
+        return;
+    }
+
     if (!video.videoWidth || !latestLandmarks) return;
-    const frame = Math.round(video.currentTime * 60);
     const box = getVideoRenderBox();
     const lm = latestLandmarks;
     const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
@@ -710,7 +751,6 @@ function markPhase(key) {
     recalcPitchMetrics();
     redrawOverlay();
 
-    const names = { fc: "① 接地(FC)", ff: "② 完全接地(FF)", mer: "③ 最大外旋(MER)" };
     mainResult.innerHTML = `<span style='color:#00ffcc;'>${names[key]} を記録しました</span>`;
 }
 
