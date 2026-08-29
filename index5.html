@@ -48,17 +48,17 @@
     .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 14px; flex-shrink: 0; text-align: center; }
     input[type=range] { flex: 1; height: 18px; accent-color: #007aff; }
 
-    .phase-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .phase-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
     .phase-btn { background: #2c2c2e; color: #888; border: 1.5px solid #444; padding: 7px 0; border-radius: 6px; font-size: 11px; font-weight: bold; text-align: center; cursor: pointer; transition: all 0.2s; }
     .phase-btn.active-fc { background: #007aff; color: #fff; border-color: #007aff; }
     .phase-btn.active-mer { background: #ff9500; color: #000; border-color: #ff9500; }
-    .phase-btn.active-br { background: #ff375f; color: #fff; border-color: #ff375f; }
     .phase-btn.active-ft { background: #30d158; color: #000; border-color: #30d158; }
 
-    .mode-grid { width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+    .mode-grid { width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 4px; }
     button.ctrl-btn { -webkit-appearance: none; appearance: none; width: 100%; padding: 6px 0; background: #2c2c2e; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; }
     button.ctrl-btn:active { background: #444; }
     button.mode-active { background: #ff9500 !important; color: #000 !important; font-weight: bold; }
+    #btnModeRelease.mode-active { background: #ff375f !important; color: #fff !important; }
     #btnModeZoom.mode-active { background: #007aff !important; color: #fff !important; }
 
     .dashboard-grid { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
@@ -101,7 +101,7 @@
     <div id="result-box">
         <div class="result-text-area">
             <div id="main-result">投手バイオメカニクス解析</div>
-            <div id="sub-result">「📏 物差し」設定後、FC・MER・BR・FTを記録してください</div>
+            <div id="sub-result">「📏 物差し設定」後、FC・MER・リリース点・FTを記録してください</div>
         </div>
         <button id="btn-confirm-scale" onclick="openScaleModal()">📏 長さ確定</button>
     </div>
@@ -124,16 +124,16 @@
     </div>
 
     <div class="phase-actions">
-        <button class="phase-btn" id="btnFC" onclick="markPhase('fc')">① FC(接地)</button>
-        <button class="phase-btn" id="btnMER" onclick="markPhase('mer')">② MER(最大外旋)</button>
-        <button class="phase-btn" id="btnBR" onclick="markPhase('br')">③ BR(リリース)</button>
-        <button class="phase-btn" id="btnFT" onclick="markPhase('ft')">④ FT(フォロー)</button>
+        <button class="phase-btn" id="btnFC" onclick="markPhase('fc')">① FC (接地)</button>
+        <button class="phase-btn" id="btnMER" onclick="markPhase('mer')">② MER (最大外旋)</button>
+        <button class="phase-btn" id="btnFT" onclick="markPhase('ft')">④ FT (フォロー)</button>
     </div>
 
     <div class="mode-grid">
-        <button class="ctrl-btn" id="btnModeScale" onclick="toggleScaleMode()">📏 物差し設定</button>
-        <button class="ctrl-btn" id="btnModeZoom" onclick="toggleZoomMode()">🔍 ズーム(操作切替)</button>
-        <button class="ctrl-btn" style="background:#ff3b30;" onclick="clearAllData()">🗑 データ全消去</button>
+        <button class="ctrl-btn" id="btnModeRelease" onclick="toggleReleaseMode()">⚾️ リリース点</button>
+        <button class="ctrl-btn" id="btnModeScale" onclick="toggleScaleMode()">📏 物差し</button>
+        <button class="ctrl-btn" id="btnModeZoom" onclick="toggleZoomMode()">🔍 ズーム</button>
+        <button class="ctrl-btn" style="background:#ff3b30;" onclick="clearAllData()">🗑 全消去</button>
     </div>
 
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
@@ -153,7 +153,7 @@
             <div class="side-title" style="color:#ff9500;">⚡ 支持脚床反力 ＆ リリース</div>
             <div class="metric-row"><span>前足 制動GRF:</span><span id="res_grf_braking" class="metric-val" style="color:#ff375f;">--- N/kg</span></div>
             <div class="metric-row"><span>前足 鉛直GRF:</span><span id="res_grf_vertical" class="metric-val" style="color:#ff9500;">--- N/kg</span></div>
-            <div class="metric-row"><span>BR リリース高:</span><span id="res_release_h" class="metric-val" style="color:#30d158;">--- cm</span></div>
+            <div class="metric-row"><span>リリース地上高:</span><span id="res_release_h" class="metric-val" style="color:#30d158;">--- cm</span></div>
         </div>
     </div>
 
@@ -218,12 +218,15 @@ let currentRateIdx = 0;
 let isProcessing = false;
 let animationFrameId = null;
 
-// Scale & Zoom
+// Scale, Zoom, Release
 let pxPerCm = null;
 let isZoomMode = false;
 let isScaleMode = false;
+let isReleaseMode = false;
 let scalePoints = [];
 let draggingScaleIdx = -1;
+let manualReleasePoint = null; // { x, y } (正規化座標)
+let isDraggingRelease = false;
 let zoomScale = 1.0;
 let panOffsetX = 0, panOffsetY = 0;
 
@@ -237,13 +240,13 @@ const roiCanvas = document.createElement('canvas');
 const roiCtx = roiCanvas.getContext('2d');
 
 // Pitching Data & Phases
-const phases = { fc: null, mer: null, br: null, ft: null };
+const phases = { fc: null, mer: null, ft: null };
 let maxRecordedXFactor = 0;
 let previousCoM = null;
 let prevTime = null;
 let currentCoM = null;
 let latestLandmarks = null;
-let grfFilterBuffer = []; // GRFの平滑化バッファ
+let grfFilterBuffer = [];
 
 // Recording
 let mediaRecorder = null;
@@ -301,7 +304,7 @@ function toggleZoomMode() {
     isZoomMode = !isZoomMode;
     const controls = document.getElementById('zoom-controls');
     if (isZoomMode) {
-        isRoiMode = isScaleMode = false;
+        isRoiMode = isScaleMode = isReleaseMode = false;
         controls.style.display = 'flex';
         mainResult.innerText = "🔍 ズームモード: ピンチ / ドラッグで画面操作";
     } else {
@@ -331,10 +334,24 @@ document.getElementById('zoom-slider').addEventListener('input', (e) => {
 function toggleScaleMode() {
     isScaleMode = !isScaleMode;
     if (isScaleMode) {
-        isZoomMode = isRoiMode = false;
+        isZoomMode = isRoiMode = isReleaseMode = false;
         document.getElementById('zoom-controls').style.display = 'none';
-        mainResult.innerText = "📏 物差し: 基準の2点をタップ（打った点はドラッグ移動可能）";
-        subResult.innerText = "2点確定後、「長さ確定」ボタンを押してください";
+        mainResult.innerText = "📏 物差し: 基準の2点をタップ（ドラッグで微調整）";
+        subResult.innerText = "位置確定後、右上の「長さ確定」ボタンを押してください";
+    } else {
+        mainResult.innerText = "投手バイオメカニクス解析";
+    }
+    updateButtons();
+    redrawOverlay();
+}
+
+function toggleReleaseMode() {
+    isReleaseMode = !isReleaseMode;
+    if (isReleaseMode) {
+        isZoomMode = isScaleMode = isRoiMode = false;
+        document.getElementById('zoom-controls').style.display = 'none';
+        mainResult.innerText = "⚾️ リリース点: ボールを離した瞬間をタップ";
+        subResult.innerText = "タップした点から地面までの高さを自動計測します（ドラッグ移動可）";
     } else {
         mainResult.innerText = "投手バイオメカニクス解析";
     }
@@ -345,7 +362,7 @@ function toggleScaleMode() {
 function toggleRoiMode() {
     isRoiMode = !isRoiMode;
     if (isRoiMode) {
-        isZoomMode = isScaleMode = false;
+        isZoomMode = isScaleMode = isReleaseMode = false;
         document.getElementById('zoom-controls').style.display = 'none';
         mainResult.innerText = "🔲 対象者を画面ドラッグで囲んでください";
     } else {
@@ -358,6 +375,7 @@ function toggleRoiMode() {
 function updateButtons() {
     document.getElementById('btnModeZoom').classList.toggle('mode-active', isZoomMode);
     document.getElementById('btnModeScale').classList.toggle('mode-active', isScaleMode);
+    document.getElementById('btnModeRelease').classList.toggle('mode-active', isReleaseMode);
     document.getElementById('btnToggleRoi').classList.toggle('roi-active', isRoiMode);
     btnConfirmScale.style.display = (isScaleMode && scalePoints.length === 2) ? 'inline-block' : 'none';
 }
@@ -380,7 +398,7 @@ let initialPinchScale = 1.0;
 const stage = document.getElementById('stage');
 
 stage.addEventListener('touchstart', (e) => {
-    if (isScaleMode || isRoiMode) return;
+    if (isScaleMode || isRoiMode || isReleaseMode) return;
     if (e.touches.length === 1) {
         isTouchPanning = true;
         panStartX = e.touches[0].clientX - panOffsetX;
@@ -394,7 +412,7 @@ stage.addEventListener('touchstart', (e) => {
 }, { passive: false });
 
 stage.addEventListener('touchmove', (e) => {
-    if (isScaleMode || isRoiMode) return;
+    if (isScaleMode || isRoiMode || isReleaseMode) return;
     if (isTouchPanning && e.touches.length === 1 && zoomScale > 1.0) {
         panOffsetX = e.touches[0].clientX - panStartX;
         panOffsetY = e.touches[0].clientY - panStartY;
@@ -412,12 +430,36 @@ stage.addEventListener('touchend', (e) => {
     if (e.touches.length === 0) isTouchPanning = false;
 });
 
-// ポインター操作（物差し・ROI）
+// ポインター操作（物差し・リリース点・ROI）
 interactionCanvas.addEventListener('pointerdown', (e) => {
     const pt = getCanvasPoint(e);
+    const box = getVideoRenderBox();
 
+    // 1. リリース点モード
+    if (isReleaseMode || manualReleasePoint) {
+        if (manualReleasePoint) {
+            const curPx = { x: box.x + manualReleasePoint.x * box.w, y: box.y + manualReleasePoint.y * box.h };
+            if (Math.hypot(curPx.x - pt.x, curPx.y - pt.y) < 30) {
+                isDraggingRelease = true;
+                try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
+                return;
+            }
+        }
+        if (isReleaseMode) {
+            manualReleasePoint = {
+                x: Math.max(0, Math.min(1.0, (pt.x - box.x) / box.w)),
+                y: Math.max(0, Math.min(1.0, (pt.y - box.y) / box.h))
+            };
+            isDraggingRelease = true;
+            try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
+            recalcPitchMetrics();
+            redrawOverlay();
+            return;
+        }
+    }
+
+    // 2. 物差しモード
     if (isScaleMode) {
-        // 既存の点の近傍タップならドラッグ開始
         for (let i = 0; i < scalePoints.length; i++) {
             if (Math.hypot(scalePoints[i].x - pt.x, scalePoints[i].y - pt.y) < 25) {
                 draggingScaleIdx = i;
@@ -435,8 +477,8 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
         return;
     }
 
+    // 3. ROIモード
     if (isRoiMode) {
-        const box = getVideoRenderBox();
         isRoiDrawing = true;
         roiStart = {
             x: Math.max(0, Math.min(1.0, (pt.x - box.x) / box.w)),
@@ -450,13 +492,25 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
 
 interactionCanvas.addEventListener('pointermove', (e) => {
     const pt = getCanvasPoint(e);
+    const box = getVideoRenderBox();
+
+    if (isDraggingRelease && manualReleasePoint) {
+        manualReleasePoint = {
+            x: Math.max(0, Math.min(1.0, (pt.x - box.x) / box.w)),
+            y: Math.max(0, Math.min(1.0, (pt.y - box.y) / box.h))
+        };
+        recalcPitchMetrics();
+        redrawOverlay();
+        return;
+    }
+
     if (isScaleMode && draggingScaleIdx !== -1) {
         scalePoints[draggingScaleIdx] = pt;
         redrawOverlay();
         return;
     }
+
     if (isRoiDrawing && isRoiMode) {
-        const box = getVideoRenderBox();
         const currentNorm = {
             x: Math.max(0, Math.min(1.0, (pt.x - box.x) / box.w)),
             y: Math.max(0, Math.min(1.0, (pt.y - box.y) / box.h))
@@ -470,6 +524,10 @@ interactionCanvas.addEventListener('pointermove', (e) => {
 });
 
 interactionCanvas.addEventListener('pointerup', (e) => {
+    if (isDraggingRelease) {
+        isDraggingRelease = false;
+        try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){}
+    }
     if (draggingScaleIdx !== -1) {
         draggingScaleIdx = -1;
         try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){}
@@ -497,7 +555,6 @@ function submitScaleModal() {
     const realCm = parseFloat(document.getElementById('scale-input-value').value);
     if (realCm && realCm > 0 && scalePoints.length === 2) {
         const box = getVideoRenderBox();
-        // 実画像基準（ノーマライズ）での長さを保持してズレを防止
         const normP1 = { x: (scalePoints[0].x - box.x) / box.w, y: (scalePoints[0].y - box.y) / box.h };
         const normP2 = { x: (scalePoints[1].x - box.x) / box.w, y: (scalePoints[1].y - box.y) / box.h };
         const distPx = Math.hypot((normP2.x - normP1.x) * box.w, (normP2.y - normP1.y) * box.h);
@@ -508,7 +565,7 @@ function submitScaleModal() {
         isScaleMode = false;
         updateButtons();
         mainResult.innerHTML = "<span style='color:#30d158;'>✅ 物差し設定完了</span>";
-        subResult.innerText = "投球キーフェーズ（FC・MER・BR・FT）を記録してください";
+        subResult.innerText = "投球キーフェーズ（FC・MER・リリース点・FT）を記録してください";
         recalcPitchMetrics();
         redrawOverlay();
     } else {
@@ -520,6 +577,7 @@ function redrawOverlay() {
     intCtx.clearRect(0, 0, interactionCanvas.width, interactionCanvas.height);
     const box = getVideoRenderBox();
 
+    // 1. ROI枠
     if (isRoiEnabled && roiNorm.w > 0.05) {
         const rx = box.x + roiNorm.x * box.w, ry = box.y + roiNorm.y * box.h;
         const rw = roiNorm.w * box.w, rh = roiNorm.h * box.h;
@@ -534,6 +592,7 @@ function redrawOverlay() {
         intCtx.restore();
     }
 
+    // 2. 物差し点
     if (scalePoints.length > 0) {
         intCtx.save();
         intCtx.fillStyle = '#ff9500'; 
@@ -558,12 +617,53 @@ function redrawOverlay() {
         }
         intCtx.restore();
     }
+
+    // 3. リリース点 ＆ 地面垂線
+    if (manualReleasePoint) {
+        const rx = box.x + manualReleasePoint.x * box.w;
+        const ry = box.y + manualReleasePoint.y * box.h;
+        const groundY = box.y + box.h;
+
+        intCtx.save();
+        // 垂線（地面への点線）
+        intCtx.strokeStyle = '#30d158';
+        intCtx.lineWidth = 2;
+        intCtx.setLineDash([4, 4]);
+        intCtx.beginPath();
+        intCtx.moveTo(rx, ry);
+        intCtx.lineTo(rx, groundY);
+        intCtx.stroke();
+        intCtx.setLineDash([]);
+
+        // 地面接地点マーク
+        intCtx.fillStyle = '#30d158';
+        intCtx.beginPath();
+        intCtx.arc(rx, groundY, 4, 0, Math.PI * 2);
+        intCtx.fill();
+
+        // リリース点ターゲット
+        intCtx.strokeStyle = '#ff375f';
+        intCtx.fillStyle = '#ff375f';
+        intCtx.lineWidth = 2.5;
+        intCtx.beginPath();
+        intCtx.arc(rx, ry, 9, 0, Math.PI * 2);
+        intCtx.stroke();
+        intCtx.beginPath();
+        intCtx.arc(rx, ry, 3.5, 0, Math.PI * 2);
+        intCtx.fill();
+
+        // 高さラベル表示
+        const heightCm = pxPerCm ? ((groundY - ry) / pxPerCm).toFixed(1) : null;
+        intCtx.fillStyle = '#fff';
+        intCtx.font = 'bold 11px sans-serif';
+        intCtx.fillText(`⚾️ リリース: ${heightCm ? heightCm + 'cm' : '物差し未設定'}`, rx + 12, ry - 6);
+        intCtx.restore();
+    }
 }
 
 function updatePhaseBtnStyles() {
     document.getElementById('btnFC').className = `phase-btn ${phases.fc ? 'active-fc' : ''}`;
     document.getElementById('btnMER').className = `phase-btn ${phases.mer ? 'active-mer' : ''}`;
-    document.getElementById('btnBR').className = `phase-btn ${phases.br ? 'active-br' : ''}`;
     document.getElementById('btnFT').className = `phase-btn ${phases.ft ? 'active-ft' : ''}`;
 }
 
@@ -636,7 +736,7 @@ function drawPitchingBiomechanics(lm) {
     drawL(24, 26, '#ffd60a'); drawL(26, 28, '#ffd60a');
     drawL(23, 25, '#ffd60a'); drawL(25, 27, '#ffd60a');
 
-    // 床反力 (GRF) - フィルタ適用で安定化
+    // 床反力 (GRF)
     if (ankL && ankR && currentCoM) {
         const pAnkL = toPx(ankL), pAnkR = toPx(ankR);
         const leadFoot = Math.abs(pAnkL.x - currentCoM.x) > Math.abs(pAnkR.x - currentCoM.x) ? pAnkL : pAnkR;
@@ -650,7 +750,6 @@ function drawPitchingBiomechanics(lm) {
                 let rawGrfX = -ax * 0.45;
                 let rawGrfY = -(ay - 9.80665);
 
-                // 平滑化バッファ処理
                 grfFilterBuffer.push({ x: rawGrfX, y: rawGrfY });
                 if (grfFilterBuffer.length > 4) grfFilterBuffer.shift();
 
@@ -665,7 +764,6 @@ function drawPitchingBiomechanics(lm) {
                 outCtx.fillStyle = '#ff375f'; 
                 outCtx.lineWidth = 3.5;
                 
-                // ベクトルの最大長を制限し暴れを防止
                 const clampX = Math.max(-25, Math.min(25, avgGrfX));
                 const clampY = Math.max(0, Math.min(30, avgGrfY));
 
@@ -690,25 +788,6 @@ function drawPitchingBiomechanics(lm) {
         prevTime = video.currentTime;
     }
 
-    // リリースポイント描画（正規化座標から再計算してズレを完全解消）
-    if (phases.br && phases.br.normWrist) {
-        const curWristPos = { x: box.x + phases.br.normWrist.x * box.w, y: box.y + phases.br.normWrist.y * box.h };
-        outCtx.save();
-        outCtx.strokeStyle = '#ff375f'; 
-        outCtx.fillStyle = '#ff375f'; 
-        outCtx.lineWidth = 2.5;
-        outCtx.beginPath(); 
-        outCtx.arc(curWristPos.x, curWristPos.y, 8, 0, Math.PI * 2); 
-        outCtx.stroke();
-        outCtx.beginPath(); 
-        outCtx.arc(curWristPos.x, curWristPos.y, 3, 0, Math.PI * 2); 
-        outCtx.fill();
-        outCtx.fillStyle = '#fff'; 
-        outCtx.font = 'bold 11px sans-serif';
-        outCtx.fillText("⚾️ リリース点", curWristPos.x + 10, curWristPos.y - 6);
-        outCtx.restore();
-    }
-
     outCtx.restore();
 }
 
@@ -720,30 +799,33 @@ function markPhase(key) {
     const lm = latestLandmarks;
     const shR = lm[12], elR = lm[14], wrR = lm[16];
     const ankL = lm[27], ankR = lm[28];
+    const heelL = lm[29] || ankL, heelR = lm[30] || ankR;
 
     phases[key] = { time: frame / currentFPS, frame: frame };
 
-    if (key === 'fc' && ankL && ankR) {
-        phases.fc.strideNorm = Math.abs(ankL.x - ankR.x);
+    if (key === 'fc') {
+        const p1 = (ankL && ankL.visibility > 0.3) ? ankL : heelL;
+        const p2 = (ankR && ankR.visibility > 0.3) ? ankR : heelR;
+        if (p1 && p2) {
+            phases.fc.strideNorm = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        }
     }
     if (key === 'mer' && shR && elR && wrR) {
         const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
         phases.mer.elbowAngle = calcAngle(toPx(shR), toPx(elR), toPx(wrR));
     }
-    if (key === 'br' && wrR) {
-        // 正規化座標で記憶
-        phases.br.normWrist = { x: wrR.x, y: wrR.y };
-    }
 
     updatePhaseBtnStyles();
     recalcPitchMetrics();
 
-    const names = { fc: "① 接地(FC)", mer: "② 最大外旋(MER)", br: "③ リリース(BR)", ft: "④ フォロー(FT)" };
+    const names = { fc: "① 接地(FC)", mer: "② 最大外旋(MER)", ft: "④ フォロー(FT)" };
     mainResult.innerHTML = `<span style='color:#00ffcc;'>${names[key]} を記録しました</span>`;
 }
 
 function recalcPitchMetrics() {
     const box = getVideoRenderBox();
+    
+    // 1. FC 足移動幅
     if (phases.fc && phases.fc.strideNorm && pxPerCm) {
         const stridePx = phases.fc.strideNorm * box.w;
         document.getElementById('res_stride').innerText = `${(stridePx / pxPerCm).toFixed(1)} cm`;
@@ -751,15 +833,18 @@ function recalcPitchMetrics() {
         document.getElementById('res_stride').innerText = "--- cm";
     }
 
+    // 2. MER 肘角度
     if (phases.mer && phases.mer.elbowAngle) {
         document.getElementById('res_mer_elbow').innerText = `${phases.mer.elbowAngle.toFixed(1)}°`;
     } else {
         document.getElementById('res_mer_elbow').innerText = "---°";
     }
 
-    if (phases.br && phases.br.normWrist && pxPerCm) {
-        const wristY = box.y + phases.br.normWrist.y * box.h;
-        const releaseHCm = (box.y + box.h - wristY) / pxPerCm;
+    // 3. リリース地上高
+    if (manualReleasePoint && pxPerCm) {
+        const wristY = box.y + manualReleasePoint.y * box.h;
+        const groundY = box.y + box.h;
+        const releaseHCm = (groundY - wristY) / pxPerCm;
         document.getElementById('res_release_h').innerText = `${Math.max(0, releaseHCm).toFixed(1)} cm`;
     } else {
         document.getElementById('res_release_h').innerText = "--- cm";
@@ -767,7 +852,8 @@ function recalcPitchMetrics() {
 }
 
 function clearAllData() {
-    phases.fc = phases.mer = phases.br = phases.ft = null;
+    phases.fc = phases.mer = phases.ft = null;
+    manualReleasePoint = null;
     maxRecordedXFactor = 0;
     previousCoM = null;
     prevTime = null;
