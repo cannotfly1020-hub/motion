@@ -77,7 +77,7 @@
     .modal-card h3 { font-size: 15px; margin-bottom: 6px; color: #ff9500; }
     .modal-card p { font-size: 12px; color: #ccc; margin-bottom: 12px; }
     .modal-input-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 14px; }
-    .modal-input-row input { width: 100px; font-size: 16px; padding: 6px; text-align: center; border-radius: 6px; border: 1px solid #555; background: #1c1c1e; color: #fff; }
+    .modal-input-row input { width: 100px; font-size: 16px; padding: 6px; text-align: center; border-radius: 6px; border: 1px solid #555; background: #1c1c1e; color: #fff; user-select: auto; -webkit-user-select: auto; }
     .modal-btn-row { display: flex; gap: 8px; }
     .modal-btn-row button { flex: 1; padding: 8px 0; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; }
     #snapshot-img { max-width: 100%; max-height: 50vh; border-radius: 6px; border: 1px solid #555; margin-bottom: 10px; }
@@ -203,6 +203,8 @@ const seekSlider = document.getElementById('seekSlider');
 const btnPlayPause = document.getElementById('btnPlayPause');
 const mainResult = document.getElementById('main-result');
 const subResult = document.getElementById('sub-result');
+const btnStepForward = document.getElementById('btnStepForward');
+const btnStepBack = document.getElementById('btnStepBack');
 
 let currentFPS = 60.0;
 const fpsList = [30, 60, 120, 240];
@@ -212,7 +214,6 @@ let currentRateIdx = 0;
 
 let isProcessing = false;
 let animationFrameId = null;
-let currentBlobUrl = null;
 
 // Scale & Zoom
 let pxPerCm = null;
@@ -221,6 +222,7 @@ let isScaleMode = false;
 let scalePoints = [];
 let zoomScale = 1.0;
 let panOffsetX = 0, panOffsetY = 0;
+let panStartX = 0, panStartY = 0;
 let isPanning = false;
 
 // ROI
@@ -343,7 +345,6 @@ function updateButtons() {
     document.getElementById('btnToggleRoi').classList.toggle('roi-active', isRoiMode);
 }
 
-// タップ位置をキャンバス絶対座標へ直接変換（ズレ完全防止）
 function getCanvasPoint(e) {
     const rect = interactionCanvas.getBoundingClientRect();
     const cvsX = (e.clientX - rect.left) * (interactionCanvas.width / rect.width);
@@ -505,7 +506,7 @@ function drawPitchingBiomechanics(lm) {
     const shL = lm[11], shR = lm[12], hipL = lm[23], hipR = lm[24];
     const ankL = lm[27], ankR = lm[28];
 
-    // 重心（CoM）
+    // 重心 (CoM)
     if (shL && shR && hipL && hipR) {
         const pShL = toPx(shL), pShR = toPx(shR), pHipL = toPx(hipL), pHipR = toPx(hipR);
         currentCoM = {
@@ -537,10 +538,10 @@ function drawPitchingBiomechanics(lm) {
     drawL(24, 26, '#ffd60a'); drawL(26, 28, '#ffd60a');
     drawL(23, 25, '#ffd60a'); drawL(25, 27, '#ffd60a');
 
-    // 床反力（GRF）
+    // 床反力 (GRF)
     if (ankL && ankR && currentCoM) {
         const pAnkL = toPx(ankL), pAnkR = toPx(ankR);
-        const leadFoot = pAnkL.x > pAnkR.x ? pAnkL : pAnkR;
+        const leadFoot = Math.abs(pAnkL.x - currentCoM.x) > Math.abs(pAnkR.x - currentCoM.x) ? pAnkL : pAnkR;
 
         if (previousCoM && prevTime && pxPerCm) {
             const dt = (video.currentTime - prevTime) || (1 / currentFPS);
@@ -585,7 +586,6 @@ function drawPitchingBiomechanics(lm) {
     outCtx.restore();
 }
 
-// 4大フェーズ記録（コールバックを破壊しない安全な実装）
 function markPhase(key) {
     if (!video.videoWidth || !latestLandmarks) return;
     const frame = Math.round(video.currentTime * currentFPS);
@@ -662,7 +662,12 @@ async function renderCurrentFrame() {
         if (isRoiEnabled && roiNorm.w > 0.05) {
             const sx = roiNorm.x * video.videoWidth, sy = roiNorm.y * video.videoHeight;
             const sw = roiNorm.w * video.videoWidth, sh = roiNorm.h * video.videoHeight;
-            if (sw > 10 && sh > 10) { roiCanvas.width = sw; roiCanvas.height = sh; roiCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh); inputSource = roiCanvas; }
+            if (sw > 10 && sh > 10) { 
+                roiCanvas.width = sw; 
+                roiCanvas.height = sh; 
+                roiCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh); 
+                inputSource = roiCanvas; 
+            }
         }
         await pose.send({ image: inputSource });
     } catch(e) {} finally { isProcessing = false; }
@@ -675,11 +680,15 @@ async function loop() {
     }
     
     if (isRecording) {
+        const box = getVideoRenderBox();
         recCanvas.width = outputCanvas.width;
         recCanvas.height = outputCanvas.height + 70;
         recCtx.fillStyle = '#000';
         recCtx.fillRect(0, 0, recCanvas.width, recCanvas.height);
-        recCtx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
+        
+        if (video.videoWidth) {
+            recCtx.drawImage(video, box.x, box.y, box.w, box.h);
+        }
         recCtx.drawImage(outputCanvas, 0, 0);
         recCtx.drawImage(interactionCanvas, 0, 0);
 
@@ -714,23 +723,38 @@ btnPlayPause.addEventListener('click', async () => {
     }
 });
 
-btnStepForward.addEventListener('click', () => { video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759'; video.currentTime = Math.min(video.duration, video.currentTime + (1 / currentFPS)); });
-btnStepBack.addEventListener('click', () => { video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759'; video.currentTime = Math.max(0, video.currentTime - (1 / currentFPS)); });
+btnStepForward.addEventListener('click', () => { 
+    video.pause(); 
+    btnPlayPause.innerText = '▶ 再生'; 
+    btnPlayPause.style.background = '#34c759'; 
+    video.currentTime = Math.min(video.duration, video.currentTime + (1 / currentFPS)); 
+});
+btnStepBack.addEventListener('click', () => { 
+    video.pause(); 
+    btnPlayPause.innerText = '▶ 再生'; 
+    btnPlayPause.style.background = '#34c759'; 
+    video.currentTime = Math.max(0, video.currentTime - (1 / currentFPS)); 
+});
 
 function captureSnapshot() {
     if (!video.videoWidth) { alert("動画が読み込まれていません"); return; }
+    const box = getVideoRenderBox();
     const snapCanvas = document.createElement('canvas'), snapCtx = snapCanvas.getContext('2d');
     snapCanvas.width = outputCanvas.width; snapCanvas.height = outputCanvas.height + 70;
     snapCtx.fillStyle = '#000'; snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
-    snapCtx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
+    
+    snapCtx.drawImage(video, box.x, box.y, box.w, box.h);
     snapCtx.drawImage(outputCanvas, 0, 0);
     snapCtx.drawImage(interactionCanvas, 0, 0);
+    
     snapCtx.fillStyle = '#1c1c1e'; snapCtx.fillRect(0, outputCanvas.height, snapCanvas.width, 70);
     snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 13px sans-serif';
     snapCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText}`, 15, outputCanvas.height + 26);
     snapCtx.fillStyle = '#ff9500'; snapCtx.font = 'bold 12px sans-serif';
     snapCtx.fillText(`制動GRF: ${document.getElementById('res_grf_braking').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
-    document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); document.getElementById('snapshot-modal-overlay').style.display = 'flex';
+    
+    document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); 
+    document.getElementById('snapshot-modal-overlay').style.display = 'flex';
 }
 function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
 
@@ -741,10 +765,10 @@ function toggleRecording() {
     if (!isRecording) {
         recordedChunks = [];
         const stream = recCanvas.captureStream(30);
-        let mimeType = 'video/webm;codecs=vp9';
+        let mimeType = 'video/mp4';
         if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = 'video/webm';
-            if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4';
+            mimeType = 'video/webm;codecs=vp9';
+            if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
         }
         try { mediaRecorder = new MediaRecorder(stream, { mimeType }); } catch (e) { mediaRecorder = new MediaRecorder(stream); }
         
@@ -753,7 +777,7 @@ function toggleRecording() {
             const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a'); a.style.display = 'none'; a.href = url;
-            a.download = `Pitching_Analysis_${Date.now()}.mp4`;
+            a.download = `Pitching_Analysis_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
             document.body.appendChild(a); a.click();
             setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
         };
@@ -779,11 +803,17 @@ function toggleRecording() {
 document.getElementById('inputFile').addEventListener('change', (e) => {
     const file = e.target.files[0]; if (!file) return;
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
     video.pause(); resetZoom(); clearPhaseData();
-    currentBlobUrl = URL.createObjectURL(file); video.src = currentBlobUrl; video.load();
-    const onCanPlay = () => { video.removeEventListener('canplay', onCanPlay); fitCanvases(); btnPlayPause.innerText = '▶ 再生'; video.currentTime = 0.001; loop(); };
-    video.addEventListener('canplay', onCanPlay); e.target.value = '';
+    video.src = URL.createObjectURL(file); video.load();
+    const onCanPlay = () => { 
+        video.removeEventListener('canplay', onCanPlay); 
+        fitCanvases(); 
+        btnPlayPause.innerText = '▶ 再生'; 
+        video.currentTime = 0.001; 
+        loop(); 
+    };
+    video.addEventListener('canplay', onCanPlay); 
+    e.target.value = '';
 });
 </script>
 </body>
