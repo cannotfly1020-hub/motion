@@ -92,7 +92,7 @@
         <div class="btn-group-header">
             <button class="hdr-btn" onclick="document.getElementById('inputFile').click()">動画選択</button>
             <input type="file" id="inputFile" accept="video/*" style="display:none;">
-            <button class="hdr-btn plane-btn" id="btnTogglePlane" onclick="togglePlaneMode()">🔄 観察面: 矢状面(横)</button>
+            <button class="hdr-btn plane-btn" id="btnTogglePlane" onclick="togglePlaneMode()">➡️ 前額面(正面)へ</button>
             <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 静止画</button>
             <button class="hdr-btn" id="btnRecord" style="background:#ff3b30;" onclick="toggleRecording()">🎥 録画開始</button>
         </div>
@@ -100,7 +100,7 @@
     </div>
     <div id="result-box">
         <div class="result-text-area">
-            <div id="main-result">投手バイオメカニクス解析 (矢状面)</div>
+            <div id="main-result">投手バイオメカニクス解析 (矢状面/横)</div>
             <div id="sub-result">「📏 物差し設定」後、各フェーズ・リリース点を記録してください</div>
         </div>
         <button id="btn-confirm-scale" onclick="openScaleModal()">📏 長さ確定</button>
@@ -210,7 +210,6 @@ let animationFrameId = null;
 // 観察面モード: 'sagittal' (矢状面/横) または 'frontal' (前額面/正面)
 let currentPlane = 'sagittal';
 
-// 面ごとの個別データ保持
 const planeData = {
     sagittal: {
         pxPerCm: null, scalePoints: [], manualReleasePoint: null, manualGroundYNorm: null,
@@ -245,10 +244,9 @@ const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@med
 pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
 pose.onResults(onResults);
 
-// UIの初期構築
 function buildUI() {
     if (currentPlane === 'sagittal') {
-        btnTogglePlane.innerText = '🔄 観察面: 矢状面(横)';
+        btnTogglePlane.innerText = '➡️ 前額面(正面)へ';
         btnTogglePlane.style.background = '#af52de';
         phaseContainer.innerHTML = `
             <button class="phase-btn" id="btnFC" onclick="markPhase('fc')">① FC (接地)</button>
@@ -271,7 +269,7 @@ function buildUI() {
         `;
         mainResult.innerText = "投手バイオメカニクス解析 (矢状面/横)";
     } else {
-        btnTogglePlane.innerText = '🔄 観察面: 前額面(正面)';
+        btnTogglePlane.innerText = '➡️ 矢状面(横)へ';
         btnTogglePlane.style.background = '#007aff';
         phaseContainer.innerHTML = `
             <button class="phase-btn" id="btnPK" onclick="markPhase('pk')">① PK (足上げ頂点)</button>
@@ -521,7 +519,6 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
             if (currentPlane === 'sagittal') {
                 cur.brKneeAngle = calcCurrentLeadKneeAngle(latestLandmarks, box);
             } else {
-                // 正面でのBR時体幹側屈・肘高さ
                 if (latestLandmarks) {
                     const lm = latestLandmarks;
                     const shL = lm[11], shR = lm[12], elR = lm[14], hipL = lm[23], hipR = lm[24];
@@ -652,7 +649,6 @@ function redrawOverlay() {
     const box = getVideoRenderBox();
     const cur = planeData[currentPlane];
 
-    // 1. 物差し点
     if (cur.scalePoints.length > 0) {
         intCtx.save();
         if (isScaleMode) {
@@ -698,7 +694,6 @@ function redrawOverlay() {
         intCtx.restore();
     }
 
-    // 2. リリース点 ＆ 地面ドラッグライン
     if (cur.manualReleasePoint && cur.manualGroundYNorm !== null) {
         const rx = box.x + cur.manualReleasePoint.x * box.w;
         const ry = box.y + cur.manualReleasePoint.y * box.h;
@@ -801,7 +796,6 @@ function drawPitchingBiomechanics(lm) {
     outCtx.restore();
 }
 
-// フェーズ記録＆トグル解除
 function markPhase(key) {
     const cur = planeData[currentPlane];
     const names = {
@@ -851,9 +845,7 @@ function markPhase(key) {
             if (shR && elR && wrR) cur.phases.mer.elbowAngle = calcAngle(toPx(shR), toPx(elR), toPx(wrR));
         }
     } else {
-        // 前額面（正面）の計算
         if (key === 'pk') {
-            // 軸足の傾き
             const hipR = lm[24], ankR = lm[28];
             if (hipR && ankR) {
                 const tilt = Math.atan2(hipR.x - ankR.x, -(hipR.y - ankR.y)) * (180 / Math.PI);
@@ -861,7 +853,6 @@ function markPhase(key) {
             }
         }
         if (key === 'fc') {
-            // ステップ幅（左右の足の横ズレ） ＆ 骨盤の傾斜
             const ankL = lm[27], ankR = lm[28], hipL = lm[23], hipR = lm[24];
             if (ankL && ankR) {
                 const px1 = toPx(ankL), px2 = toPx(ankR);
