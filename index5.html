@@ -47,9 +47,10 @@
     .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 14px; flex-shrink: 0; text-align: center; }
     input[type=range] { flex: 1; height: 18px; accent-color: #007aff; }
 
-    .phase-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+    .phase-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
     .phase-btn { background: #2c2c2e; color: #888; border: 1.5px solid #444; padding: 7px 0; border-radius: 6px; font-size: 11px; font-weight: bold; text-align: center; cursor: pointer; transition: all 0.2s; }
     .phase-btn.active-fc { background: #007aff; color: #fff; border-color: #007aff; }
+    .phase-btn.active-ff { background: #5e5ce6; color: #fff; border-color: #5e5ce6; }
     .phase-btn.active-mer { background: #ff9500; color: #000; border-color: #ff9500; }
     .phase-btn.active-ft { background: #30d158; color: #000; border-color: #30d158; }
 
@@ -99,7 +100,7 @@
     <div id="result-box">
         <div class="result-text-area">
             <div id="main-result">投手バイオメカニクス解析</div>
-            <div id="sub-result">「📏 物差し設定」後、FC・MER・リリース点・FTを記録してください</div>
+            <div id="sub-result">「📏 物差し設定」後、FC・FF・MER・リリース点・FTを記録してください</div>
         </div>
         <button id="btn-confirm-scale" onclick="openScaleModal()">📏 長さ確定</button>
     </div>
@@ -123,7 +124,8 @@
 
     <div class="phase-actions">
         <button class="phase-btn" id="btnFC" onclick="markPhase('fc')">① FC (接地)</button>
-        <button class="phase-btn" id="btnMER" onclick="markPhase('mer')">② MER (最大外旋)</button>
+        <button class="phase-btn" id="btnFF" onclick="markPhase('ff')">② FF (完全接地)</button>
+        <button class="phase-btn" id="btnMER" onclick="markPhase('mer')">③ MER (最大外旋)</button>
         <button class="phase-btn" id="btnFT" onclick="markPhase('ft')">④ FT (フォロー)</button>
     </div>
 
@@ -149,7 +151,7 @@
         </div>
         <div class="side-box kinetics">
             <div class="side-title" style="color:#ff9500;">⚡ 下半身ブロック ＆ リリース</div>
-            <div class="metric-row"><span>FC 前足膝角度:</span><span id="res_fc_knee" class="metric-val" style="color:#007aff;">---°</span></div>
+            <div class="metric-row"><span>FF 前足膝角度:</span><span id="res_ff_knee" class="metric-val" style="color:#5e5ce6;">---°</span></div>
             <div class="metric-row"><span>BR 前足膝角度:</span><span id="res_br_knee" class="metric-val" style="color:#ff375f;">---°</span></div>
             <div class="metric-row"><span>リリース地上高:</span><span id="res_release_h" class="metric-val" style="color:#30d158;">--- cm</span></div>
         </div>
@@ -231,10 +233,10 @@ let isDraggingGround = false;
 let zoomScale = 1.0;
 let panOffsetX = 0, panOffsetY = 0;
 
-const phases = { fc: null, mer: null, ft: null };
+const phases = { fc: null, ff: null, mer: null, ft: null };
 let maxRecordedXFactor = 0;
 let latestLandmarks = null;
-let leadLegSide = null; // 'left' または 'right' (前足を記憶)
+let leadLegSide = null;
 let brKneeAngle = null;
 
 let mediaRecorder = null;
@@ -296,11 +298,9 @@ function toggleZoomMode() {
         isScaleMode = isReleaseMode = false;
         controls.style.display = 'flex';
         mainResult.innerText = "🔍 ズームモード: ピンチ / ドラッグで画面操作";
-        subResult.innerText = "※拡大表示したまま物差しの設定やリリース点を打てます";
     } else {
         controls.style.display = 'none';
         mainResult.innerText = "投手バイオメカニクス解析";
-        subResult.innerText = "「📏 物差し設定」後、FC・MER・リリース点・FTを記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -315,7 +315,6 @@ function toggleScaleMode() {
         subResult.innerText = "位置確定後、右上の「長さ確定」ボタンを押してください";
     } else {
         mainResult.innerText = "投手バイオメカニクス解析";
-        subResult.innerText = "「📏 物差し設定」後、FC・MER・リリース点・FTを記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -327,10 +326,9 @@ function toggleReleaseMode() {
         isZoomMode = isScaleMode = false;
         document.getElementById('zoom-controls').style.display = 'none';
         mainResult.innerText = "⚾️ リリース点: ボールを離した瞬間をタップ";
-        subResult.innerText = "上の点(リリース)と下の緑の横線(地面)をドラッグして正確な高さを測ります";
+        subResult.innerText = "リリース点と緑の横線(地面)をドラッグして正確な高さを測ります";
     } else {
         mainResult.innerText = "投手バイオメカニクス解析";
-        subResult.innerText = "「📏 物差し設定」後、FC・MER・リリース点・FTを記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -409,7 +407,6 @@ stage.addEventListener('touchend', (e) => {
     if (e.touches.length === 0) isTouchPanning = false;
 });
 
-// リリース点または前足の膝角度取得
 function calcCurrentLeadKneeAngle(lm, box) {
     if (!lm) return null;
     const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
@@ -418,7 +415,6 @@ function calcCurrentLeadKneeAngle(lm, box) {
 
     let useLeft = (leadLegSide === 'left');
     if (!leadLegSide) {
-        // 未判定なら下または外側の足を前足とする
         useLeft = ankL.y > ankR.y || Math.abs(ankL.x - (hipL.x + hipR.x)/2) > Math.abs(ankR.x - (hipL.x + hipR.x)/2);
     }
     const leadHip = useLeft ? toPx(hipL) : toPx(hipR);
@@ -456,7 +452,6 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
             isDraggingRelease = true;
             try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
 
-            // リリース時の前足膝角度を即座に記録
             brKneeAngle = calcCurrentLeadKneeAngle(latestLandmarks, box);
 
             recalcPitchMetrics();
@@ -555,7 +550,7 @@ function submitScaleModal() {
         isScaleMode = false;
         updateButtons();
         mainResult.innerHTML = "<span style='color:#30d158;'>✅ 物差し設定完了</span>";
-        subResult.innerText = "投球キーフェーズ（FC・MER・リリース点・FT）を記録してください";
+        subResult.innerText = "投球キーフェーズ（FC・FF・MER・リリース点・FT）を記録してください";
         recalcPitchMetrics();
         redrawOverlay();
     } else {
@@ -621,6 +616,7 @@ function redrawOverlay() {
 
 function updatePhaseBtnStyles() {
     document.getElementById('btnFC').className = `phase-btn ${phases.fc ? 'active-fc' : ''}`;
+    document.getElementById('btnFF').className = `phase-btn ${phases.ff ? 'active-ff' : ''}`;
     document.getElementById('btnMER').className = `phase-btn ${phases.mer ? 'active-mer' : ''}`;
     document.getElementById('btnFT').className = `phase-btn ${phases.ft ? 'active-ft' : ''}`;
 }
@@ -704,15 +700,14 @@ function markPhase(key) {
             if (manualGroundYNorm === null) manualGroundYNorm = phases.fc.groundYNorm;
         }
 
-        const hipL = lm[23], hipR = lm[24], kneeL = lm[25], kneeR = lm[26];
-        if (hipL && hipR && kneeL && kneeR && ankL && ankR) {
+        const hipL = lm[23], hipR = lm[24];
+        if (hipL && hipR && ankL && ankR) {
             const isLeftLead = ankL.y > ankR.y || Math.abs(ankL.x - (hipL.x + hipR.x)/2) > Math.abs(ankR.x - (hipL.x + hipR.x)/2);
-            leadLegSide = isLeftLead ? 'left' : 'right'; // 前足の左右を記憶
-            const leadHip = isLeftLead ? toPx(hipL) : toPx(hipR);
-            const leadKnee = isLeftLead ? toPx(kneeL) : toPx(kneeR);
-            const leadAnk = isLeftLead ? toPx(ankL) : toPx(ankR);
-            phases.fc.leadKneeAngle = calcAngle(leadHip, leadKnee, leadAnk);
+            leadLegSide = isLeftLead ? 'left' : 'right';
         }
+    }
+    if (key === 'ff') {
+        phases.ff.kneeAngle = calcCurrentLeadKneeAngle(lm, box);
     }
     if (key === 'mer') {
         const shR = lm[12], elR = lm[14], wrR = lm[16];
@@ -725,7 +720,7 @@ function markPhase(key) {
     recalcPitchMetrics();
     redrawOverlay();
 
-    const names = { fc: "① 接地(FC)", mer: "② 最大外旋(MER)", ft: "④ フォロー(FT)" };
+    const names = { fc: "① 接地(FC)", ff: "② 完全接地(FF)", mer: "③ 最大外旋(MER)", ft: "④ フォロー(FT)" };
     mainResult.innerHTML = `<span style='color:#00ffcc;'>${names[key]} を記録しました</span>`;
 }
 
@@ -746,11 +741,11 @@ function recalcPitchMetrics() {
         document.getElementById('res_mer_elbow').innerText = "---°";
     }
 
-    // 3. FC 前足膝角度
-    if (phases.fc && phases.fc.leadKneeAngle) {
-        document.getElementById('res_fc_knee').innerText = `${phases.fc.leadKneeAngle.toFixed(1)}°`;
+    // 3. FF 前足膝角度
+    if (phases.ff && phases.ff.kneeAngle) {
+        document.getElementById('res_ff_knee').innerText = `${phases.ff.kneeAngle.toFixed(1)}°`;
     } else {
-        document.getElementById('res_fc_knee').innerText = "---°";
+        document.getElementById('res_ff_knee').innerText = "---°";
     }
 
     // 4. BR 前足膝角度
@@ -772,7 +767,7 @@ function recalcPitchMetrics() {
 }
 
 function clearAllData() {
-    phases.fc = phases.mer = phases.ft = null;
+    phases.fc = phases.ff = phases.mer = phases.ft = null;
     manualReleasePoint = null;
     manualGroundYNorm = null;
     maxRecordedXFactor = 0;
@@ -784,7 +779,7 @@ function clearAllData() {
     document.getElementById('res_max_xfactor').innerText = "0.0°";
     document.getElementById('res_stride').innerText = "--- cm";
     document.getElementById('res_mer_elbow').innerText = "---°";
-    document.getElementById('res_fc_knee').innerText = "---°";
+    document.getElementById('res_ff_knee').innerText = "---°";
     document.getElementById('res_br_knee').innerText = "---°";
     document.getElementById('res_release_h').innerText = "--- cm";
     updatePhaseBtnStyles();
@@ -825,7 +820,7 @@ async function loop() {
         recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText}`, 15, outputCanvas.height + 26);
         recCtx.fillStyle = '#ff9500';
         recCtx.font = 'bold 12px sans-serif';
-        recCtx.fillText(`FC膝角: ${document.getElementById('res_fc_knee').innerText} ｜ BR膝角: ${document.getElementById('res_br_knee').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+        recCtx.fillText(`FF膝角: ${document.getElementById('res_ff_knee').innerText} ｜ BR膝角: ${document.getElementById('res_br_knee').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
     }
     animationFrameId = requestAnimationFrame(loop);
 }
@@ -868,7 +863,7 @@ function captureSnapshot() {
     snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 13px sans-serif';
     snapCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText}`, 15, outputCanvas.height + 26);
     snapCtx.fillStyle = '#ff9500'; snapCtx.font = 'bold 12px sans-serif';
-    snapCtx.fillText(`FC膝角: ${document.getElementById('res_fc_knee').innerText} ｜ BR膝角: ${document.getElementById('res_br_knee').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+    snapCtx.fillText(`FF膝角: ${document.getElementById('res_ff_knee').innerText} ｜ BR膝角: ${document.getElementById('res_br_knee').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
     
     document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); 
     document.getElementById('snapshot-modal-overlay').style.display = 'flex';
