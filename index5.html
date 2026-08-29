@@ -46,12 +46,11 @@
     .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 14px; flex-shrink: 0; text-align: center; }
     input[type=range] { flex: 1; height: 18px; accent-color: #007aff; }
 
-    .phase-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .phase-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
     .phase-btn { background: #2c2c2e; color: #888; border: 1.5px solid #444; padding: 7px 0; border-radius: 6px; font-size: 11px; font-weight: bold; text-align: center; cursor: pointer; transition: all 0.2s; }
     .phase-btn.active-fc { background: #007aff; color: #fff; border-color: #007aff; }
     .phase-btn.active-ff { background: #5e5ce6; color: #fff; border-color: #5e5ce6; }
     .phase-btn.active-mer { background: #ff9500; color: #000; border-color: #ff9500; }
-    .phase-btn.active-ft { background: #30d158; color: #000; border-color: #30d158; }
 
     .mode-grid { width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 4px; }
     button.ctrl-btn { -webkit-appearance: none; appearance: none; width: 100%; padding: 6px 0; background: #2c2c2e; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; }
@@ -98,7 +97,7 @@
     <div id="result-box">
         <div class="result-text-area">
             <div id="main-result">投手バイオメカニクス解析</div>
-            <div id="sub-result">「📏 物差し設定」後、FC・FF・MER・リリース点・FTを記録してください</div>
+            <div id="sub-result">「📏 物差し設定」後、FC・FF・MER・リリース点を記録してください</div>
         </div>
         <button id="btn-confirm-scale" onclick="openScaleModal()">📏 長さ確定</button>
     </div>
@@ -124,7 +123,6 @@
         <button class="phase-btn" id="btnFC" onclick="markPhase('fc')">① FC (接地)</button>
         <button class="phase-btn" id="btnFF" onclick="markPhase('ff')">② FF (完全接地)</button>
         <button class="phase-btn" id="btnMER" onclick="markPhase('mer')">③ MER (最大外旋)</button>
-        <button class="phase-btn" id="btnFT" onclick="markPhase('ft')">④ FT (フォロー)</button>
     </div>
 
     <div class="mode-grid">
@@ -206,7 +204,6 @@ const btnConfirmScale = document.getElementById('btn-confirm-scale');
 const btnStepForward = document.getElementById('btnStepForward');
 const btnStepBack = document.getElementById('btnStepBack');
 
-// コマ送り幅（約60fps相当の滑らかさ）
 const STEP_SEC = 0.0166;
 const playbackRates = [1.0, 0.5, 0.25];
 let currentRateIdx = 0;
@@ -229,7 +226,7 @@ let isDraggingGround = false;
 let zoomScale = 1.0;
 let panOffsetX = 0, panOffsetY = 0;
 
-const phases = { fc: null, ff: null, mer: null, ft: null };
+const phases = { fc: null, ff: null, mer: null };
 let maxRecordedXFactor = 0;
 let latestLandmarks = null;
 let leadLegSide = null;
@@ -292,7 +289,7 @@ function toggleZoomMode() {
     } else {
         controls.style.display = 'none';
         mainResult.innerText = "投手バイオメカニクス解析";
-        subResult.innerText = "「📏 物差し設定」後、FC・FF・MER・リリース点・FTを記録してください";
+        subResult.innerText = "「📏 物差し設定」後、FC・FF・MER・リリース点を記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -307,7 +304,7 @@ function toggleScaleMode() {
         subResult.innerText = "位置確定後、右上の「長さ確定」ボタンを押してください";
     } else {
         mainResult.innerText = "投手バイオメカニクス解析";
-        subResult.innerText = "「📏 物差し設定」後、FC・FF・MER・リリース点・FTを記録してください";
+        subResult.innerText = "「📏 物差し設定」後、FC・FF・MER・リリース点を記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -322,7 +319,7 @@ function toggleReleaseMode() {
         subResult.innerText = "上の点(リリース)と下の緑の横線(地面)をドラッグして正確な高さを測ります";
     } else {
         mainResult.innerText = "投手バイオメカニクス解析";
-        subResult.innerText = "「📏 物差し設定」後、FC・FF・MER・リリース点・FTを記録してください";
+        subResult.innerText = "「📏 物差し設定」後、FC・FF・MER・リリース点を記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -544,7 +541,7 @@ function submitScaleModal() {
         isScaleMode = false;
         updateButtons();
         mainResult.innerHTML = "<span style='color:#30d158;'>✅ 物差し設定完了</span>";
-        subResult.innerText = "投球キーフェーズ（FC・FF・MER・リリース点・FT）を記録してください";
+        subResult.innerText = "投球キーフェーズ（FC・FF・MER・リリース点）を記録してください";
         recalcPitchMetrics();
         redrawOverlay();
     } else {
@@ -612,7 +609,6 @@ function updatePhaseBtnStyles() {
     document.getElementById('btnFC').className = `phase-btn ${phases.fc ? 'active-fc' : ''}`;
     document.getElementById('btnFF').className = `phase-btn ${phases.ff ? 'active-ff' : ''}`;
     document.getElementById('btnMER').className = `phase-btn ${phases.mer ? 'active-mer' : ''}`;
-    document.getElementById('btnFT').className = `phase-btn ${phases.ft ? 'active-ft' : ''}`;
 }
 
 function calcAngle(p1, p2, p3) {
@@ -675,6 +671,7 @@ function drawPitchingBiomechanics(lm) {
 
 function markPhase(key) {
     if (!video.videoWidth || !latestLandmarks) return;
+    const frame = Math.round(video.currentTime * 60);
     const box = getVideoRenderBox();
     const lm = latestLandmarks;
     const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
@@ -713,7 +710,7 @@ function markPhase(key) {
     recalcPitchMetrics();
     redrawOverlay();
 
-    const names = { fc: "① 接地(FC)", ff: "② 完全接地(FF)", mer: "③ 最大外旋(MER)", ft: "④ フォロー(FT)" };
+    const names = { fc: "① 接地(FC)", ff: "② 完全接地(FF)", mer: "③ 最大外旋(MER)" };
     mainResult.innerHTML = `<span style='color:#00ffcc;'>${names[key]} を記録しました</span>`;
 }
 
@@ -760,7 +757,7 @@ function recalcPitchMetrics() {
 }
 
 function clearAllData() {
-    phases.fc = phases.ff = phases.mer = phases.ft = null;
+    phases.fc = phases.ff = phases.mer = null;
     manualReleasePoint = null;
     manualGroundYNorm = null;
     maxRecordedXFactor = 0;
