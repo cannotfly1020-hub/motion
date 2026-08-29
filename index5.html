@@ -150,7 +150,7 @@
         <div class="side-box kinetics">
             <div class="side-title" style="color:#ff9500;">⚡ 下半身ブロック ＆ リリース</div>
             <div class="metric-row"><span>FC 前足膝角度:</span><span id="res_fc_knee" class="metric-val" style="color:#007aff;">---°</span></div>
-            <div class="metric-row"><span>BR 体幹前傾角:</span><span id="res_trunk_tilt" class="metric-val" style="color:#ff9500;">---°</span></div>
+            <div class="metric-row"><span>BR 前足膝角度:</span><span id="res_br_knee" class="metric-val" style="color:#ff375f;">---°</span></div>
             <div class="metric-row"><span>リリース地上高:</span><span id="res_release_h" class="metric-val" style="color:#30d158;">--- cm</span></div>
         </div>
     </div>
@@ -234,7 +234,8 @@ let panOffsetX = 0, panOffsetY = 0;
 const phases = { fc: null, mer: null, ft: null };
 let maxRecordedXFactor = 0;
 let latestLandmarks = null;
-let trunkTiltAtRelease = null;
+let leadLegSide = null; // 'left' または 'right' (前足を記憶)
+let brKneeAngle = null;
 
 let mediaRecorder = null;
 let recordedChunks = [];
@@ -295,9 +296,11 @@ function toggleZoomMode() {
         isScaleMode = isReleaseMode = false;
         controls.style.display = 'flex';
         mainResult.innerText = "🔍 ズームモード: ピンチ / ドラッグで画面操作";
+        subResult.innerText = "※拡大表示したまま物差しの設定やリリース点を打てます";
     } else {
         controls.style.display = 'none';
         mainResult.innerText = "投手バイオメカニクス解析";
+        subResult.innerText = "「📏 物差し設定」後、FC・MER・リリース点・FTを記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -312,6 +315,7 @@ function toggleScaleMode() {
         subResult.innerText = "位置確定後、右上の「長さ確定」ボタンを押してください";
     } else {
         mainResult.innerText = "投手バイオメカニクス解析";
+        subResult.innerText = "「📏 物差し設定」後、FC・MER・リリース点・FTを記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -323,9 +327,10 @@ function toggleReleaseMode() {
         isZoomMode = isScaleMode = false;
         document.getElementById('zoom-controls').style.display = 'none';
         mainResult.innerText = "⚾️ リリース点: ボールを離した瞬間をタップ";
-        subResult.innerText = "リリース点と緑の横線(地面)をドラッグして正確な高さを測ります";
+        subResult.innerText = "上の点(リリース)と下の緑の横線(地面)をドラッグして正確な高さを測ります";
     } else {
         mainResult.innerText = "投手バイオメカニクス解析";
+        subResult.innerText = "「📏 物差し設定」後、FC・MER・リリース点・FTを記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -404,6 +409,24 @@ stage.addEventListener('touchend', (e) => {
     if (e.touches.length === 0) isTouchPanning = false;
 });
 
+// リリース点または前足の膝角度取得
+function calcCurrentLeadKneeAngle(lm, box) {
+    if (!lm) return null;
+    const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
+    const hipL = lm[23], hipR = lm[24], kneeL = lm[25], kneeR = lm[26], ankL = lm[27], ankR = lm[28];
+    if (!hipL || !hipR || !kneeL || !kneeR || !ankL || !ankR) return null;
+
+    let useLeft = (leadLegSide === 'left');
+    if (!leadLegSide) {
+        // 未判定なら下または外側の足を前足とする
+        useLeft = ankL.y > ankR.y || Math.abs(ankL.x - (hipL.x + hipR.x)/2) > Math.abs(ankR.x - (hipL.x + hipR.x)/2);
+    }
+    const leadHip = useLeft ? toPx(hipL) : toPx(hipR);
+    const leadKnee = useLeft ? toPx(kneeL) : toPx(kneeR);
+    const leadAnk = useLeft ? toPx(ankL) : toPx(ankR);
+    return calcAngle(leadHip, leadKnee, leadAnk);
+}
+
 interactionCanvas.addEventListener('pointerdown', (e) => {
     const pt = getCanvasPoint(e);
     const box = getVideoRenderBox();
@@ -433,17 +456,8 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
             isDraggingRelease = true;
             try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
 
-            // リリース時の体幹前傾角を即座に記録
-            if (latestLandmarks) {
-                const lm = latestLandmarks;
-                const shL = lm[11], shR = lm[12], hipL = lm[23], hipR = lm[24];
-                if (shL && shR && hipL && hipR) {
-                    const midSh = { x: (shL.x + shR.x) / 2, y: (shL.y + shR.y) / 2 };
-                    const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
-                    const angleRad = Math.atan2(midSh.x - midHip.x, -(midSh.y - midHip.y));
-                    trunkTiltAtRelease = Math.abs(angleRad * (180 / Math.PI));
-                }
-            }
+            // リリース時の前足膝角度を即座に記録
+            brKneeAngle = calcCurrentLeadKneeAngle(latestLandmarks, box);
 
             recalcPitchMetrics();
             redrawOverlay();
@@ -690,11 +704,10 @@ function markPhase(key) {
             if (manualGroundYNorm === null) manualGroundYNorm = phases.fc.groundYNorm;
         }
 
-        // 前足の膝角度を計算（着地脚を判定）
         const hipL = lm[23], hipR = lm[24], kneeL = lm[25], kneeR = lm[26];
         if (hipL && hipR && kneeL && kneeR && ankL && ankR) {
-            // 前足（重心から進行方向により遠い方の足）
             const isLeftLead = ankL.y > ankR.y || Math.abs(ankL.x - (hipL.x + hipR.x)/2) > Math.abs(ankR.x - (hipL.x + hipR.x)/2);
+            leadLegSide = isLeftLead ? 'left' : 'right'; // 前足の左右を記憶
             const leadHip = isLeftLead ? toPx(hipL) : toPx(hipR);
             const leadKnee = isLeftLead ? toPx(kneeL) : toPx(kneeR);
             const leadAnk = isLeftLead ? toPx(ankL) : toPx(ankR);
@@ -740,11 +753,11 @@ function recalcPitchMetrics() {
         document.getElementById('res_fc_knee').innerText = "---°";
     }
 
-    // 4. BR 体幹前傾角
-    if (trunkTiltAtRelease !== null) {
-        document.getElementById('res_trunk_tilt').innerText = `${trunkTiltAtRelease.toFixed(1)}°`;
+    // 4. BR 前足膝角度
+    if (brKneeAngle !== null) {
+        document.getElementById('res_br_knee').innerText = `${brKneeAngle.toFixed(1)}°`;
     } else {
-        document.getElementById('res_trunk_tilt').innerText = "---°";
+        document.getElementById('res_br_knee').innerText = "---°";
     }
 
     // 5. リリース地上高
@@ -763,7 +776,8 @@ function clearAllData() {
     manualReleasePoint = null;
     manualGroundYNorm = null;
     maxRecordedXFactor = 0;
-    trunkTiltAtRelease = null;
+    leadLegSide = null;
+    brKneeAngle = null;
     scalePoints = [];
     pxPerCm = null;
     document.getElementById('scale-info-text').innerText = "物差し: 未設定";
@@ -771,7 +785,7 @@ function clearAllData() {
     document.getElementById('res_stride').innerText = "--- cm";
     document.getElementById('res_mer_elbow').innerText = "---°";
     document.getElementById('res_fc_knee').innerText = "---°";
-    document.getElementById('res_trunk_tilt').innerText = "---°";
+    document.getElementById('res_br_knee').innerText = "---°";
     document.getElementById('res_release_h').innerText = "--- cm";
     updatePhaseBtnStyles();
     updateButtons();
@@ -811,7 +825,7 @@ async function loop() {
         recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText}`, 15, outputCanvas.height + 26);
         recCtx.fillStyle = '#ff9500';
         recCtx.font = 'bold 12px sans-serif';
-        recCtx.fillText(`FC膝角: ${document.getElementById('res_fc_knee').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+        recCtx.fillText(`FC膝角: ${document.getElementById('res_fc_knee').innerText} ｜ BR膝角: ${document.getElementById('res_br_knee').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
     }
     animationFrameId = requestAnimationFrame(loop);
 }
@@ -854,7 +868,7 @@ function captureSnapshot() {
     snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 13px sans-serif';
     snapCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText}`, 15, outputCanvas.height + 26);
     snapCtx.fillStyle = '#ff9500'; snapCtx.font = 'bold 12px sans-serif';
-    snapCtx.fillText(`FC膝角: ${document.getElementById('res_fc_knee').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+    snapCtx.fillText(`FC膝角: ${document.getElementById('res_fc_knee').innerText} ｜ BR膝角: ${document.getElementById('res_br_knee').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
     
     document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); 
     document.getElementById('snapshot-modal-overlay').style.display = 'flex';
