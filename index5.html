@@ -22,7 +22,6 @@
     
     .hdr-btn { -webkit-appearance: none; appearance: none; background: #007aff; color: white; border: none; padding: 5px 8px; border-radius: 6px; font-weight: bold; font-size: 11px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
     .hdr-btn.secondary { background: #3a3a3c; }
-    .hdr-btn.fps-badge { background: #30d158; color: #000; font-size: 10px; }
     .hdr-btn.rec-active { background: #ff3b30 !important; animation: pulse-red 1s infinite; }
     @keyframes pulse-red { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
     
@@ -70,7 +69,7 @@
     .metric-val { font-weight: bold; font-family: monospace; color: #fff; }
     .highlight-val { color: #00ffcc !important; }
 
-    .playback-row { width: 100%; display: grid; grid-template-columns: 1fr 1.3fr 1fr 0.9fr 1fr; gap: 4px; }
+    .playback-row { width: 100%; display: grid; grid-template-columns: 1fr 1.4fr 1fr 1fr; gap: 4px; }
     #btnPlayPause { background: #34c759; color: #000; font-weight: bold; }
 
     .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
@@ -91,7 +90,6 @@
         <div class="btn-group-header">
             <button class="hdr-btn" onclick="document.getElementById('inputFile').click()">動画選択</button>
             <input type="file" id="inputFile" accept="video/*" style="display:none;">
-            <button class="hdr-btn fps-badge" id="btnFps" onclick="toggleFPS()">60fps</button>
             <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 静止画</button>
             <button class="hdr-btn" id="btnRecord" style="background:#ff3b30;" onclick="toggleRecording()">🎥 録画開始</button>
         </div>
@@ -162,7 +160,6 @@
         <button class="ctrl-btn" id="btnPlayPause">▶ 再生</button>
         <button class="ctrl-btn" id="btnStepForward">+1 ▶</button>
         <button class="ctrl-btn" id="btnSpeed" onclick="togglePlaybackRate()">1.0x</button>
-        <button class="ctrl-btn" style="background:#555;" onclick="resetZoom()">🔍 1x</button>
     </div>
 </div>
 
@@ -209,9 +206,8 @@ const btnConfirmScale = document.getElementById('btn-confirm-scale');
 const btnStepForward = document.getElementById('btnStepForward');
 const btnStepBack = document.getElementById('btnStepBack');
 
-let currentFPS = 60.0;
-const fpsList = [30, 60, 120, 240];
-let fpsIdx = 1;
+// コマ送り幅（約60fps相当の滑らかさ）
+const STEP_SEC = 0.0166;
 const playbackRates = [1.0, 0.5, 0.25];
 let currentRateIdx = 0;
 
@@ -279,12 +275,6 @@ function fitCanvases() {
 }
 window.addEventListener('resize', fitCanvases);
 
-function toggleFPS() {
-    fpsIdx = (fpsIdx + 1) % fpsList.length;
-    currentFPS = fpsList[fpsIdx];
-    document.getElementById('btnFps').innerText = `${currentFPS}fps`;
-}
-
 function togglePlaybackRate() {
     currentRateIdx = (currentRateIdx + 1) % playbackRates.length;
     video.playbackRate = playbackRates[currentRateIdx];
@@ -298,9 +288,11 @@ function toggleZoomMode() {
         isScaleMode = isReleaseMode = false;
         controls.style.display = 'flex';
         mainResult.innerText = "🔍 ズームモード: ピンチ / ドラッグで画面操作";
+        subResult.innerText = "※拡大表示したまま物差しの設定やリリース点を打てます";
     } else {
         controls.style.display = 'none';
         mainResult.innerText = "投手バイオメカニクス解析";
+        subResult.innerText = "「📏 物差し設定」後、FC・FF・MER・リリース点・FTを記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -315,6 +307,7 @@ function toggleScaleMode() {
         subResult.innerText = "位置確定後、右上の「長さ確定」ボタンを押してください";
     } else {
         mainResult.innerText = "投手バイオメカニクス解析";
+        subResult.innerText = "「📏 物差し設定」後、FC・FF・MER・リリース点・FTを記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -326,9 +319,10 @@ function toggleReleaseMode() {
         isZoomMode = isScaleMode = false;
         document.getElementById('zoom-controls').style.display = 'none';
         mainResult.innerText = "⚾️ リリース点: ボールを離した瞬間をタップ";
-        subResult.innerText = "リリース点と緑の横線(地面)をドラッグして正確な高さを測ります";
+        subResult.innerText = "上の点(リリース)と下の緑の横線(地面)をドラッグして正確な高さを測ります";
     } else {
         mainResult.innerText = "投手バイオメカニクス解析";
+        subResult.innerText = "「📏 物差し設定」後、FC・FF・MER・リリース点・FTを記録してください";
     }
     updateButtons();
     redrawOverlay();
@@ -681,12 +675,11 @@ function drawPitchingBiomechanics(lm) {
 
 function markPhase(key) {
     if (!video.videoWidth || !latestLandmarks) return;
-    const frame = Math.round(video.currentTime * currentFPS);
     const box = getVideoRenderBox();
     const lm = latestLandmarks;
     const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
 
-    phases[key] = { time: frame / currentFPS, frame: frame };
+    phases[key] = { time: video.currentTime };
 
     if (key === 'fc') {
         const ankL = lm[27], ankR = lm[28], heelL = lm[29], heelR = lm[30];
@@ -842,11 +835,11 @@ btnPlayPause.addEventListener('click', async () => {
 
 btnStepForward.addEventListener('click', () => { 
     video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759'; 
-    video.currentTime = Math.min(video.duration, video.currentTime + (1 / currentFPS)); 
+    video.currentTime = Math.min(video.duration, video.currentTime + STEP_SEC); 
 });
 btnStepBack.addEventListener('click', () => { 
     video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759'; 
-    video.currentTime = Math.max(0, video.currentTime - (1 / currentFPS)); 
+    video.currentTime = Math.max(0, video.currentTime - STEP_SEC); 
 });
 
 function captureSnapshot() {
