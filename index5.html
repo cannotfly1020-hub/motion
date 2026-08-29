@@ -125,7 +125,7 @@
 
     <!-- フェーズボタン（矢状面 / 前額面 で動的切り替え） -->
     <div class="phase-actions" id="phaseContainer">
-        <!-- JSで動的にボタン生成 -->
+        <!-- JSで動的生成 -->
     </div>
 
     <div class="mode-grid">
@@ -143,7 +143,7 @@
 
     <!-- ダッシュボード（矢状面 / 前額面 で動的切り替え） -->
     <div class="dashboard-grid" id="dashboardContainer">
-        <!-- JSで動的にパネル生成 -->
+        <!-- JSで動的生成 -->
     </div>
 
     <div class="playback-row">
@@ -219,7 +219,8 @@ const planeData = {
     frontal: {
         pxPerCm: null, scalePoints: [], manualReleasePoint: null, manualGroundYNorm: null,
         phases: { pk: null, fc: null, br: null },
-        shoulderElbowAngle: null, trunkTiltFrontal: null, stepWidthPx: null, pelvisObliquity: null
+        shoulderElbowAngle: null, trunkTiltFrontal: null, pelvisObliquity: null,
+        toeOutAngle: null, kneeValgusAngle: null
     }
 };
 
@@ -278,15 +279,15 @@ function buildUI() {
         `;
         dashboardContainer.innerHTML = `
             <div class="side-box kinematics">
-                <div class="side-title" style="color:#00ffcc;">🎯 アライメント (正面)</div>
-                <div class="metric-row"><span>FC ステップ幅:</span><span id="res_step_width" class="metric-val highlight-val">--- cm</span></div>
-                <div class="metric-row"><span>FC 骨盤水平傾斜:</span><span id="res_pelvis_tilt" class="metric-val" style="color:#ffd60a;">---°</span></div>
-                <div class="metric-row"><span>BR 体幹側屈角度:</span><span id="res_trunk_lateral" class="metric-val">---°</span></div>
+                <div class="side-title" style="color:#00ffcc;">🎯 下肢アライメント (正面)</div>
+                <div class="metric-row"><span>FC つま先開き角:</span><span id="res_toe_out" class="metric-val highlight-val">---°</span></div>
+                <div class="metric-row"><span>FC 膝内外反角度:</span><span id="res_knee_valgus" class="metric-val" style="color:#ffd60a;">---°</span></div>
+                <div class="metric-row"><span>FC 骨盤水平傾斜:</span><span id="res_pelvis_tilt" class="metric-val">---°</span></div>
             </div>
             <div class="side-box kinetics">
-                <div class="side-title" style="color:#ff9500;">⚡ 腕のアライメント ＆ リリース</div>
+                <div class="side-title" style="color:#ff9500;">⚡ 腕・体幹アライメント</div>
                 <div class="metric-row"><span>BR 肘高(肩-肘線):</span><span id="res_shoulder_elbow" class="metric-val" style="color:#ff375f;">---°</span></div>
-                <div class="metric-row"><span>リリース地上高:</span><span id="res_release_h" class="metric-val" style="color:#30d158;">--- cm</span></div>
+                <div class="metric-row"><span>BR 体幹側屈角度:</span><span id="res_trunk_lateral" class="metric-val" style="color:#ff9500;">---°</span></div>
                 <div class="metric-row"><span>PK 軸足傾斜:</span><span id="res_pk_tilt" class="metric-val" style="color:#30d158;">---°</span></div>
             </div>
         `;
@@ -668,8 +669,8 @@ function redrawOverlay() {
 
             if (cur.scalePoints.length === 2) {
                 intCtx.beginPath(); 
-                intCtx.moveTo(cur.scalePoints[0].x, cur.scalePoints[0].y); 
-                intCtx.lineTo(cur.scalePoints[1].x, cur.scalePoints[1].y); 
+                intCtx.moveTo(cur.scalePoints[0].x, scalePoints[0].y); 
+                intCtx.lineTo(cur.scalePoints[1].x, scalePoints[1].y); 
                 intCtx.stroke();
             }
         } else {
@@ -796,6 +797,7 @@ function drawPitchingBiomechanics(lm) {
     outCtx.restore();
 }
 
+// フェーズ記録＆トグル解除
 function markPhase(key) {
     const cur = planeData[currentPlane];
     const names = {
@@ -853,13 +855,30 @@ function markPhase(key) {
             }
         }
         if (key === 'fc') {
-            const ankL = lm[27], ankR = lm[28], hipL = lm[23], hipR = lm[24];
-            if (ankL && ankR) {
-                const px1 = toPx(ankL), px2 = toPx(ankR);
-                cur.stepWidthPx = Math.abs(px1.x - px2.x);
-                cur.phases.fc.groundYNorm = Math.max(ankL.y, ankR.y);
-                if (cur.manualGroundYNorm === null) cur.manualGroundYNorm = cur.phases.fc.groundYNorm;
+            const ankL = lm[27], ankR = lm[28], hipL = lm[23], hipR = lm[24], kneeL = lm[25], kneeR = lm[26];
+            const footL = lm[31], footR = lm[32]; // つま先 (Foot index)
+            
+            // 前足の判定（下または前方にある足）
+            const isLeftLead = (ankL && ankR) ? (ankL.y > ankR.y) : true;
+            const leadHip = isLeftLead ? hipL : hipR;
+            const leadKnee = isLeftLead ? kneeL : kneeR;
+            const leadAnk = isLeftLead ? ankL : ankR;
+            const leadFoot = isLeftLead ? footL : footR;
+
+            // 1. 膝の内外反角 (Hip-Knee-Ankle の角度。180°がまっすぐ)
+            if (leadHip && leadKnee && leadAnk) {
+                cur.kneeValgusAngle = calcAngle(toPx(leadHip), toPx(leadKnee), toPx(leadAnk));
             }
+
+            // 2. 前足つま先の開き角（足首-つま先ベクトルの傾き）
+            if (leadAnk && leadFoot) {
+                const pAnk = toPx(leadAnk), pFoot = toPx(leadFoot);
+                // 垂直軸（y方向）に対する傾きを算出
+                const toeAngle = Math.atan2(pFoot.x - pAnk.x, pFoot.y - pAnk.y) * (180 / Math.PI);
+                cur.toeOutAngle = Math.abs(toeAngle);
+            }
+
+            // 3. 骨盤の傾斜
             if (hipL && hipR) {
                 const p1 = toPx(hipL), p2 = toPx(hipR);
                 const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
@@ -906,9 +925,23 @@ function recalcPitchMetrics() {
 
         const resBRKnee = document.getElementById('res_br_knee');
         if (resBRKnee) resBRKnee.innerText = (cur.brKneeAngle !== null) ? `${cur.brKneeAngle.toFixed(1)}°` : "---°";
+
+        const resRelH = document.getElementById('res_release_h');
+        if (resRelH) {
+            if (cur.manualReleasePoint && cur.manualGroundYNorm !== null && cur.pxPerCm) {
+                const wristY = box.y + cur.manualReleasePoint.y * box.h;
+                const groundY = box.y + cur.manualGroundYNorm * box.h;
+                resRelH.innerText = `${Math.max(0, (groundY - wristY) / cur.pxPerCm).toFixed(1)} cm`;
+            } else {
+                resRelH.innerText = "--- cm";
+            }
+        }
     } else {
-        const resStep = document.getElementById('res_step_width');
-        if (resStep) resStep.innerText = (cur.stepWidthPx && cur.pxPerCm) ? `${(cur.stepWidthPx / cur.pxPerCm).toFixed(1)} cm` : "--- cm";
+        const resToe = document.getElementById('res_toe_out');
+        if (resToe) resToe.innerText = (cur.toeOutAngle !== null) ? `${cur.toeOutAngle.toFixed(1)}°` : "---°";
+
+        const resValgus = document.getElementById('res_knee_valgus');
+        if (resValgus) resValgus.innerText = (cur.kneeValgusAngle !== null) ? `${cur.kneeValgusAngle.toFixed(1)}°` : "---°";
 
         const resPelvis = document.getElementById('res_pelvis_tilt');
         if (resPelvis) resPelvis.innerText = (cur.pelvisObliquity !== null) ? `${cur.pelvisObliquity.toFixed(1)}°` : "---°";
@@ -921,17 +954,6 @@ function recalcPitchMetrics() {
 
         const resPK = document.getElementById('res_pk_tilt');
         if (resPK) resPK.innerText = (cur.phases.pk && cur.phases.pk.tilt !== undefined) ? `${cur.phases.pk.tilt.toFixed(1)}°` : "---°";
-    }
-
-    const resRelH = document.getElementById('res_release_h');
-    if (resRelH) {
-        if (cur.manualReleasePoint && cur.manualGroundYNorm !== null && cur.pxPerCm) {
-            const wristY = box.y + cur.manualReleasePoint.y * box.h;
-            const groundY = box.y + cur.manualGroundYNorm * box.h;
-            resRelH.innerText = `${Math.max(0, (groundY - wristY) / cur.pxPerCm).toFixed(1)} cm`;
-        } else {
-            resRelH.innerText = "--- cm";
-        }
     }
 }
 
@@ -946,8 +968,9 @@ function clearAllData() {
         cur.phases = { pk: null, fc: null, br: null };
         cur.shoulderElbowAngle = null;
         cur.trunkTiltFrontal = null;
-        cur.stepWidthPx = null;
         cur.pelvisObliquity = null;
+        cur.toeOutAngle = null;
+        cur.kneeValgusAngle = null;
     }
     cur.manualReleasePoint = null;
     cur.manualGroundYNorm = null;
@@ -989,7 +1012,11 @@ async function loop() {
         recCtx.fillText(mainResult.innerText, 15, outputCanvas.height + 26);
         recCtx.fillStyle = '#ff9500';
         recCtx.font = 'bold 12px sans-serif';
-        recCtx.fillText(`リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+        if (currentPlane === 'sagittal') {
+            recCtx.fillText(`リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+        } else {
+            recCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, 15, outputCanvas.height + 50);
+        }
     }
     animationFrameId = requestAnimationFrame(loop);
 }
@@ -1032,7 +1059,11 @@ function captureSnapshot() {
     snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 13px sans-serif';
     snapCtx.fillText(mainResult.innerText, 15, outputCanvas.height + 26);
     snapCtx.fillStyle = '#ff9500'; snapCtx.font = 'bold 12px sans-serif';
-    snapCtx.fillText(`リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+    if (currentPlane === 'sagittal') {
+        snapCtx.fillText(`リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+    } else {
+        snapCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, 15, outputCanvas.height + 50);
+    }
     
     document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); 
     document.getElementById('snapshot-modal-overlay').style.display = 'flex';
@@ -1085,7 +1116,6 @@ document.getElementById('inputFile').addEventListener('change', (e) => {
     e.target.value = '';
 });
 
-// 起動時にUIを構築
 buildUI();
 </script>
 </body>
