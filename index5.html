@@ -127,7 +127,6 @@
 
     <!-- フェーズボタン -->
     <div class="phase-actions" id="phaseContainer"></div>
-    <!-- モード切り替えボタン群 -->
     <div class="mode-grid" id="modeGridContainer"></div>
 
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
@@ -136,7 +135,6 @@
         <button class="ctrl-btn" style="width:auto; padding:4px 10px; background:#444;" onclick="resetZoom()">等倍リセット</button>
     </div>
 
-    <!-- ダッシュボード -->
     <div class="dashboard-grid" id="dashboardContainer"></div>
 
     <div class="playback-row">
@@ -360,11 +358,11 @@ function updateScaleInfo() {
     }
 }
 
-// 実際の画面上のレンダリング位置とアスペクト比を取得（動画の純粋な領域）
+// 実際の画面上のレンダリング位置とアスペクト比を取得
 function getVideoRenderBox() {
     const cWidth = outputCanvas.width, cHeight = outputCanvas.height;
     if (!video.videoWidth || !video.videoHeight || cWidth === 0 || cHeight === 0) {
-        return { x: 0, y: 0, w: cWidth, h: cHeight, ratio: 1 };
+        return { x: 0, y: 0, w: cWidth, h: cHeight };
     }
     const videoRatio = video.videoWidth / video.videoHeight;
     const canvasRatio = cWidth / cHeight;
@@ -377,7 +375,7 @@ function getVideoRenderBox() {
         renderW = cWidth; renderH = cWidth / videoRatio;
         offsetX = 0; offsetY = (cHeight - renderH) / 2;
     }
-    return { x: offsetX, y: offsetY, w: renderW, h: renderH, ratio: renderW / renderH };
+    return { x: offsetX, y: offsetY, w: renderW, h: renderH };
 }
 
 function fitCanvases() {
@@ -1068,14 +1066,15 @@ function generateComprehensiveReportCard() {
     repCtx.fillRect(25, 105, snapW, snapH);
 
     if (video.videoWidth) {
+        // レポート用も画面そのままの100%比率を描画
         const box = getVideoRenderBox();
-        const videoRatio = box.ratio;
+        const videoRatio = video.videoWidth / video.videoHeight;
         let dw = snapW, dh = snapW / videoRatio;
         if (dh > snapH) { dh = snapH; dw = snapH * videoRatio; }
         const dx = 25 + (snapW - dw) / 2;
         const dy = 105 + (snapH - dh) / 2;
 
-        repCtx.drawImage(video, dx, dy, dw, dh);
+        repCtx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight, dx, dy, dw, dh);
         if (box.w > 0 && box.h > 0) {
             repCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, dx, dy, dw, dh);
             repCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, dx, dy, dw, dh);
@@ -1182,44 +1181,41 @@ async function loop() {
         updateSeekBar(); 
     }
     
-    // 録画フレームの描画（動画のアスペクト比を100%維持して描画）
+    // 【録画時の完全同期描画】動画本来のファイルサイズ（縦横比）を100%基準にする
     if (isRecording && video.videoWidth > 0 && recCanvas.width > 0) {
-        const box = getVideoRenderBox();
-        const w = recCanvas.width;
-        const h = recCanvas.height;
-        const bannerH = Math.round(h * 0.12);
-        const videoH = h - bannerH; // 上部の純粋な動画エリア
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        const bannerH = recCanvas.height - recCanvas.width * (vh / vw);
 
-        // 背景クリア
         recCtx.fillStyle = '#000';
-        recCtx.fillRect(0, 0, w, h);
+        recCtx.fillRect(0, 0, recCanvas.width, recCanvas.height);
 
-        // 黒帯を除外した動画本来の領域(box)だけを、Canvas上部のvideoH領域いっぱいに等倍転写
+        // 1. 動画本来のアスペクト比でキャンバス上部に描画（歪みゼロ）
+        recCtx.drawImage(video, 0, 0, recCanvas.width, recCanvas.height - bannerH);
+
+        // 2. 骨格キャンバスから動画領域（box）だけを正確に切り抜き、動画に完全フィットさせて描画
+        const box = getVideoRenderBox();
         if (box.w > 0 && box.h > 0) {
-            recCtx.drawImage(video, 0, 0, w, videoH);
-            recCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, w, videoH);
-            recCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, 0, 0, w, videoH);
+            recCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, recCanvas.width, recCanvas.height - bannerH);
+            recCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, 0, 0, recCanvas.width, recCanvas.height - bannerH);
         }
 
-        // 下部にデータバーを描画
-        const grad = recCtx.createLinearGradient(0, videoH, 0, h);
-        grad.addColorStop(0, '#1c1c1e');
-        grad.addColorStop(1, '#000000');
-        
-        recCtx.fillStyle = grad;
-        recCtx.fillRect(0, videoH, w, bannerH);
+        // 3. 情報バナー領域
+        const textStartY = recCanvas.height - bannerH;
+        recCtx.fillStyle = '#1c1c1e';
+        recCtx.fillRect(0, textStartY, recCanvas.width, bannerH);
 
-        const fontSize = Math.max(14, Math.round(h * 0.024));
+        const fontSize = Math.max(14, Math.floor(recCanvas.width * 0.025));
         recCtx.font = `bold ${fontSize}px sans-serif`;
 
         recCtx.fillStyle = '#00ffcc';
-        recCtx.fillText(mainResult.innerText, Math.round(w * 0.03), videoH + Math.round(bannerH * 0.42));
+        recCtx.fillText(mainResult.innerText, Math.floor(recCanvas.width * 0.03), textStartY + Math.floor(bannerH * 0.42));
 
         recCtx.fillStyle = '#ff9500';
         if (currentPlane === 'sagittal') {
-            recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, Math.round(w * 0.03), videoH + Math.round(bannerH * 0.82));
+            recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, Math.floor(recCanvas.width * 0.03), textStartY + Math.floor(bannerH * 0.82));
         } else {
-            recCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 膝内外反: ${document.getElementById('res_knee_valgus').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, Math.round(w * 0.03), videoH + Math.round(bannerH * 0.82));
+            recCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 膝内外反: ${document.getElementById('res_knee_valgus').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, Math.floor(recCanvas.width * 0.03), textStartY + Math.floor(bannerH * 0.82));
         }
     }
     animationFrameId = requestAnimationFrame(loop);
@@ -1263,24 +1259,49 @@ function captureSnapshot() {
     const box = getVideoRenderBox();
     const snapCanvas = document.createElement('canvas'), snapCtx = snapCanvas.getContext('2d');
     
-    // スナップショットも黒帯を排除した純粋な動画のアスペクト比で生成
-    snapCanvas.width = box.w; 
-    snapCanvas.height = box.h + 70;
-    
-    snapCtx.fillStyle = '#000'; 
+    // スナップショットも動画本来の比率を100%継承する
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    let targetW = vw;
+    let targetH = vh;
+
+    const maxDim = 1280;
+    if (targetW > maxDim || targetH > maxDim) {
+        if (targetW > targetH) {
+            targetH = Math.round((targetH * maxDim) / targetW);
+            targetW = maxDim;
+        } else {
+            targetW = Math.round((targetW * maxDim) / targetH);
+            targetH = maxDim;
+        }
+    }
+    const bannerH = Math.round(targetH * 0.12);
+
+    snapCanvas.width = targetW;
+    snapCanvas.height = targetH + bannerH;
+
+    snapCtx.fillStyle = '#000';
     snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
-    snapCtx.drawImage(video, 0, 0, box.w, box.h);
-    snapCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
-    snapCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
+    snapCtx.drawImage(video, 0, 0, targetW, targetH);
     
-    snapCtx.fillStyle = '#1c1c1e'; snapCtx.fillRect(0, box.h, snapCanvas.width, 70);
-    snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 16px sans-serif';
-    snapCtx.fillText(mainResult.innerText, 15, box.h + 26);
-    snapCtx.fillStyle = '#ff9500'; snapCtx.font = 'bold 14px sans-serif';
+    if (box.w > 0 && box.h > 0) {
+        snapCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, targetW, targetH);
+        snapCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, 0, 0, targetW, targetH);
+    }
+    
+    snapCtx.fillStyle = '#1c1c1e'; snapCtx.fillRect(0, targetH, targetW, bannerH);
+    
+    const fontSize1 = Math.max(14, Math.round(targetH * 0.024));
+    const fontSize2 = Math.max(12, Math.round(targetH * 0.021));
+
+    snapCtx.fillStyle = '#00ffcc'; snapCtx.font = `bold ${fontSize1}px sans-serif`;
+    snapCtx.fillText(mainResult.innerText, Math.round(targetW * 0.03), targetH + Math.round(bannerH * 0.42));
+    
+    snapCtx.fillStyle = '#ff9500'; snapCtx.font = `bold ${fontSize2}px sans-serif`;
     if (currentPlane === 'sagittal') {
-        snapCtx.fillText(`リリース高: ${document.getElementById('res_release_h').innerText}`, 15, box.h + 52);
+        snapCtx.fillText(`リリース高: ${document.getElementById('res_release_h').innerText}`, Math.round(targetW * 0.03), targetH + Math.round(bannerH * 0.82));
     } else {
-        snapCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, 15, box.h + 52);
+        snapCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, Math.round(targetW * 0.03), targetH + Math.round(bannerH * 0.82));
     }
     
     document.getElementById('snapshot-modal-title').innerText = '📸 キャプチャ';
@@ -1295,13 +1316,13 @@ function toggleRecording() {
     if (!isRecording) {
         recordedChunks = [];
 
-        // 黒帯を除外した「純粋な動画領域」のアスペクト比を完全取得
-        const box = getVideoRenderBox();
+        // 録画キャンバスを動画本体のネイティブ解像度に完全同期
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
         const maxDim = 1280;
-        let targetW = box.w;
-        let targetH = box.h;
+        let targetW = vw;
+        let targetH = vh;
 
-        // 最大解像度制限（アスペクト比維持）
         if (targetW > maxDim || targetH > maxDim) {
             if (targetW > targetH) {
                 targetH = Math.round((targetH * maxDim) / targetW);
@@ -1312,21 +1333,23 @@ function toggleRecording() {
             }
         }
 
-        // 動画エンコーダ用に縦横サイズを必ず偶数化する
         targetW = Math.floor(targetW / 2) * 2;
         targetH = Math.floor(targetH / 2) * 2;
-        const bannerH = Math.floor(Math.round(targetH * 0.12) / 2) * 2; // バナー高さ
+        const bannerH = Math.floor(Math.round(targetH * 0.12) / 2) * 2;
 
-        // キャンバスは「動画本体の高さ＋バナーの高さ」で作成
         recCanvas.width = targetW;
         recCanvas.height = targetH + bannerH;
 
-        // 初回フレームを描画
+        // 初回フレーム
         recCtx.fillStyle = '#000';
         recCtx.fillRect(0, 0, recCanvas.width, recCanvas.height);
         recCtx.drawImage(video, 0, 0, targetW, targetH);
-        recCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, targetW, targetH);
-        recCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, 0, 0, targetW, targetH);
+        
+        const box = getVideoRenderBox();
+        if (box.w > 0 && box.h > 0) {
+            recCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, targetW, targetH);
+            recCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, 0, 0, targetW, targetH);
+        }
 
         const stream = recCanvas.captureStream(30);
 
