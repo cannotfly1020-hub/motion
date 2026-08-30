@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="動作分析Pro">
+<meta name="apple-mobile-web-app-title" content="投球動作分析Pro">
 <title>投手バイオメカニクス解析 - 動作分析Pro</title>
 
 <!-- MediaPipe Pose -->
@@ -22,8 +22,7 @@
     
     .hdr-btn { -webkit-appearance: none; appearance: none; background: #007aff; color: white; border: none; padding: 5px 8px; border-radius: 6px; font-weight: bold; font-size: 11px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
     .hdr-btn.secondary { background: #3a3a3c; }
-    .hdr-btn.fps-badge { background: #30d158; color: #000; font-size: 10px; }
-    .hdr-btn.roi-active { background: #ff9500 !important; color: #000 !important; font-weight: bold; }
+    .hdr-btn.plane-btn { background: #af52de; color: #fff; }
     .hdr-btn.rec-active { background: #ff3b30 !important; animation: pulse-red 1s infinite; }
     @keyframes pulse-red { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
     
@@ -31,6 +30,7 @@
     .result-text-area { flex: 1; min-width: 0; }
     #main-result { color: #00ffcc; font-size: 12px; font-weight: bold; line-height: 1.2; }
     #sub-result { color: #aaa; font-size: 10px; margin-top: 2px; font-weight: 500; line-height: 1.2; }
+    #btn-confirm-scale { display: none; background: #ff9500; color: #000; font-size: 11px; font-weight: bold; padding: 5px 10px; border: none; border-radius: 6px; cursor: pointer; flex-shrink: 0; white-space: nowrap; }
     #scale-info-text { font-size: 10px; color: #ff9500; font-weight: 600; white-space: nowrap; }
 
     #stage { width: 100%; position: relative; flex: 1; min-height: 0; display: flex; background: #000; overflow: hidden; }
@@ -47,29 +47,31 @@
     .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 14px; flex-shrink: 0; text-align: center; }
     input[type=range] { flex: 1; height: 18px; accent-color: #007aff; }
 
-    .phase-actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .phase-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
     .phase-btn { background: #2c2c2e; color: #888; border: 1.5px solid #444; padding: 7px 0; border-radius: 6px; font-size: 11px; font-weight: bold; text-align: center; cursor: pointer; transition: all 0.2s; }
     .phase-btn.active-fc { background: #007aff; color: #fff; border-color: #007aff; }
+    .phase-btn.active-ff { background: #5e5ce6; color: #fff; border-color: #5e5ce6; }
     .phase-btn.active-mer { background: #ff9500; color: #000; border-color: #ff9500; }
+    .phase-btn.active-pk { background: #30d158; color: #000; border-color: #30d158; }
     .phase-btn.active-br { background: #ff375f; color: #fff; border-color: #ff375f; }
-    .phase-btn.active-ft { background: #30d158; color: #000; border-color: #30d158; }
 
-    .mode-grid { width: 100%; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .mode-grid { width: 100%; display: grid; gap: 4px; }
     button.ctrl-btn { -webkit-appearance: none; appearance: none; width: 100%; padding: 6px 0; background: #2c2c2e; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; }
     button.ctrl-btn:active { background: #444; }
-    button.mode-active { background: #ff9500; color: #000; font-weight: bold; }
-    #btnModeZoom.mode-active { background: #007aff; color: #fff; }
+    button.mode-active { background: #ff9500 !important; color: #000 !important; font-weight: bold; }
+    #btnModeRelease.mode-active { background: #ff375f !important; color: #fff !important; }
+    #btnModeZoom.mode-active { background: #007aff !important; color: #fff !important; }
 
     .dashboard-grid { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
     .side-box { background: #262629; border-radius: 6px; padding: 4px 6px; border: 1px solid #3a3a3c; }
     .side-box.kinematics { border-top: 2.5px solid #00ffcc; }
-    .side-box.release { border-top: 2.5px solid #ff375f; }
+    .side-box.kinetics { border-top: 2.5px solid #ff9500; }
     .side-title { font-size: 10px; font-weight: bold; text-align: center; margin-bottom: 2px; }
-    .metric-row { display: flex; justify-content: space-between; font-size: 9.5px; padding: 1.5px 0; color: #ccc; }
+    .metric-row { display: flex; justify-content: space-between; font-size: 9.5px; padding: 1px 0; color: #ccc; }
     .metric-val { font-weight: bold; font-family: monospace; color: #fff; }
     .highlight-val { color: #00ffcc !important; }
 
-    .playback-row { width: 100%; display: grid; grid-template-columns: 1fr 1.3fr 1fr 0.9fr 1fr; gap: 4px; }
+    .playback-row { width: 100%; display: grid; grid-template-columns: 1fr 1.4fr 1fr 1fr; gap: 4px; }
     #btnPlayPause { background: #34c759; color: #000; font-weight: bold; }
 
     .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
@@ -90,8 +92,7 @@
         <div class="btn-group-header">
             <button class="hdr-btn" onclick="document.getElementById('inputFile').click()">動画選択</button>
             <input type="file" id="inputFile" accept="video/*" style="display:none;">
-            <button class="hdr-btn fps-badge" id="btnFps" onclick="toggleFPS()">60fps</button>
-            <button class="hdr-btn secondary" id="btnToggleRoi" onclick="toggleRoiMode()">🔲 対象者指定</button>
+            <button class="hdr-btn plane-btn" id="btnTogglePlane" onclick="togglePlaneMode()">➡️ 前額面(正面)へ</button>
             <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 静止画</button>
             <button class="hdr-btn" id="btnRecord" style="background:#ff3b30;" onclick="toggleRecording()">🎥 録画開始</button>
         </div>
@@ -99,9 +100,10 @@
     </div>
     <div id="result-box">
         <div class="result-text-area">
-            <div id="main-result">投手バイオメカニクス解析</div>
-            <div id="sub-result">「📏 物差し」設定後、FC・MER・BR・FTを記録してください</div>
+            <div id="main-result">投手バイオメカニクス解析 (矢状面/横)</div>
+            <div id="sub-result">「📏 物差し設定」後、各フェーズ・リリース点を記録してください</div>
         </div>
+        <button id="btn-confirm-scale" onclick="openScaleModal()">📏 長さ確定</button>
     </div>
 </div>
 
@@ -121,47 +123,26 @@
         <input type="range" id="seekSlider" min="0" max="100" value="0" step="0.05">
     </div>
 
-    <div class="phase-actions">
-        <button class="phase-btn" id="btnFC" onclick="markPhase('fc')">① FC(接地)</button>
-        <button class="phase-btn" id="btnMER" onclick="markPhase('mer')">② MER(最大外旋)</button>
-        <button class="phase-btn" id="btnBR" onclick="markPhase('br')">③ BR(リリース)</button>
-        <button class="phase-btn" id="btnFT" onclick="markPhase('ft')">④ FT(フォロー)</button>
-    </div>
+    <!-- フェーズボタン -->
+    <div class="phase-actions" id="phaseContainer"></div>
 
-    <div class="mode-grid">
-        <button class="ctrl-btn" id="btnModeScale" onclick="toggleScaleMode()">📏 物差し</button>
-        <button class="ctrl-btn" id="btnModeZoom" onclick="toggleZoomMode()">🔍 ズーム</button>
-        <button class="ctrl-btn" onclick="clearPhaseData()">🗑 クリア</button>
-        <button class="ctrl-btn" onclick="resetZoom()">1x 表示</button>
-    </div>
+    <!-- モード切り替えボタン群 -->
+    <div class="mode-grid" id="modeGridContainer"></div>
 
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
         <span style="font-size:11px; font-weight:bold; color:#007aff;">倍率</span>
         <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1">
+        <button class="ctrl-btn" style="width:auto; padding:4px 10px; background:#444;" onclick="resetZoom()">等倍リセット</button>
     </div>
 
-    <!-- ダッシュボード (床反力を削除し、リリース＆フォーム特化に再編) -->
-    <div class="dashboard-grid">
-        <div class="side-box kinematics">
-            <div class="side-title" style="color:#00ffcc;">🎯 投球キネマティクス</div>
-            <div class="metric-row"><span>FC歩幅(ステップ幅):</span><span id="res_stride" class="metric-val highlight-val">--- cm</span></div>
-            <div class="metric-row"><span>MER 肘屈曲角度:</span><span id="res_mer_elbow" class="metric-val" style="color:#ffd60a;">---°</span></div>
-            <div class="metric-row"><span>最大 捻転差:</span><span id="res_max_xfactor" class="metric-val">0.0°</span></div>
-        </div>
-        <div class="side-box release">
-            <div class="side-title" style="color:#ff375f;">⚾️ リリースポイント詳細</div>
-            <div class="metric-row"><span>BR リリース高:</span><span id="res_release_h" class="metric-val" style="color:#ff375f;">--- cm</span></div>
-            <div class="metric-row"><span>リリース前方伸長:</span><span id="res_release_ext" class="metric-val" style="color:#30d158;">--- cm</span></div>
-            <div class="metric-row"><span>リリース時 体幹前傾:</span><span id="res_release_tilt" class="metric-val">---°</span></div>
-        </div>
-    </div>
+    <!-- ダッシュボード -->
+    <div class="dashboard-grid" id="dashboardContainer"></div>
 
     <div class="playback-row">
         <button class="ctrl-btn" id="btnStepBack">◀ -1</button>
         <button class="ctrl-btn" id="btnPlayPause">▶ 再生</button>
         <button class="ctrl-btn" id="btnStepForward">+1 ▶</button>
         <button class="ctrl-btn" id="btnSpeed" onclick="togglePlaybackRate()">1.0x</button>
-        <button class="ctrl-btn" style="background:#555;" onclick="fitCanvases()">🔄 更新</button>
     </div>
 </div>
 
@@ -169,13 +150,13 @@
 <div id="scale-modal-overlay" class="modal-overlay">
     <div class="modal-card">
         <h3>物差しの長さ設定</h3>
-        <p>画面上の長さが分かっている2点を指定</p>
+        <p>画面上で指定した2点の実際の長さを入力</p>
         <div class="modal-input-row">
             <input type="number" id="scale-input-value" inputmode="decimal" placeholder="100" value="100">
             <span style="font-weight:bold; font-size:15px;">cm</span>
         </div>
         <div class="modal-btn-row">
-            <button style="background:#444; color:#fff;" onclick="closeScaleModal(true)">キャンセル</button>
+            <button style="background:#444; color:#fff;" onclick="closeScaleModal()">キャンセル</button>
             <button style="background:#ff9500; color:#000;" onclick="submitScaleModal()">確定</button>
         </div>
     </div>
@@ -204,42 +185,50 @@ const seekSlider = document.getElementById('seekSlider');
 const btnPlayPause = document.getElementById('btnPlayPause');
 const mainResult = document.getElementById('main-result');
 const subResult = document.getElementById('sub-result');
+const btnConfirmScale = document.getElementById('btn-confirm-scale');
+const btnStepForward = document.getElementById('btnStepForward');
+const btnStepBack = document.getElementById('btnStepBack');
+const btnTogglePlane = document.getElementById('btnTogglePlane');
+const phaseContainer = document.getElementById('phaseContainer');
+const dashboardContainer = document.getElementById('dashboardContainer');
+const modeGridContainer = document.getElementById('modeGridContainer');
 
-let currentFPS = 60.0;
-const fpsList = [30, 60, 120, 240];
-let fpsIdx = 1;
+const STEP_SEC = 0.0166;
 const playbackRates = [1.0, 0.5, 0.25];
 let currentRateIdx = 0;
 
 let isProcessing = false;
 let animationFrameId = null;
-let currentBlobUrl = null;
 
-// Scale & Zoom
-let pxPerCm = null;
+let currentPlane = 'sagittal';
+
+// 面ごとに「動画ファイル」と「解析データ」を完全に分離して保持
+const planeData = {
+    sagittal: {
+        videoSrc: null, currentTime: 0.001,
+        pxPerCm: null, scalePoints: [], manualReleasePoint: null, manualGroundYNorm: null,
+        phases: { fc: null, ff: null, mer: null },
+        maxRecordedXFactor: 0, leadLegSide: null, brKneeAngle: null
+    },
+    frontal: {
+        videoSrc: null, currentTime: 0.001,
+        phases: { pk: null, fc: null, br: null },
+        shoulderElbowAngle: null, trunkTiltFrontal: null, pelvisObliquity: null,
+        toeOutAngle: null, kneeValgusAngle: null
+    }
+};
+
 let isZoomMode = false;
 let isScaleMode = false;
-let isBrSettingMode = false; // リリースタップ調整モード
-let scalePoints = [];
+let isReleaseMode = false;
+let draggingScaleIdx = -1;
+let isDraggingRelease = false;
+let isDraggingGround = false;
+
 let zoomScale = 1.0;
 let panOffsetX = 0, panOffsetY = 0;
-let isPanning = false;
-
-// ROI
-let isRoiMode = false;
-let isRoiDrawing = false;
-let isRoiEnabled = false;
-let roiStart = { x: 0, y: 0 };
-let roiNorm = { x: 0.2, y: 0.1, w: 0.6, h: 0.8 };
-const roiCanvas = document.createElement('canvas');
-const roiCtx = roiCanvas.getContext('2d');
-
-// Pitching Data & Phases
-const phases = { fc: null, mer: null, br: null, ft: null };
-let maxRecordedXFactor = 0;
 let latestLandmarks = null;
 
-// 録画
 let mediaRecorder = null;
 let recordedChunks = [];
 let isRecording = false;
@@ -249,6 +238,133 @@ const recCtx = recCanvas.getContext('2d');
 const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
 pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
 pose.onResults(onResults);
+
+function buildUI() {
+    const scaleBadge = document.getElementById('scale-info-text');
+
+    if (currentPlane === 'sagittal') {
+        btnTogglePlane.innerText = '➡️ 前額面(正面)へ';
+        btnTogglePlane.style.background = '#af52de';
+        scaleBadge.style.display = 'inline-block';
+        
+        phaseContainer.innerHTML = `
+            <button class="phase-btn" id="btnFC" onclick="markPhase('fc')">① FC (接地)</button>
+            <button class="phase-btn" id="btnFF" onclick="markPhase('ff')">② FF (完全接地)</button>
+            <button class="phase-btn" id="btnMER" onclick="markPhase('mer')">③ MER (最大外旋)</button>
+        `;
+        
+        modeGridContainer.style.gridTemplateColumns = '1fr 1fr 1fr 1fr';
+        modeGridContainer.innerHTML = `
+            <button class="ctrl-btn" id="btnModeRelease" onclick="toggleReleaseMode()">⚾️ リリース点</button>
+            <button class="ctrl-btn" id="btnModeScale" onclick="toggleScaleMode()">📏 物差し設定</button>
+            <button class="ctrl-btn" id="btnModeZoom" onclick="toggleZoomMode()">🔍 ズーム操作</button>
+            <button class="ctrl-btn" style="background:#ff3b30;" onclick="clearAllData()">🗑 全消去</button>
+        `;
+
+        dashboardContainer.innerHTML = `
+            <div class="side-box kinematics">
+                <div class="side-title" style="color:#00ffcc;">🎯 投球キネマティクス (横)</div>
+                <div class="metric-row"><span>FC足移動幅(歩幅):</span><span id="res_stride" class="metric-val highlight-val">--- cm</span></div>
+                <div class="metric-row"><span>MER 肘屈曲角度:</span><span id="res_mer_elbow" class="metric-val" style="color:#ffd60a;">---°</span></div>
+                <div class="metric-row"><span>最大 捻転差:</span><span id="res_max_xfactor" class="metric-val">0.0°</span></div>
+            </div>
+            <div class="side-box kinetics">
+                <div class="side-title" style="color:#ff9500;">⚡ 下半身ブロック ＆ リリース</div>
+                <div class="metric-row"><span>FF 前足膝角度:</span><span id="res_ff_knee" class="metric-val" style="color:#5e5ce6;">---°</span></div>
+                <div class="metric-row"><span>BR 前足膝角度:</span><span id="res_br_knee" class="metric-val" style="color:#ff375f;">---°</span></div>
+                <div class="metric-row"><span>リリース地上高:</span><span id="res_release_h" class="metric-val" style="color:#30d158;">--- cm</span></div>
+            </div>
+        `;
+        mainResult.innerText = "投手バイオメカニクス解析 (矢状面/横)";
+        subResult.innerText = planeData.sagittal.videoSrc ? "「📏 物差し設定」後、各フェーズ・リリース点を記録してください" : "「動画選択」ボタンから矢状面（横）の動画を選択してください";
+    } else {
+        btnTogglePlane.innerText = '➡️ 矢状面(横)へ';
+        btnTogglePlane.style.background = '#007aff';
+        scaleBadge.style.display = 'none';
+        btnConfirmScale.style.display = 'none';
+        
+        isScaleMode = isReleaseMode = false;
+        
+        phaseContainer.innerHTML = `
+            <button class="phase-btn" id="btnPK" onclick="markPhase('pk')">① PK (足上げ頂点)</button>
+            <button class="phase-btn" id="btnFC" onclick="markPhase('fc')">② FC (接地時)</button>
+            <button class="phase-btn" id="btnBR" onclick="markPhase('br')">③ BR (リリース時)</button>
+        `;
+        
+        modeGridContainer.style.gridTemplateColumns = '1fr 1fr';
+        modeGridContainer.innerHTML = `
+            <button class="ctrl-btn" id="btnModeZoom" onclick="toggleZoomMode()">🔍 ズーム操作</button>
+            <button class="ctrl-btn" style="background:#ff3b30;" onclick="clearAllData()">🗑 全消去</button>
+        `;
+
+        dashboardContainer.innerHTML = `
+            <div class="side-box kinematics">
+                <div class="side-title" style="color:#00ffcc;">🎯 下肢アライメント (正面)</div>
+                <div class="metric-row"><span>FC つま先開き角:</span><span id="res_toe_out" class="metric-val highlight-val">---°</span></div>
+                <div class="metric-row"><span>FC 膝内外反角度:</span><span id="res_knee_valgus" class="metric-val" style="color:#ffd60a;">---°</span></div>
+                <div class="metric-row"><span>FC 骨盤水平傾斜:</span><span id="res_pelvis_tilt" class="metric-val">---°</span></div>
+            </div>
+            <div class="side-box kinetics">
+                <div class="side-title" style="color:#ff9500;">⚡ 腕・体幹アライメント</div>
+                <div class="metric-row"><span>BR 肘高(肩-肘線):</span><span id="res_shoulder_elbow" class="metric-val" style="color:#ff375f;">---°</span></div>
+                <div class="metric-row"><span>BR 体幹側屈角度:</span><span id="res_trunk_lateral" class="metric-val" style="color:#ff9500;">---°</span></div>
+                <div class="metric-row"><span>PK 軸足傾斜:</span><span id="res_pk_tilt" class="metric-val" style="color:#30d158;">---°</span></div>
+            </div>
+        `;
+        mainResult.innerText = "投手バイオメカニクス解析 (前額面/正面)";
+        subResult.innerText = planeData.frontal.videoSrc ? "各キーフェーズ（PK・FC・BR）のボタンを押して角度を記録してください" : "「動画選択」ボタンから前額面（正面/背面）の動画を選択してください";
+    }
+    updateScaleInfo();
+    updatePhaseBtnStyles();
+    recalcPitchMetrics();
+    redrawOverlay();
+}
+
+// 観察面の切り替え（現在の動画再生位置を保存し、切り替え先の動画を復元）
+function togglePlaneMode() {
+    video.pause();
+    btnPlayPause.innerText = '▶ 再生';
+    btnPlayPause.style.background = '#34c759';
+
+    // 1. 現在の再生位置を保存
+    if (video.src) {
+        planeData[currentPlane].currentTime = video.currentTime;
+    }
+
+    // 2. モードを反転
+    currentPlane = (currentPlane === 'sagittal') ? 'frontal' : 'sagittal';
+
+    // 3. UIを再構築
+    buildUI();
+
+    // 4. 切り替え先の動画を読み込んで復元
+    const nextTarget = planeData[currentPlane];
+    if (nextTarget.videoSrc) {
+        video.src = nextTarget.videoSrc;
+        video.load();
+        const onCanPlay = () => {
+            video.removeEventListener('canplay', onCanPlay);
+            fitCanvases();
+            video.currentTime = nextTarget.currentTime || 0.001;
+            loop();
+        };
+        video.addEventListener('canplay', onCanPlay);
+    } else {
+        // まだ動画が選択されていない場合
+        video.removeAttribute('src');
+        video.load();
+        outCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
+        intCtx.clearRect(0, 0, interactionCanvas.width, interactionCanvas.height);
+        seekSlider.value = 0;
+    }
+}
+
+function updateScaleInfo() {
+    if (currentPlane === 'sagittal') {
+        const cur = planeData.sagittal;
+        document.getElementById('scale-info-text').innerText = cur.pxPerCm ? `物差し: ${(cur.pxPerCm).toFixed(1)}px/cm` : "物差し: 未設定";
+    }
+}
 
 function getVideoRenderBox() {
     const cWidth = outputCanvas.width, cHeight = outputCanvas.height;
@@ -272,18 +388,13 @@ function getVideoRenderBox() {
 function fitCanvases() {
     const rect = video.parentElement.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
-        [outputCanvas, interactionCanvas].forEach(c => { c.width = rect.width; c.height = rect.height; });
+        outputCanvas.width = interactionCanvas.width = rect.width;
+        outputCanvas.height = interactionCanvas.height = rect.height;
     }
     redrawOverlay();
     if (latestLandmarks) drawPitchingBiomechanics(latestLandmarks);
 }
 window.addEventListener('resize', fitCanvases);
-
-function toggleFPS() {
-    fpsIdx = (fpsIdx + 1) % fpsList.length;
-    currentFPS = fpsList[fpsIdx];
-    document.getElementById('btnFps').innerText = `${currentFPS}fps`;
-}
 
 function togglePlaybackRate() {
     currentRateIdx = (currentRateIdx + 1) % playbackRates.length;
@@ -293,158 +404,291 @@ function togglePlaybackRate() {
 
 function toggleZoomMode() {
     isZoomMode = !isZoomMode;
-    const btn = document.getElementById('btnModeZoom');
     const controls = document.getElementById('zoom-controls');
     if (isZoomMode) {
-        isRoiMode = isScaleMode = false;
-        btn.classList.add('mode-active');
+        isScaleMode = isReleaseMode = false;
         controls.style.display = 'flex';
+        mainResult.innerText = "🔍 ズームモード: ピンチ / ドラッグで画面操作";
     } else {
-        btn.classList.remove('mode-active');
         controls.style.display = 'none';
-    }
-    updateButtons();
-}
-
-function applyZoom() { zoomTarget.style.transform = `translate(${panOffsetX}px, ${panOffsetY}px) scale(${zoomScale})`; }
-function resetZoom() { zoomScale = 1.0; panOffsetX = 0; panOffsetY = 0; document.getElementById('zoom-slider').value = 1.0; applyZoom(); }
-document.getElementById('zoom-slider').addEventListener('input', (e) => { zoomScale = parseFloat(e.target.value); applyZoom(); });
-
-function toggleScaleMode() {
-    isScaleMode = !isScaleMode;
-    if (isScaleMode) {
-        isZoomMode = isRoiMode = false;
-        scalePoints = [];
-        mainResult.innerText = "📏 物差し：基準の長さを2点タップ";
-        subResult.innerText = "画面上で長さが分かるものの両端をタップしてください";
-    } else {
-        mainResult.innerText = "投手バイオメカニクス解析";
+        buildUI();
     }
     updateButtons();
     redrawOverlay();
 }
 
-function toggleRoiMode() {
-    isRoiMode = !isRoiMode;
-    if (isRoiMode) {
-        isZoomMode = isScaleMode = false;
-        mainResult.innerText = "🔲 対象者を画面ドラッグで囲んでください";
+function toggleScaleMode() {
+    if (currentPlane !== 'sagittal') return;
+    isScaleMode = !isScaleMode;
+    if (isScaleMode) {
+        isZoomMode = isReleaseMode = false;
+        document.getElementById('zoom-controls').style.display = 'none';
+        mainResult.innerText = "📏 物差し: 基準の2点をタップ（ドラッグで微調整）";
+        subResult.innerText = "位置確定後、右上の「長さ確定」ボタンを押してください";
     } else {
-        mainResult.innerText = "投手バイオメカニクス解析";
+        buildUI();
     }
     updateButtons();
+    redrawOverlay();
+}
+
+function toggleReleaseMode() {
+    if (currentPlane !== 'sagittal') return;
+    const cur = planeData.sagittal;
+    if (isReleaseMode) {
+        cur.manualReleasePoint = null;
+        cur.manualGroundYNorm = null;
+        cur.brKneeAngle = null;
+        isReleaseMode = false;
+        mainResult.innerText = "⚾️ リリース点を解除しました";
+    } else {
+        isReleaseMode = true;
+        isZoomMode = isScaleMode = false;
+        document.getElementById('zoom-controls').style.display = 'none';
+        mainResult.innerText = "⚾️ リリース点: ボールを離した瞬間をタップ";
+        subResult.innerText = "上の点(リリース)と下の緑の横線(地面)をドラッグして正確な高さを測ります";
+    }
+    updateButtons();
+    recalcPitchMetrics();
     redrawOverlay();
 }
 
 function updateButtons() {
-    document.getElementById('btnModeZoom').classList.toggle('mode-active', isZoomMode);
-    document.getElementById('btnModeScale').classList.toggle('mode-active', isScaleMode);
-    document.getElementById('btnToggleRoi').classList.toggle('roi-active', isRoiMode);
+    const btnZoom = document.getElementById('btnModeZoom');
+    if (btnZoom) btnZoom.classList.toggle('mode-active', isZoomMode);
+
+    if (currentPlane === 'sagittal') {
+        const cur = planeData.sagittal;
+        const btnScale = document.getElementById('btnModeScale');
+        const btnRel = document.getElementById('btnModeRelease');
+        if (btnScale) btnScale.classList.toggle('mode-active', isScaleMode);
+        if (btnRel) btnRel.classList.toggle('mode-active', isReleaseMode);
+        btnConfirmScale.style.display = (isScaleMode && cur.scalePoints.length === 2) ? 'inline-block' : 'none';
+    }
 }
+
+function applyZoom() { 
+    zoomTarget.style.transform = `translate(${panOffsetX}px, ${panOffsetY}px) scale(${zoomScale})`; 
+}
+
+function resetZoom() { 
+    zoomScale = 1.0; panOffsetX = 0; panOffsetY = 0; 
+    document.getElementById('zoom-slider').value = 1.0; 
+    applyZoom(); 
+    redrawOverlay();
+}
+document.getElementById('zoom-slider').addEventListener('input', (e) => { 
+    zoomScale = parseFloat(e.target.value); 
+    applyZoom(); 
+    redrawOverlay();
+});
 
 function getCanvasPoint(e) {
     const rect = interactionCanvas.getBoundingClientRect();
-    const cvsX = (e.clientX - rect.left) * (interactionCanvas.width / rect.width);
-    const cvsY = (e.clientY - rect.top) * (interactionCanvas.height / rect.height);
-    return { x: cvsX, y: cvsY };
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    return { 
+        x: (clientX - rect.left) * (interactionCanvas.width / rect.width), 
+        y: (clientY - rect.top) * (interactionCanvas.height / rect.height) 
+    };
+}
+
+let isTouchPanning = false;
+let panStartX = 0, panStartY = 0;
+let initialPinchDist = 0, initialPinchScale = 1.0;
+
+const stage = document.getElementById('stage');
+
+stage.addEventListener('touchstart', (e) => {
+    if (isScaleMode || isReleaseMode) return;
+    if (e.touches.length === 1) {
+        isTouchPanning = true;
+        panStartX = e.touches[0].clientX - panOffsetX;
+        panStartY = e.touches[0].clientY - panOffsetY;
+    } else if (e.touches.length === 2) {
+        isTouchPanning = false;
+        e.preventDefault();
+        initialPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        initialPinchScale = zoomScale;
+    }
+}, { passive: false });
+
+stage.addEventListener('touchmove', (e) => {
+    if (isScaleMode || isReleaseMode) return;
+    if (isTouchPanning && e.touches.length === 1 && zoomScale > 1.0) {
+        panOffsetX = e.touches[0].clientX - panStartX;
+        panOffsetY = e.touches[0].clientY - panStartY;
+        applyZoom();
+    } else if (e.touches.length === 2) {
+        e.preventDefault();
+        const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        zoomScale = Math.max(1.0, Math.min(4.0, initialPinchScale * (dist / initialPinchDist)));
+        document.getElementById('zoom-slider').value = zoomScale;
+        applyZoom();
+        redrawOverlay();
+    }
+}, { passive: false });
+
+stage.addEventListener('touchend', (e) => {
+    if (e.touches.length === 0) isTouchPanning = false;
+});
+
+function calcCurrentLeadKneeAngle(lm, box) {
+    if (!lm) return null;
+    const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
+    const hipL = lm[23], hipR = lm[24], kneeL = lm[25], kneeR = lm[26], ankL = lm[27], ankR = lm[28];
+    if (!hipL || !hipR || !kneeL || !kneeR || !ankL || !ankR) return null;
+
+    const cur = planeData.sagittal;
+    let useLeft = (cur.leadLegSide === 'left');
+    if (!cur.leadLegSide) {
+        useLeft = ankL.y > ankR.y || Math.abs(ankL.x - (hipL.x + hipR.x)/2) > Math.abs(ankR.x - (hipL.x + hipR.x)/2);
+    }
+    const leadHip = useLeft ? toPx(hipL) : toPx(hipR);
+    const leadKnee = useLeft ? toPx(kneeL) : toPx(kneeR);
+    const leadAnk = useLeft ? toPx(ankL) : toPx(ankR);
+    return calcAngle(leadHip, leadKnee, leadAnk);
 }
 
 interactionCanvas.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
+    if (currentPlane !== 'sagittal') return;
     const pt = getCanvasPoint(e);
+    const box = getVideoRenderBox();
+    const cur = planeData.sagittal;
 
-    // 物差し設定
-    if (isScaleMode) {
-        scalePoints.push(pt);
-        if (scalePoints.length === 2) {
-            document.getElementById('scale-modal-overlay').style.display = 'flex';
-            document.getElementById('scale-input-value').focus();
+    if (isReleaseMode || cur.manualReleasePoint) {
+        if (cur.manualReleasePoint && cur.manualGroundYNorm !== null) {
+            const curRelPx = { x: box.x + cur.manualReleasePoint.x * box.w, y: box.y + cur.manualReleasePoint.y * box.h };
+            const curGndPxY = box.y + cur.manualGroundYNorm * box.h;
+
+            if (Math.hypot(curRelPx.x - pt.x, curRelPx.y - pt.y) * zoomScale < 30) {
+                isDraggingRelease = true;
+                try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
+                return;
+            }
+            if (Math.abs(curGndPxY - pt.y) * zoomScale < 30 && Math.abs(curRelPx.x - pt.x) * zoomScale < 60) {
+                isDraggingGround = true;
+                try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
+                return;
+            }
         }
-        redrawOverlay();
-        return;
+        if (isReleaseMode) {
+            cur.manualReleasePoint = {
+                x: Math.max(0, Math.min(1.0, (pt.x - box.x) / box.w)),
+                y: Math.max(0, Math.min(1.0, (pt.y - box.y) / box.h))
+            };
+            cur.manualGroundYNorm = (cur.phases.fc && cur.phases.fc.groundYNorm) ? cur.phases.fc.groundYNorm : 1.0;
+            isDraggingRelease = true;
+            try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
+
+            cur.brKneeAngle = calcCurrentLeadKneeAngle(latestLandmarks, box);
+
+            recalcPitchMetrics();
+            redrawOverlay();
+            return;
+        }
     }
 
-    // リリース点の手動ピンポイント配置
-    if (isBrSettingMode) {
-        phases.br = {
-            wristPos: { ...pt },
-            time: video.currentTime,
-            frame: Math.round(video.currentTime * currentFPS)
-        };
-        isBrSettingMode = false;
-        updatePhaseBtnStyles();
-        recalcPitchMetrics();
-        if (latestLandmarks) drawPitchingBiomechanics(latestLandmarks);
-        mainResult.innerHTML = "<span style='color:#ff375f;'>⚾️ リリース点を配置しました</span>";
-        subResult.innerText = "位置を再変更する場合は「③ BR」を押して再度画面をタップしてください";
-        return;
-    }
-
-    if (isRoiMode) {
-        const box = getVideoRenderBox();
-        isRoiDrawing = true;
-        roiStart = {
-            x: Math.max(0, Math.min(1.0, (pt.x - box.x) / box.w)),
-            y: Math.max(0, Math.min(1.0, (pt.y - box.y) / box.h))
-        };
-        roiNorm = { x: roiStart.x, y: roiStart.y, w: 0, h: 0 };
-        isRoiEnabled = true;
-        try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
-        return;
-    }
-
-    if (isZoomMode || zoomScale > 1.0) {
-        isPanning = true; panStartX = e.clientX - panOffsetX; panStartY = e.clientY - panOffsetY;
-        try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
+    if (isScaleMode) {
+        let hitIndex = -1;
+        for (let i = 0; i < cur.scalePoints.length; i++) {
+            if (Math.hypot(cur.scalePoints[i].x - pt.x, cur.scalePoints[i].y - pt.y) * zoomScale < 15) {
+                hitIndex = i;
+                break;
+            }
+        }
+        
+        if (hitIndex !== -1) {
+            draggingScaleIdx = hitIndex;
+            try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
+        } else {
+            if (cur.scalePoints.length < 2) {
+                cur.scalePoints.push(pt);
+            } else {
+                cur.scalePoints = [pt];
+            }
+            updateButtons();
+            redrawOverlay();
+        }
     }
 });
 
 interactionCanvas.addEventListener('pointermove', (e) => {
-    if (isRoiDrawing && isRoiMode) {
-        const pt = getCanvasPoint(e);
-        const box = getVideoRenderBox();
-        const currentNorm = {
+    if (currentPlane !== 'sagittal') return;
+    const pt = getCanvasPoint(e);
+    const box = getVideoRenderBox();
+    const cur = planeData.sagittal;
+
+    if (isDraggingRelease && cur.manualReleasePoint) {
+        manualReleasePoint = {
             x: Math.max(0, Math.min(1.0, (pt.x - box.x) / box.w)),
             y: Math.max(0, Math.min(1.0, (pt.y - box.y) / box.h))
         };
-        roiNorm.x = Math.min(roiStart.x, currentNorm.x);
-        roiNorm.y = Math.min(roiStart.y, currentNorm.y);
-        roiNorm.w = Math.abs(currentNorm.x - roiStart.x);
-        roiNorm.h = Math.abs(currentNorm.y - roiStart.y);
+        cur.manualReleasePoint = manualReleasePoint;
+        recalcPitchMetrics();
         redrawOverlay();
         return;
     }
-    if (isPanning) { panOffsetX = e.clientX - panStartX; panOffsetY = e.clientY - panStartY; applyZoom(); }
+
+    if (isDraggingGround && cur.manualGroundYNorm !== null) {
+        cur.manualGroundYNorm = Math.max(0, Math.min(1.0, (pt.y - box.y) / box.h));
+        recalcPitchMetrics();
+        redrawOverlay();
+        return;
+    }
+
+    if (isScaleMode && draggingScaleIdx !== -1) {
+        cur.scalePoints[draggingScaleIdx] = pt;
+        redrawOverlay();
+    }
 });
 
 interactionCanvas.addEventListener('pointerup', (e) => {
-    if (isRoiDrawing) {
-        isRoiDrawing = false;
+    if (currentPlane !== 'sagittal') return;
+    if (isDraggingRelease) {
+        isDraggingRelease = false;
         try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){}
-        toggleRoiMode();
-        renderCurrentFrame();
     }
-    if (isPanning) { isPanning = false; try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){} }
+    if (isDraggingGround) {
+        isDraggingGround = false;
+        try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){}
+    }
+    if (draggingScaleIdx !== -1) {
+        draggingScaleIdx = -1;
+        try { interactionCanvas.releasePointerCapture(e.pointerId); } catch(err){}
+        redrawOverlay();
+    }
 });
 
-function closeScaleModal(isCancel = true) {
+function openScaleModal() {
+    if (currentPlane !== 'sagittal') return;
+    const cur = planeData.sagittal;
+    if (cur.scalePoints.length !== 2) return;
+    document.getElementById('scale-modal-overlay').style.display = 'flex';
+    document.getElementById('scale-input-value').focus();
+}
+function closeScaleModal() {
     document.getElementById('scale-modal-overlay').style.display = 'none';
-    if (isCancel) scalePoints = [];
-    isScaleMode = false;
-    updateButtons();
-    redrawOverlay();
 }
 
 function submitScaleModal() {
+    if (currentPlane !== 'sagittal') return;
+    const cur = planeData.sagittal;
     const realCm = parseFloat(document.getElementById('scale-input-value').value);
-    if (realCm && realCm > 0 && scalePoints.length === 2) {
-        const distPx = Math.hypot(scalePoints[1].x - scalePoints[0].x, scalePoints[1].y - scalePoints[0].y);
-        pxPerCm = distPx / realCm;
-        document.getElementById('scale-info-text').innerText = `物差し: ${(pxPerCm).toFixed(1)}px/cm`;
-        closeScaleModal(false); 
+    if (realCm && realCm > 0 && cur.scalePoints.length === 2) {
+        const box = getVideoRenderBox();
+        const normP1 = { x: (cur.scalePoints[0].x - box.x) / box.w, y: (cur.scalePoints[0].y - box.y) / box.h };
+        const normP2 = { x: (cur.scalePoints[1].x - box.x) / box.w, y: (cur.scalePoints[1].y - box.y) / box.h };
+        const distPx = Math.hypot((normP2.x - normP1.x) * box.w, (normP2.y - normP1.y) * box.h);
+        
+        cur.pxPerCm = distPx / realCm;
+        updateScaleInfo();
+        closeScaleModal(); 
+        isScaleMode = false;
+        updateButtons();
         mainResult.innerHTML = "<span style='color:#30d158;'>✅ 物差し設定完了</span>";
-        subResult.innerText = "投球の各キーフェーズ（FC・MER・BR・FT）を記録してください";
         recalcPitchMetrics();
+        redrawOverlay();
     } else {
         alert("有効な数値を入力してください");
     }
@@ -452,37 +696,94 @@ function submitScaleModal() {
 
 function redrawOverlay() {
     intCtx.clearRect(0, 0, interactionCanvas.width, interactionCanvas.height);
-    const box = getVideoRenderBox();
+    if (currentPlane !== 'sagittal') return;
 
-    if (isRoiEnabled && roiNorm.w > 0.05) {
-        const rx = box.x + roiNorm.x * box.w, ry = box.y + roiNorm.y * box.h;
-        const rw = roiNorm.w * box.w, rh = roiNorm.h * box.h;
+    const box = getVideoRenderBox();
+    const cur = planeData.sagittal;
+
+    if (cur.scalePoints.length > 0) {
         intCtx.save();
-        intCtx.fillStyle = 'rgba(0, 0, 0, 0.35)'; intCtx.fillRect(0, 0, interactionCanvas.width, interactionCanvas.height);
-        intCtx.clearRect(rx, ry, rw, rh);
-        intCtx.strokeStyle = '#ff9500'; intCtx.lineWidth = 2.5 / zoomScale; intCtx.setLineDash([6 / zoomScale, 4 / zoomScale]);
-        intCtx.strokeRect(rx, ry, rw, rh);
+        if (isScaleMode) {
+            intCtx.fillStyle = '#ff9500'; 
+            intCtx.strokeStyle = '#ff9500';
+            intCtx.lineWidth = Math.max(1, 3 / zoomScale); 
+            
+            cur.scalePoints.forEach((pt, i) => {
+                intCtx.beginPath(); 
+                intCtx.arc(pt.x, pt.y, 8 / zoomScale, 0, Math.PI * 2); 
+                intCtx.fill();
+                intCtx.fillStyle = '#fff';
+                intCtx.font = `bold ${Math.max(9, 12 / zoomScale)}px sans-serif`;
+                intCtx.fillText(`点${i + 1}`, pt.x + (10 / zoomScale), pt.y - (6 / zoomScale));
+                intCtx.fillStyle = '#ff9500';
+            });
+
+            if (cur.scalePoints.length === 2) {
+                intCtx.beginPath(); 
+                intCtx.moveTo(cur.scalePoints[0].x, cur.scalePoints[0].y); 
+                intCtx.lineTo(cur.scalePoints[1].x, cur.scalePoints[1].y); 
+                intCtx.stroke();
+            }
+        } else {
+            intCtx.strokeStyle = 'rgba(255, 149, 0, 0.3)';
+            intCtx.fillStyle = 'rgba(255, 149, 0, 0.4)';
+            intCtx.lineWidth = Math.max(1, 1.5 / zoomScale);
+            intCtx.setLineDash([4 / zoomScale, 4 / zoomScale]);
+            
+            cur.scalePoints.forEach(pt => {
+                intCtx.beginPath();
+                intCtx.arc(pt.x, pt.y, 4 / zoomScale, 0, Math.PI * 2);
+                intCtx.fill();
+            });
+
+            if (cur.scalePoints.length === 2) {
+                intCtx.beginPath(); 
+                intCtx.moveTo(cur.scalePoints[0].x, cur.scalePoints[0].y); 
+                intCtx.lineTo(cur.scalePoints[1].x, cur.scalePoints[1].y); 
+                intCtx.stroke();
+            }
+        }
         intCtx.restore();
     }
 
-    if (scalePoints.length > 0) {
+    if (cur.manualReleasePoint && cur.manualGroundYNorm !== null) {
+        const rx = box.x + cur.manualReleasePoint.x * box.w;
+        const ry = box.y + cur.manualReleasePoint.y * box.h;
+        const groundY = box.y + cur.manualGroundYNorm * box.h;
+
         intCtx.save();
-        intCtx.fillStyle = '#ff9500'; intCtx.strokeStyle = isScaleMode ? '#ff9500' : 'rgba(255, 149, 0, 0.4)';
-        intCtx.lineWidth = 3 / zoomScale; if (!isScaleMode) intCtx.setLineDash([4/zoomScale, 4/zoomScale]);
-        intCtx.beginPath(); intCtx.arc(scalePoints[0].x, scalePoints[0].y, 6 / zoomScale, 0, Math.PI*2); intCtx.fill();
-        if (scalePoints.length === 2) {
-            intCtx.beginPath(); intCtx.arc(scalePoints[1].x, scalePoints[1].y, 6 / zoomScale, 0, Math.PI*2); intCtx.fill();
-            intCtx.beginPath(); intCtx.moveTo(scalePoints[0].x, scalePoints[0].y); intCtx.lineTo(scalePoints[1].x, scalePoints[1].y); intCtx.stroke();
-        }
+        intCtx.strokeStyle = '#30d158'; 
+        intCtx.lineWidth = Math.max(1, 2 / zoomScale); 
+        intCtx.setLineDash([4 / zoomScale, 4 / zoomScale]);
+        intCtx.beginPath(); intCtx.moveTo(rx, ry); intCtx.lineTo(rx, groundY); intCtx.stroke(); intCtx.setLineDash([]);
+
+        intCtx.fillStyle = '#30d158'; 
+        intCtx.fillRect(rx - (20 / zoomScale), groundY - (3 / zoomScale), 40 / zoomScale, 6 / zoomScale);
+        
+        intCtx.strokeStyle = '#ff375f'; intCtx.fillStyle = '#ff375f'; 
+        intCtx.lineWidth = Math.max(1, 2.5 / zoomScale);
+        intCtx.beginPath(); intCtx.arc(rx, ry, 9 / zoomScale, 0, Math.PI * 2); intCtx.stroke();
+        intCtx.beginPath(); intCtx.arc(rx, ry, 3.5 / zoomScale, 0, Math.PI * 2); intCtx.fill();
+
+        const heightCm = cur.pxPerCm ? ((groundY - ry) / cur.pxPerCm).toFixed(1) : null;
+        intCtx.fillStyle = '#fff'; 
+        intCtx.font = `bold ${Math.max(9, 12 / zoomScale)}px sans-serif`;
+        intCtx.fillText(`⚾️ リリース高: ${heightCm ? heightCm + 'cm' : '物差し未設定'}`, rx + (12 / zoomScale), ry - (6 / zoomScale));
         intCtx.restore();
     }
 }
 
 function updatePhaseBtnStyles() {
-    document.getElementById('btnFC').className = `phase-btn ${phases.fc ? 'active-fc' : ''}`;
-    document.getElementById('btnMER').className = `phase-btn ${phases.mer ? 'active-mer' : ''}`;
-    document.getElementById('btnBR').className = `phase-btn ${phases.br ? 'active-br' : ''}`;
-    document.getElementById('btnFT').className = `phase-btn ${phases.ft ? 'active-ft' : ''}`;
+    const cur = planeData[currentPlane];
+    if (currentPlane === 'sagittal') {
+        document.getElementById('btnFC').className = `phase-btn ${cur.phases.fc ? 'active-fc' : ''}`;
+        document.getElementById('btnFF').className = `phase-btn ${cur.phases.ff ? 'active-ff' : ''}`;
+        document.getElementById('btnMER').className = `phase-btn ${cur.phases.mer ? 'active-mer' : ''}`;
+    } else {
+        document.getElementById('btnPK').className = `phase-btn ${cur.phases.pk ? 'active-pk' : ''}`;
+        document.getElementById('btnFC').className = `phase-btn ${cur.phases.fc ? 'active-fc' : ''}`;
+        document.getElementById('btnBR').className = `phase-btn ${cur.phases.br ? 'active-br' : ''}`;
+    }
 }
 
 function calcAngle(p1, p2, p3) {
@@ -499,38 +800,34 @@ function onResults(results) {
         outCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
         return;
     }
-
-    const rawLm = results.poseLandmarks;
-    latestLandmarks = rawLm.map(p => {
-        if (isRoiEnabled && roiNorm.w > 0.05) { 
-            return { x: roiNorm.x + p.x * roiNorm.w, y: roiNorm.y + p.y * roiNorm.h, z: p.z, visibility: p.visibility }; 
-        }
-        return p;
-    });
-
+    latestLandmarks = results.poseLandmarks;
     drawPitchingBiomechanics(latestLandmarks);
 }
 
 function drawPitchingBiomechanics(lm) {
     outCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
     outCtx.save();
-    outCtx.lineWidth = 3 / zoomScale;
+    outCtx.lineWidth = Math.max(1, 3 / zoomScale);
 
     const box = getVideoRenderBox();
     const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
+    const cur = planeData[currentPlane];
 
     const shL = lm[11], shR = lm[12], hipL = lm[23], hipR = lm[24];
 
-    // 捻転差
     if (shL && shR && hipL && hipR) {
         const pShL = toPx(shL), pShR = toPx(shR), pHipL = toPx(hipL), pHipR = toPx(hipR);
-        const shAngle = Math.atan2((shR.z || 0) - (shL.z || 0), (shR.x - shL.x)) * (180 / Math.PI);
-        const hipAngle = Math.atan2((hipR.z || 0) - (hipL.z || 0), (hipR.x - hipL.x)) * (180 / Math.PI);
-        let xFactor = Math.abs(shAngle - hipAngle);
-        if (xFactor > 90) xFactor = 180 - xFactor;
-        if (xFactor > maxRecordedXFactor && !video.paused) {
-            maxRecordedXFactor = xFactor;
-            document.getElementById('res_max_xfactor').innerText = `${maxRecordedXFactor.toFixed(1)}°`;
+
+        if (currentPlane === 'sagittal') {
+            const shAngle = Math.atan2((shR.z || 0) - (shL.z || 0), (shR.x - shL.x)) * (180 / Math.PI);
+            const hipAngle = Math.atan2((hipR.z || 0) - (hipL.z || 0), (hipR.x - hipL.x)) * (180 / Math.PI);
+            let xFactor = Math.abs(shAngle - hipAngle);
+            if (xFactor > 90) xFactor = 180 - xFactor;
+            if (xFactor > cur.maxRecordedXFactor && !video.paused) {
+                cur.maxRecordedXFactor = xFactor;
+                const elem = document.getElementById('res_max_xfactor');
+                if (elem) elem.innerText = `${cur.maxRecordedXFactor.toFixed(1)}°`;
+            }
         }
 
         outCtx.strokeStyle = '#00ffcc'; outCtx.beginPath(); outCtx.moveTo(pShL.x, pShL.y); outCtx.lineTo(pShR.x, pShR.y); outCtx.stroke();
@@ -543,168 +840,199 @@ function drawPitchingBiomechanics(lm) {
             outCtx.strokeStyle = color; outCtx.beginPath(); outCtx.moveTo(pt1.x, pt1.y); outCtx.lineTo(pt2.x, pt2.y); outCtx.stroke();
         }
     };
-    drawL(12, 14, '#ff9500'); drawL(14, 16, '#ff9500'); // 右腕
-    drawL(11, 13, '#00ffcc'); drawL(13, 15, '#00ffcc'); // 左腕
-    drawL(24, 26, '#ffd60a'); drawL(26, 28, '#ffd60a'); // 右脚
-    drawL(23, 25, '#ffd60a'); drawL(25, 27, '#ffd60a'); // 左脚
-
-    // リリースポイントの描画（ターゲットマーカー）
-    if (phases.br && phases.br.wristPos) {
-        outCtx.save();
-        outCtx.strokeStyle = '#ff375f'; outCtx.fillStyle = '#ff375f'; outCtx.lineWidth = 2.5 / zoomScale;
-        outCtx.beginPath(); outCtx.arc(phases.br.wristPos.x, phases.br.wristPos.y, 9 / zoomScale, 0, Math.PI * 2); outCtx.stroke();
-        outCtx.beginPath(); outCtx.arc(phases.br.wristPos.x, phases.br.wristPos.y, 3 / zoomScale, 0, Math.PI * 2); outCtx.fill();
-        outCtx.fillStyle = '#fff'; outCtx.font = `bold ${Math.max(11, 12/zoomScale)}px sans-serif`;
-        outCtx.fillText("⚾️ BRリリース点", phases.br.wristPos.x + 12/zoomScale, phases.br.wristPos.y - 6/zoomScale);
-        outCtx.restore();
-    }
+    drawL(12, 14, '#ff9500'); drawL(14, 16, '#ff9500');
+    drawL(11, 13, '#00ffcc'); drawL(13, 15, '#00ffcc');
+    drawL(24, 26, '#ffd60a'); drawL(26, 28, '#ffd60a');
+    drawL(23, 25, '#ffd60a'); drawL(25, 27, '#ffd60a');
 
     outCtx.restore();
 }
 
-// 4大フェーズ記録
 function markPhase(key) {
+    const cur = planeData[currentPlane];
+    const names = {
+        fc: currentPlane === 'sagittal' ? "① 接地(FC)" : "② 接地時(FC)",
+        ff: "② 完全接地(FF)",
+        mer: "③ 最大外旋(MER)",
+        pk: "① 足上げ頂点(PK)",
+        br: "③ リリース時(BR)"
+    };
+
+    if (cur.phases[key]) {
+        cur.phases[key] = null;
+        if (key === 'fc' && currentPlane === 'sagittal') cur.leadLegSide = null;
+        updatePhaseBtnStyles();
+        recalcPitchMetrics();
+        redrawOverlay();
+        mainResult.innerHTML = `<span style='color:#ff9500;'>${names[key]} を解除しました</span>`;
+        return;
+    }
+
     if (!video.videoWidth || !latestLandmarks) return;
-    const frame = Math.round(video.currentTime * currentFPS);
     const box = getVideoRenderBox();
+    const lm = latestLandmarks;
     const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
 
-    const lm = latestLandmarks;
-    const shL = lm[11], shR = lm[12], elR = lm[14], wrR = lm[16], idxR = lm[20], elL = lm[13], wrL = lm[15], idxL = lm[19];
-    const hipL = lm[23], hipR = lm[24], ankL = lm[27], ankR = lm[28];
+    cur.phases[key] = { time: video.currentTime };
 
-    phases[key] = { time: frame / currentFPS, frame: frame };
-
-    if (key === 'fc' && ankL && ankR) {
-        const pL = toPx(ankL), pR = toPx(ankR);
-        phases.fc.stridePx = Math.abs(pL.x - pR.x);
-    }
-    if (key === 'mer' && shR && elR && wrR) {
-        const pSh = toPx(shR), pEl = toPx(elR), pWr = toPx(wrR);
-        phases.mer.elbowAngle = calcAngle(pSh, pEl, pWr);
-    }
-    
-    // ③ BR記録時: 前腕-手首-指先ベクトルから高精度推定し、タップ直接修正モードをONにする
-    if (key === 'br') {
-        const isRight = (wrR && wrR.visibility > 0.3) || (wrR && !wrL);
-        const wr = isRight ? wrR : wrL;
-        const el = isRight ? elR : elL;
-        const idx = isRight ? idxR : idxL;
-
-        let autoPos = null;
-        if (wr) {
-            const pWr = toPx(wr);
-            if (idx && idx.visibility > 0.3) {
-                // 指先（人差し指）が取れている場合は指先先端をボール位置とする
-                autoPos = toPx(idx);
-            } else if (el) {
-                // 肘→手首の延長線上（手首から約10〜15cm先）にボールを推定配置
-                const pEl = toPx(el);
-                const dx = pWr.x - pEl.x, dy = pWr.y - pEl.y;
-                const len = Math.hypot(dx, dy);
-                if (len > 0) {
-                    const extDist = (pxPerCm ? pxPerCm * 12 : 25);
-                    autoPos = { x: pWr.x + (dx / len) * extDist, y: pWr.y + (dy / len) * extDist };
-                } else {
-                    autoPos = pWr;
-                }
-            } else {
-                autoPos = pWr;
+    if (currentPlane === 'sagittal') {
+        if (key === 'fc') {
+            const ankL = lm[27], ankR = lm[28], heelL = lm[29], heelR = lm[30];
+            const p1 = (ankL && ankL.visibility > 0.3) ? ankL : heelL;
+            const p2 = (ankR && ankR.visibility > 0.3) ? ankR : heelR;
+            if (p1 && p2) {
+                const px1 = toPx(p1), px2 = toPx(p2);
+                cur.phases.fc.stridePx = Math.hypot(px1.x - px2.x, px1.y - px2.y);
+                cur.phases.fc.groundYNorm = Math.max(p1.y, p2.y);
+                if (cur.manualGroundYNorm === null) cur.manualGroundYNorm = cur.phases.fc.groundYNorm;
+            }
+            const hipL = lm[23], hipR = lm[24];
+            if (hipL && hipR && ankL && ankR) {
+                cur.leadLegSide = (ankL.y > ankR.y || Math.abs(ankL.x - (hipL.x + hipR.x)/2) > Math.abs(ankR.x - (hipL.x + hipR.x)/2)) ? 'left' : 'right';
             }
         }
+        if (key === 'ff') cur.phases.ff.kneeAngle = calcCurrentLeadKneeAngle(lm, box);
+        if (key === 'mer') {
+            const shR = lm[12], elR = lm[14], wrR = lm[16];
+            if (shR && elR && wrR) cur.phases.mer.elbowAngle = calcAngle(toPx(shR), toPx(elR), toPx(wrR));
+        }
+    } else {
+        if (key === 'pk') {
+            const hipR = lm[24], ankR = lm[28];
+            if (hipR && ankR) {
+                const tilt = Math.atan2(hipR.x - ankR.x, -(hipR.y - ankR.y)) * (180 / Math.PI);
+                cur.phases.pk.tilt = Math.abs(tilt);
+            }
+        }
+        if (key === 'fc') {
+            const ankL = lm[27], ankR = lm[28], hipL = lm[23], hipR = lm[24], kneeL = lm[25], kneeR = lm[26];
+            const footL = lm[31], footR = lm[32];
+            
+            const isLeftLead = (ankL && ankR) ? (ankL.y > ankR.y) : true;
+            const leadHip = isLeftLead ? hipL : hipR;
+            const leadKnee = isLeftLead ? kneeL : kneeR;
+            const leadAnk = isLeftLead ? ankL : ankR;
+            const leadFoot = isLeftLead ? footL : footR;
 
-        if (autoPos) phases.br.wristPos = autoPos;
-        isBrSettingMode = true; // タップでピンポイント微調整可能に
-        mainResult.innerHTML = "<span style='color:#ff375f;'>③ BR記録中：画面のボール位置をタップして微調整</span>";
-        subResult.innerText = "自動推定位置にマーカーを表示中。ボールをタップすれば位置を修正できます";
-    }
+            if (leadHip && leadKnee && leadAnk) {
+                cur.kneeValgusAngle = calcAngle(toPx(leadHip), toPx(leadKnee), toPx(leadAnk));
+            }
 
-    // 体幹前傾角の算出 (BR時)
-    if (key === 'br' && shL && shR && hipL && hipR) {
-        const pSh = { x: (shL.x + shR.x) * 0.5, y: (shL.y + shR.y) * 0.5 };
-        const pHip = { x: (hipL.x + hipR.x) * 0.5, y: (hipL.y + hipR.y) * 0.5 };
-        phases.br.tiltAngle = Math.abs(Math.atan2(pSh.x - pHip.x, pHip.y - pSh.y) * (180 / Math.PI));
+            if (leadAnk && leadFoot) {
+                const pAnk = toPx(leadAnk), pFoot = toPx(leadFoot);
+                const toeAngle = Math.atan2(pFoot.x - pAnk.x, pFoot.y - pAnk.y) * (180 / Math.PI);
+                cur.toeOutAngle = Math.abs(toeAngle);
+            }
+
+            if (hipL && hipR) {
+                const p1 = toPx(hipL), p2 = toPx(hipR);
+                const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
+                cur.pelvisObliquity = Math.abs(angle);
+            }
+        }
+        if (key === 'br') {
+            const shL = lm[11], shR = lm[12], elR = lm[14], hipL = lm[23], hipR = lm[24];
+            if (shL && shR && hipL && hipR) {
+                const midSh = { x: (shL.x + shR.x) / 2, y: (shL.y + shR.y) / 2 };
+                const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
+                const spineAngle = Math.atan2(midSh.x - midHip.x, -(midSh.y - midHip.y)) * (180 / Math.PI);
+                cur.trunkTiltFrontal = Math.abs(spineAngle);
+            }
+            if (shL && shR && elR) {
+                const shVec = { x: shR.x - shL.x, y: shR.y - shL.y };
+                const armVec = { x: elR.x - shR.x, y: elR.y - shR.y };
+                const dot = shVec.x * armVec.x + shVec.y * armVec.y;
+                const mag = Math.hypot(shVec.x, shVec.y) * Math.hypot(armVec.x, armVec.y);
+                if (mag > 0) cur.shoulderElbowAngle = Math.acos(Math.max(-1, Math.min(1, dot / mag))) * (180 / Math.PI);
+            }
+        }
     }
 
     updatePhaseBtnStyles();
     recalcPitchMetrics();
-
-    if (key !== 'br') {
-        const names = { fc: "① 接地(FC)", mer: "② 最大外旋(MER)", ft: "④ フォロー(FT)" };
-        mainResult.innerHTML = `<span style='color:#00ffcc;'>${names[key]} を記録しました</span>`;
-    }
+    redrawOverlay();
+    mainResult.innerHTML = `<span style='color:#00ffcc;'>${names[key]} を記録しました</span>`;
 }
 
 function recalcPitchMetrics() {
-    // 1. 歩幅
-    if (phases.fc && phases.fc.stridePx && pxPerCm) {
-        document.getElementById('res_stride').innerText = `${(phases.fc.stridePx / pxPerCm).toFixed(1)} cm`;
-    } else {
-        document.getElementById('res_stride').innerText = "--- cm";
-    }
+    const box = getVideoRenderBox();
+    
+    if (currentPlane === 'sagittal') {
+        const cur = planeData.sagittal;
+        const resStride = document.getElementById('res_stride');
+        if (resStride) resStride.innerText = (cur.phases.fc && cur.phases.fc.stridePx && cur.pxPerCm) ? `${(cur.phases.fc.stridePx / cur.pxPerCm).toFixed(1)} cm` : "--- cm";
 
-    // 2. 肘屈曲角度
-    if (phases.mer && phases.mer.elbowAngle) {
-        document.getElementById('res_mer_elbow').innerText = `${phases.mer.elbowAngle.toFixed(1)}°`;
-    } else {
-        document.getElementById('res_mer_elbow').innerText = "---°";
-    }
+        const resMer = document.getElementById('res_mer_elbow');
+        if (resMer) resMer.innerText = (cur.phases.mer && cur.phases.mer.elbowAngle) ? `${cur.phases.mer.elbowAngle.toFixed(1)}°` : "---°";
 
-    // 3. リリース高 & 前方伸長幅（エクステンション）
-    if (phases.br && phases.br.wristPos && pxPerCm) {
-        const box = getVideoRenderBox();
-        const releaseHCm = (box.y + box.h - phases.br.wristPos.y) / pxPerCm;
-        document.getElementById('res_release_h').innerText = `${Math.max(0, releaseHCm).toFixed(1)} cm`;
+        const resFFKnee = document.getElementById('res_ff_knee');
+        if (resFFKnee) resFFKnee.innerText = (cur.phases.ff && cur.phases.ff.kneeAngle) ? `${cur.phases.ff.kneeAngle.toFixed(1)}°` : "---°";
 
-        // 支持脚（前足）からの前方エクステンション
-        if (latestLandmarks) {
-            const ankL = latestLandmarks[27], ankR = latestLandmarks[28];
-            if (ankL && ankR) {
-                const leadAnkX = Math.max(box.x + ankL.x * box.w, box.x + ankR.x * box.w);
-                const extCm = Math.abs(phases.br.wristPos.x - leadAnkX) / pxPerCm;
-                document.getElementById('res_release_ext').innerText = `${extCm.toFixed(1)} cm`;
+        const resBRKnee = document.getElementById('res_br_knee');
+        if (resBRKnee) resBRKnee.innerText = (cur.brKneeAngle !== null) ? `${cur.brKneeAngle.toFixed(1)}°` : "---°";
+
+        const resRelH = document.getElementById('res_release_h');
+        if (resRelH) {
+            if (cur.manualReleasePoint && cur.manualGroundYNorm !== null && cur.pxPerCm) {
+                const wristY = box.y + cur.manualReleasePoint.y * box.h;
+                const groundY = box.y + cur.manualGroundYNorm * box.h;
+                resRelH.innerText = `${Math.max(0, (groundY - wristY) / cur.pxPerCm).toFixed(1)} cm`;
+            } else {
+                resRelH.innerText = "--- cm";
             }
         }
     } else {
-        document.getElementById('res_release_h').innerText = "--- cm";
-        document.getElementById('res_release_ext').innerText = "--- cm";
-    }
+        const cur = planeData.frontal;
+        const resToe = document.getElementById('res_toe_out');
+        if (resToe) resToe.innerText = (cur.toeOutAngle !== null) ? `${cur.toeOutAngle.toFixed(1)}°` : "---°";
 
-    // 4. 体幹前傾角
-    if (phases.br && phases.br.tiltAngle !== undefined) {
-        document.getElementById('res_release_tilt').innerText = `${phases.br.tiltAngle.toFixed(1)}°`;
-    } else {
-        document.getElementById('res_release_tilt').innerText = "---°";
+        const resValgus = document.getElementById('res_knee_valgus');
+        if (resValgus) resValgus.innerText = (cur.kneeValgusAngle !== null) ? `${cur.kneeValgusAngle.toFixed(1)}°` : "---°";
+
+        const resPelvis = document.getElementById('res_pelvis_tilt');
+        if (resPelvis) resPelvis.innerText = (cur.pelvisObliquity !== null) ? `${cur.pelvisObliquity.toFixed(1)}°` : "---°";
+
+        const resTrunk = document.getElementById('res_trunk_lateral');
+        if (resTrunk) resTrunk.innerText = (cur.trunkTiltFrontal !== null) ? `${cur.trunkTiltFrontal.toFixed(1)}°` : "---°";
+
+        const resShEl = document.getElementById('res_shoulder_elbow');
+        if (resShEl) resShEl.innerText = (cur.shoulderElbowAngle !== null) ? `${cur.shoulderElbowAngle.toFixed(1)}°` : "---°";
+
+        const resPK = document.getElementById('res_pk_tilt');
+        if (resPK) resPK.innerText = (cur.phases.pk && cur.phases.pk.tilt !== undefined) ? `${cur.phases.pk.tilt.toFixed(1)}°` : "---°";
     }
 }
 
-function clearPhaseData() {
-    phases.fc = phases.mer = phases.br = phases.ft = null;
-    maxRecordedXFactor = 0;
-    isBrSettingMode = false;
-    document.getElementById('res_max_xfactor').innerText = "0.0°";
-    document.getElementById('res_stride').innerText = "--- cm";
-    document.getElementById('res_mer_elbow').innerText = "---°";
-    document.getElementById('res_release_h').innerText = "--- cm";
-    document.getElementById('res_release_ext').innerText = "--- cm";
-    document.getElementById('res_release_tilt').innerText = "---°";
-    updatePhaseBtnStyles();
-    mainResult.innerText = "投手バイオメカニクス解析";
-    subResult.innerText = "各フェーズを記録してください";
-    if (latestLandmarks) drawPitchingBiomechanics(latestLandmarks);
+function clearAllData() {
+    if (currentPlane === 'sagittal') {
+        const cur = planeData.sagittal;
+        cur.phases = { fc: null, ff: null, mer: null };
+        cur.maxRecordedXFactor = 0;
+        cur.leadLegSide = null;
+        cur.brKneeAngle = null;
+        cur.manualReleasePoint = null;
+        cur.manualGroundYNorm = null;
+        cur.scalePoints = [];
+        cur.pxPerCm = null;
+    } else {
+        const cur = planeData.frontal;
+        cur.phases = { pk: null, fc: null, br: null };
+        cur.shoulderElbowAngle = null;
+        cur.trunkTiltFrontal = null;
+        cur.pelvisObliquity = null;
+        cur.toeOutAngle = null;
+        cur.kneeValgusAngle = null;
+    }
+
+    buildUI();
+    mainResult.innerText = `データを消去しました (${currentPlane === 'sagittal' ? '矢状面' : '前額面'})`;
 }
 
 async function renderCurrentFrame() {
     if (isProcessing || video.readyState < 2) return;
     isProcessing = true;
     try {
-        let inputSource = video;
-        if (isRoiEnabled && roiNorm.w > 0.05) {
-            const sx = roiNorm.x * video.videoWidth, sy = roiNorm.y * video.videoHeight;
-            const sw = roiNorm.w * video.videoWidth, sh = roiNorm.h * video.videoHeight;
-            if (sw > 10 && sh > 10) { roiCanvas.width = sw; roiCanvas.height = sh; roiCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh); inputSource = roiCanvas; }
-        }
-        await pose.send({ image: inputSource });
+        await pose.send({ image: video });
     } catch(e) {} finally { isProcessing = false; }
 }
 
@@ -715,11 +1043,12 @@ async function loop() {
     }
     
     if (isRecording) {
+        const box = getVideoRenderBox();
         recCanvas.width = outputCanvas.width;
         recCanvas.height = outputCanvas.height + 70;
         recCtx.fillStyle = '#000';
         recCtx.fillRect(0, 0, recCanvas.width, recCanvas.height);
-        recCtx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
+        if (video.videoWidth) recCtx.drawImage(video, box.x, box.y, box.w, box.h);
         recCtx.drawImage(outputCanvas, 0, 0);
         recCtx.drawImage(interactionCanvas, 0, 0);
 
@@ -727,64 +1056,80 @@ async function loop() {
         recCtx.fillRect(0, outputCanvas.height, recCanvas.width, 70);
         recCtx.fillStyle = '#00ffcc';
         recCtx.font = 'bold 13px sans-serif';
-        recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText}`, 15, outputCanvas.height + 26);
-        recCtx.fillStyle = '#ff375f';
+        recCtx.fillText(mainResult.innerText, 15, outputCanvas.height + 26);
+        recCtx.fillStyle = '#ff9500';
         recCtx.font = 'bold 12px sans-serif';
-        recCtx.fillText(`BR高: ${document.getElementById('res_release_h').innerText} ｜ 前方伸長: ${document.getElementById('res_release_ext').innerText}`, 15, outputCanvas.height + 50);
+        if (currentPlane === 'sagittal') {
+            recCtx.fillText(`リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+        } else {
+            recCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, 15, outputCanvas.height + 50);
+        }
     }
-
     animationFrameId = requestAnimationFrame(loop);
 }
 
 function updateSeekBar() { if (video.duration) seekSlider.value = (video.currentTime / video.duration) * 100; }
 seekSlider.addEventListener('input', () => { if (video.duration) { video.pause(); btnPlayPause.innerText = '▶ 再生'; video.currentTime = (seekSlider.value / 100) * video.duration; } });
-video.addEventListener('seeked', () => { if (video.paused) { updateSeekBar(); renderCurrentFrame(); } });
+
+video.addEventListener('seeked', () => { 
+    if (video.paused) { updateSeekBar(); renderCurrentFrame(); } 
+});
 
 btnPlayPause.addEventListener('click', async () => {
+    if (!video.src || video.readyState < 2) return;
     if (video.paused) { 
-        try { 
-            await video.play(); 
-            btnPlayPause.innerText = '⏸ 停止'; 
-            btnPlayPause.style.background = '#ff9500'; 
-        } catch (e) {} 
+        try { await video.play(); btnPlayPause.innerText = '⏸ 停止'; btnPlayPause.style.background = '#ff9500'; } catch (e) {} 
     } else { 
-        video.pause(); 
-        btnPlayPause.innerText = '▶ 再生'; 
-        btnPlayPause.style.background = '#34c759'; 
+        video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759'; 
     }
 });
 
-btnStepForward.addEventListener('click', () => { video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759'; video.currentTime = Math.min(video.duration, video.currentTime + (1 / currentFPS)); });
-btnStepBack.addEventListener('click', () => { video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759'; video.currentTime = Math.max(0, video.currentTime - (1 / currentFPS)); });
+btnStepForward.addEventListener('click', () => { 
+    if (!video.src) return;
+    video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759'; 
+    video.currentTime = Math.min(video.duration, video.currentTime + STEP_SEC); 
+});
+btnStepBack.addEventListener('click', () => { 
+    if (!video.src) return;
+    video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759'; 
+    video.currentTime = Math.max(0, video.currentTime - STEP_SEC); 
+});
 
 function captureSnapshot() {
     if (!video.videoWidth) { alert("動画が読み込まれていません"); return; }
+    const box = getVideoRenderBox();
     const snapCanvas = document.createElement('canvas'), snapCtx = snapCanvas.getContext('2d');
     snapCanvas.width = outputCanvas.width; snapCanvas.height = outputCanvas.height + 70;
     snapCtx.fillStyle = '#000'; snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
-    snapCtx.drawImage(video, 0, 0, outputCanvas.width, outputCanvas.height);
+    snapCtx.drawImage(video, box.x, box.y, box.w, box.h);
     snapCtx.drawImage(outputCanvas, 0, 0);
     snapCtx.drawImage(interactionCanvas, 0, 0);
+    
     snapCtx.fillStyle = '#1c1c1e'; snapCtx.fillRect(0, outputCanvas.height, snapCanvas.width, 70);
     snapCtx.fillStyle = '#00ffcc'; snapCtx.font = 'bold 13px sans-serif';
-    snapCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText}`, 15, outputCanvas.height + 26);
-    snapCtx.fillStyle = '#ff375f'; snapCtx.font = 'bold 12px sans-serif';
-    snapCtx.fillText(`BR高: ${document.getElementById('res_release_h').innerText} ｜ 前方伸長: ${document.getElementById('res_release_ext').innerText}`, 15, outputCanvas.height + 50);
-    document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); document.getElementById('snapshot-modal-overlay').style.display = 'flex';
+    snapCtx.fillText(mainResult.innerText, 15, outputCanvas.height + 26);
+    snapCtx.fillStyle = '#ff9500'; snapCtx.font = 'bold 12px sans-serif';
+    if (currentPlane === 'sagittal') {
+        snapCtx.fillText(`リリース高: ${document.getElementById('res_release_h').innerText}`, 15, outputCanvas.height + 50);
+    } else {
+        snapCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, 15, outputCanvas.height + 50);
+    }
+    
+    document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); 
+    document.getElementById('snapshot-modal-overlay').style.display = 'flex';
 }
 function closeSnapshotModal() { document.getElementById('snapshot-modal-overlay').style.display = 'none'; }
 
 function toggleRecording() {
     if (!video.videoWidth) { alert("動画が読み込まれていません"); return; }
     const btn = document.getElementById('btnRecord');
-    
     if (!isRecording) {
         recordedChunks = [];
         const stream = recCanvas.captureStream(30);
-        let mimeType = 'video/webm;codecs=vp9';
+        let mimeType = 'video/mp4';
         if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = 'video/webm';
-            if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4';
+            mimeType = 'video/webm;codecs=vp9';
+            if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
         }
         try { mediaRecorder = new MediaRecorder(stream, { mimeType }); } catch (e) { mediaRecorder = new MediaRecorder(stream); }
         
@@ -793,38 +1138,43 @@ function toggleRecording() {
             const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a'); a.style.display = 'none'; a.href = url;
-            a.download = `Pitching_Analysis_${Date.now()}.mp4`;
+            a.download = `Pitching_Analysis_${currentPlane}_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
             document.body.appendChild(a); a.click();
             setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
         };
         
-        mediaRecorder.start();
-        isRecording = true;
-        btn.innerText = "⏹ 録画停止";
-        btn.classList.add('rec-active');
-        
-        if (video.paused) {
-            video.play();
-            btnPlayPause.innerText = '⏸ 停止';
-            btnPlayPause.style.background = '#ff9500';
-        }
+        mediaRecorder.start(); isRecording = true;
+        btn.innerText = "⏹ 録画停止"; btn.classList.add('rec-active');
+        if (video.paused) { video.play(); btnPlayPause.innerText = '⏸ 停止'; btnPlayPause.style.background = '#ff9500'; }
     } else {
-        mediaRecorder.stop();
-        isRecording = false;
-        btn.innerText = "🎥 録画開始";
-        btn.classList.remove('rec-active');
+        mediaRecorder.stop(); isRecording = false;
+        btn.innerText = "🎥 録画開始"; btn.classList.remove('rec-active');
     }
 }
 
+// ファイル読み込み処理（現在選択中の面に保存）
 document.getElementById('inputFile').addEventListener('change', (e) => {
     const file = e.target.files[0]; if (!file) return;
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
-    video.pause(); resetZoom(); clearPhaseData();
-    currentBlobUrl = URL.createObjectURL(file); video.src = currentBlobUrl; video.load();
-    const onCanPlay = () => { video.removeEventListener('canplay', onCanPlay); fitCanvases(); btnPlayPause.innerText = '▶ 再生'; video.currentTime = 0.001; loop(); };
-    video.addEventListener('canplay', onCanPlay); e.target.value = '';
+    video.pause(); resetZoom();
+    
+    const objUrl = URL.createObjectURL(file);
+    planeData[currentPlane].videoSrc = objUrl;
+    planeData[currentPlane].currentTime = 0.001;
+
+    video.src = objUrl;
+    video.load();
+    const onCanPlay = () => { 
+        video.removeEventListener('canplay', onCanPlay); 
+        fitCanvases(); btnPlayPause.innerText = '▶ 再生'; 
+        video.currentTime = 0.001; loop(); 
+    };
+    video.addEventListener('canplay', onCanPlay); 
+    e.target.value = '';
+    buildUI();
 });
+
+buildUI();
 </script>
 </body>
 </html>
