@@ -11,8 +11,6 @@
 <!-- MediaPipe Pose -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
-<!-- JSZip (動画パッケージ共有用) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous"></script>
 
 <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
@@ -25,7 +23,7 @@
     .hdr-btn { -webkit-appearance: none; appearance: none; background: #007aff; color: white; border: none; padding: 5px 8px; border-radius: 6px; font-weight: bold; font-size: 11px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
     .hdr-btn.secondary { background: #3a3a3c; }
     .hdr-btn.plane-btn { background: #af52de; color: #fff; }
-    .hdr-btn.share-btn { background: #30d158; color: #000; }
+    .hdr-btn.report-btn { background: #30d158; color: #000; font-weight: bold; }
     .hdr-btn.rec-active { background: #ff3b30 !important; animation: pulse-red 1s infinite; }
     @keyframes pulse-red { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
     
@@ -85,12 +83,7 @@
     .modal-input-row input { width: 100px; font-size: 16px; padding: 6px; text-align: center; border-radius: 6px; border: 1px solid #555; background: #1c1c1e; color: #fff; }
     .modal-btn-row { display: flex; gap: 8px; }
     .modal-btn-row button { flex: 1; padding: 8px 0; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; }
-    #snapshot-img { max-width: 100%; max-height: 50vh; border-radius: 6px; border: 1px solid #555; margin-bottom: 10px; }
-    
-    .share-options-grid { display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 12px; }
-    .share-action-btn { background: #3a3a3c; color: #fff; border: 1px solid #555; padding: 10px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; text-align: left; display: flex; align-items: center; gap: 8px; }
-    .share-action-btn:active { background: #555; }
-    .share-action-btn.primary-share { background: #007aff; border-color: #007aff; }
+    #snapshot-img { max-width: 100%; max-height: 60vh; border-radius: 6px; border: 1px solid #555; margin-bottom: 10px; object-fit: contain; }
 </style>
 </head>
 <body>
@@ -101,7 +94,7 @@
             <button class="hdr-btn" onclick="document.getElementById('inputFile').click()">動画選択</button>
             <input type="file" id="inputFile" accept="video/*" style="display:none;">
             <button class="hdr-btn plane-btn" id="btnTogglePlane" onclick="togglePlaneMode()">➡️ 前額面(正面)へ</button>
-            <button class="hdr-btn share-btn" onclick="openShareModal()">📤 データ共有</button>
+            <button class="hdr-btn report-btn" onclick="generateComprehensiveReportCard()">📊 レポート画像</button>
             <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 静止画</button>
             <button class="hdr-btn" id="btnRecord" style="background:#ff3b30;" onclick="toggleRecording()">🎥 録画開始</button>
         </div>
@@ -171,36 +164,14 @@
     </div>
 </div>
 
-<!-- Snapshot Modal -->
+<!-- Snapshot / Report Preview Modal -->
 <div id="snapshot-modal-overlay" class="modal-overlay">
     <div class="modal-card" style="max-width:360px;">
-        <h3 style="color:#5856d6;">📸 投球バイオメカニクスキャプチャ</h3>
-        <p style="font-size:11px; color:#aaa;">画像を長押しして「写真に追加」で保存できます</p>
+        <h3 id="snapshot-modal-title" style="color:#5856d6;">📸 キャプチャ</h3>
+        <p style="font-size:11px; color:#aaa;">画像を長押しして「写真に追加」やLINEで送信できます</p>
         <img id="snapshot-img" src="" alt="Screenshot">
         <div class="modal-btn-row">
             <button style="background:#444; color:#fff;" onclick="closeSnapshotModal()">閉じる</button>
-        </div>
-    </div>
-</div>
-
-<!-- Share Modal -->
-<div id="share-modal-overlay" class="modal-overlay">
-    <div class="modal-card" style="max-width:340px;">
-        <h3 style="color:#30d158;">📤 動画＆測定データの完全共有</h3>
-        <p style="font-size:11px; color:#ccc; margin-bottom:12px;">動画ファイルと解析結果を1つにまとめて保存・復元できます</p>
-        <div class="share-options-grid">
-            <button class="share-action-btn primary-share" onclick="exportFullPackage()">📦 動画ごと保存 (.pitch 形式)</button>
-            <button class="share-action-btn primary-share" onclick="document.getElementById('inputPackageFile').click()">📂 動画ごと復元 (.pitch 読込)</button>
-            <input type="file" id="inputPackageFile" accept=".pitch,.zip" style="display:none;">
-            
-            <button class="share-action-btn" onclick="exportDataJson()">💾 数値データのみ保存 (JSON)</button>
-            <button class="share-action-btn" onclick="document.getElementById('inputDataFile').click()">📂 数値データのみ復元 (JSON)</button>
-            <input type="file" id="inputDataFile" accept=".json" style="display:none;">
-            
-            <button class="share-action-btn" onclick="shareSummaryText()">📋 レポートを共有 / コピー</button>
-        </div>
-        <div class="modal-btn-row">
-            <button style="background:#444; color:#fff;" onclick="closeShareModal()">閉じる</button>
         </div>
     </div>
 </div>
@@ -233,16 +204,15 @@ let animationFrameId = null;
 
 let currentPlane = 'sagittal';
 
-// 面ごとに「動画Blob」「URL」「解析データ」を完全に分離して保持
 const planeData = {
     sagittal: {
-        videoBlob: null, videoSrc: null, currentTime: 0.001,
+        videoSrc: null, currentTime: 0.001,
         pxPerCm: null, scalePoints: [], manualReleasePoint: null, manualGroundYNorm: null,
         phases: { fc: null, ff: null, mer: null },
         maxRecordedXFactor: 0, leadLegSide: null, brKneeAngle: null
     },
     frontal: {
-        videoBlob: null, videoSrc: null, currentTime: 0.001,
+        videoSrc: null, currentTime: 0.001,
         phases: { pk: null, fc: null, br: null },
         shoulderElbowAngle: null, trunkTiltFrontal: null, pelvisObliquity: null,
         toeOutAngle: null, kneeValgusAngle: null
@@ -644,10 +614,11 @@ interactionCanvas.addEventListener('pointermove', (e) => {
     const cur = planeData.sagittal;
 
     if (isDraggingRelease && cur.manualReleasePoint) {
-        cur.manualReleasePoint = {
+        const manualReleasePoint = {
             x: Math.max(0, Math.min(1.0, (pt.x - box.x) / box.w)),
             y: Math.max(0, Math.min(1.0, (pt.y - box.y) / box.h))
         };
+        cur.manualReleasePoint = manualReleasePoint;
         recalcPitchMetrics();
         redrawOverlay();
         return;
@@ -743,8 +714,8 @@ function redrawOverlay() {
 
             if (cur.scalePoints.length === 2) {
                 intCtx.beginPath(); 
-                intCtx.moveTo(cur.scalePoints[0].x, cur.scalePoints[0].y); 
-                intCtx.lineTo(cur.scalePoints[1].x, cur.scalePoints[1].y); 
+                intCtx.moveTo(cur.scalePoints[0].x, scalePoints[0].y); 
+                intCtx.lineTo(scalePoints[1].x, scalePoints[1].y); 
                 intCtx.stroke();
             }
         } else {
@@ -761,8 +732,8 @@ function redrawOverlay() {
 
             if (cur.scalePoints.length === 2) {
                 intCtx.beginPath(); 
-                intCtx.moveTo(cur.scalePoints[0].x, cur.scalePoints[0].y); 
-                intCtx.lineTo(cur.scalePoints[1].x, cur.scalePoints[1].y); 
+                intCtx.moveTo(cur.scalePoints[0].x, scalePoints[0].y); 
+                intCtx.lineTo(scalePoints[1].x, scalePoints[1].y); 
                 intCtx.stroke();
             }
         }
@@ -1051,244 +1022,132 @@ function clearAllData() {
     mainResult.innerText = `データを消去しました (${currentPlane === 'sagittal' ? '矢状面' : '前額面'})`;
 }
 
-function openShareModal() {
-    document.getElementById('share-modal-overlay').style.display = 'flex';
-}
-function closeShareModal() {
-    document.getElementById('share-modal-overlay').style.display = 'none';
-}
-
-function getExportData() {
-    return {
-        app: "PitchingBiomechanicsPro",
-        version: "2.0",
-        timestamp: new Date().toISOString(),
-        data: {
-            sagittal: {
-                currentTime: planeData.sagittal.currentTime,
-                pxPerCm: planeData.sagittal.pxPerCm,
-                scalePoints: planeData.sagittal.scalePoints,
-                manualReleasePoint: planeData.sagittal.manualReleasePoint,
-                manualGroundYNorm: planeData.sagittal.manualGroundYNorm,
-                phases: planeData.sagittal.phases,
-                maxRecordedXFactor: planeData.sagittal.maxRecordedXFactor,
-                leadLegSide: planeData.sagittal.leadLegSide,
-                brKneeAngle: planeData.sagittal.brKneeAngle
-            },
-            frontal: {
-                currentTime: planeData.frontal.currentTime,
-                phases: planeData.frontal.phases,
-                shoulderElbowAngle: planeData.frontal.shoulderElbowAngle,
-                trunkTiltFrontal: planeData.frontal.trunkTiltFrontal,
-                pelvisObliquity: planeData.frontal.pelvisObliquity,
-                toeOutAngle: planeData.frontal.toeOutAngle,
-                kneeValgusAngle: planeData.frontal.kneeValgusAngle
-            }
-        }
-    };
-}
-
-// 1. 動画ごとパッケージ保存 (.pitch / zip)
-async function exportFullPackage() {
-    const sBlob = planeData.sagittal.videoBlob;
-    const fBlob = planeData.frontal.videoBlob;
-
-    if (!sBlob && !fBlob) {
-        alert("保存対象の動画が読み込まれていません。\nまず動画を選択して解析を行ってください。");
-        return;
-    }
-
-    mainResult.innerHTML = "<span style='color:#ff9500;'>📦 動画パッケージを作成中...</span>";
-    const zip = new JSZip();
-    
-    // メタデータJSON
-    const metaData = getExportData();
-    zip.file("analysis_data.json", JSON.stringify(metaData, null, 2));
-
-    // 動画データ格納
-    if (sBlob) zip.file("sagittal_video.mp4", sBlob);
-    if (fBlob) zip.file("frontal_video.mp4", fBlob);
-
-    try {
-        const content = await zip.generateAsync({ type: "blob" });
-        const url = URL.createObjectURL(content);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `PitchingPackage_${Date.now()}.pitch`;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
-        mainResult.innerHTML = "<span style='color:#30d158;'>✅ 動画パッケージ保存完了</span>";
-        closeShareModal();
-    } catch (e) {
-        alert("パッケージの作成に失敗しました。");
-        mainResult.innerText = "投手バイオメカニクス解析";
-    }
-}
-
-// 2. 動画ごとパッケージ復元 (.pitch / zip)
-document.getElementById('inputPackageFile').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    mainResult.innerHTML = "<span style='color:#ff9500;'>📂 パッケージを復元中...</span>";
-    try {
-        const zip = await JSZip.loadAsync(file);
-        const jsonFile = zip.file("analysis_data.json");
-        if (!jsonFile) {
-            alert("無効なパッケージファイルです。");
-            return;
-        }
-
-        const jsonStr = await jsonFile.async("string");
-        const parsed = JSON.parse(jsonStr);
-
-        // 矢状面データ復元
-        if (parsed.data && parsed.data.sagittal) {
-            Object.assign(planeData.sagittal, parsed.data.sagittal);
-            const sVideo = zip.file("sagittal_video.mp4");
-            if (sVideo) {
-                const sBlob = await sVideo.async("blob");
-                planeData.sagittal.videoBlob = sBlob;
-                planeData.sagittal.videoSrc = URL.createObjectURL(sBlob);
-            }
-        }
-
-        // 前額面データ復元
-        if (parsed.data && parsed.data.frontal) {
-            Object.assign(planeData.frontal, parsed.data.frontal);
-            const fVideo = zip.file("frontal_video.mp4");
-            if (fVideo) {
-                const fBlob = await fVideo.async("blob");
-                planeData.frontal.videoBlob = fBlob;
-                planeData.frontal.videoSrc = URL.createObjectURL(fBlob);
-            }
-        }
-
-        // 現在の面の動画をロード
-        const cur = planeData[currentPlane];
-        if (cur.videoSrc) {
-            video.src = cur.videoSrc;
-            video.load();
-            const onCanPlay = () => {
-                video.removeEventListener('canplay', onCanPlay);
-                fitCanvases();
-                video.currentTime = cur.currentTime || 0.001;
-                loop();
-            };
-            video.addEventListener('canplay', onCanPlay);
-        }
-
-        buildUI();
-        closeShareModal();
-        alert("動画と解析データを完全に復元しました！");
-    } catch (err) {
-        alert("パッケージの読み込みに失敗しました。");
-    } finally {
-        e.target.value = '';
-    }
-});
-
-// 3. 数値JSONのエクスポート
-function exportDataJson() {
-    const exportObject = getExportData();
-    const jsonStr = JSON.stringify(exportObject, null, 2);
-    const blob = new Blob([jsonStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Pitching_Data_${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
-    closeShareModal();
-}
-
-// 4. 数値JSONのインポート
-document.getElementById('inputDataFile').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        try {
-            const parsed = JSON.parse(event.target.result);
-            if (!parsed.data) {
-                alert("無効な解析データファイルです。");
-                return;
-            }
-            if (parsed.data.sagittal) Object.assign(planeData.sagittal, parsed.data.sagittal);
-            if (parsed.data.frontal) Object.assign(planeData.frontal, parsed.data.frontal);
-            buildUI();
-            closeShareModal();
-            alert("数値データを正常に読み込みました。");
-        } catch (err) {
-            alert("ファイルの読み込みに失敗しました。");
-        }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-});
-
-// 5. レポートテキストの生成と共有/コピー
-function shareSummaryText() {
+// 1枚の洗練されたレポート画像を自動生成してプレビュー
+function generateComprehensiveReportCard() {
     const s = planeData.sagittal;
     const f = planeData.frontal;
 
-    const stride = (s.phases.fc && s.phases.fc.stridePx && s.pxPerCm) ? `${(s.phases.fc.stridePx / s.pxPerCm).toFixed(1)}cm` : "未測定";
-    const merElbow = (s.phases.mer && s.phases.mer.elbowAngle) ? `${s.phases.mer.elbowAngle.toFixed(1)}°` : "未測定";
-    const xFactor = s.maxRecordedXFactor > 0 ? `${s.maxRecordedXFactor.toFixed(1)}°` : "未測定";
-    const ffKnee = (s.phases.ff && s.phases.ff.kneeAngle) ? `${s.phases.ff.kneeAngle.toFixed(1)}°` : "未測定";
-    const brKnee = s.brKneeAngle !== null ? `${s.brKneeAngle.toFixed(1)}°` : "未測定";
+    const repCanvas = document.createElement('canvas');
+    const repCtx = repCanvas.getContext('2d');
     
-    let relH = "未測定";
+    repCanvas.width = 750;
+    repCanvas.height = 960;
+
+    // 背景
+    repCtx.fillStyle = '#1c1c1e';
+    repCtx.fillRect(0, 0, repCanvas.width, repCanvas.height);
+
+    // ヘッダーバー
+    repCtx.fillStyle = '#2c2c2e';
+    repCtx.fillRect(0, 0, repCanvas.width, 90);
+    repCtx.fillStyle = '#00ffcc';
+    repCtx.font = 'bold 26px sans-serif';
+    repCtx.fillText('⚾️ 投球バイオメカニクス解析レポート', 25, 42);
+    repCtx.fillStyle = '#8e8e93';
+    repCtx.font = '14px sans-serif';
+    repCtx.fillText(`発行日: ${new Date().toLocaleDateString('ja-JP')} ｜ 動作分析Pro`, 25, 72);
+
+    // 映像サムネイル
+    const box = getVideoRenderBox();
+    const snapW = 700;
+    const snapH = 340;
+    repCtx.fillStyle = '#000';
+    repCtx.fillRect(25, 105, snapW, snapH);
+
+    if (video.videoWidth) {
+        repCtx.drawImage(video, 25, 105, snapW, snapH);
+        repCtx.drawImage(outputCanvas, 25, 105, snapW, snapH);
+        repCtx.drawImage(interactionCanvas, 25, 105, snapW, snapH);
+    } else {
+        repCtx.fillStyle = '#444';
+        repCtx.font = 'bold 18px sans-serif';
+        repCtx.textAlign = 'center';
+        repCtx.fillText('動画未選択', 375, 275);
+        repCtx.textAlign = 'left';
+    }
+
+    // 枠線
+    repCtx.strokeStyle = '#3a3a3c';
+    repCtx.lineWidth = 2;
+    repCtx.strokeRect(25, 105, snapW, snapH);
+
+    // セクション描画関数
+    const drawSection = (title, color, items, startY) => {
+        repCtx.fillStyle = color;
+        repCtx.font = 'bold 18px sans-serif';
+        repCtx.fillText(title, 25, startY);
+
+        repCtx.fillStyle = '#262629';
+        repCtx.fillRect(25, startY + 10, snapW, 160);
+        repCtx.strokeStyle = '#3a3a3c';
+        repCtx.strokeRect(25, startY + 10, snapW, 160);
+
+        items.forEach((item, idx) => {
+            const col = idx % 2;
+            const row = Math.floor(idx / 2);
+            const x = 45 + col * 340;
+            const y = startY + 45 + row * 40;
+
+            repCtx.fillStyle = '#aaa';
+            repCtx.font = '14px sans-serif';
+            repCtx.fillText(item.label, x, y);
+
+            repCtx.fillStyle = item.highlight ? '#00ffcc' : '#fff';
+            repCtx.font = 'bold 16px monospace';
+            repCtx.fillText(item.val, x + 200, y);
+        });
+    };
+
+    const stride = (s.phases.fc && s.phases.fc.stridePx && s.pxPerCm) ? `${(s.phases.fc.stridePx / s.pxPerCm).toFixed(1)} cm` : "--- cm";
+    const merElbow = (s.phases.mer && s.phases.mer.elbowAngle) ? `${s.phases.mer.elbowAngle.toFixed(1)}°` : "---°";
+    const xFactor = s.maxRecordedXFactor > 0 ? `${s.maxRecordedXFactor.toFixed(1)}°` : "0.0°";
+    const ffKnee = (s.phases.ff && s.phases.ff.kneeAngle) ? `${s.phases.ff.kneeAngle.toFixed(1)}°` : "---°";
+    const brKnee = s.brKneeAngle !== null ? `${s.brKneeAngle.toFixed(1)}°` : "---°";
+    
+    let relH = "--- cm";
     if (s.manualReleasePoint && s.manualGroundYNorm !== null && s.pxPerCm) {
-        const box = getVideoRenderBox();
         const wristY = box.y + s.manualReleasePoint.y * box.h;
         const groundY = box.y + s.manualGroundYNorm * box.h;
-        relH = `${Math.max(0, (groundY - wristY) / s.pxPerCm).toFixed(1)}cm`;
+        relH = `${Math.max(0, (groundY - wristY) / s.pxPerCm).toFixed(1)} cm`;
     }
 
-    const toeOut = f.toeOutAngle !== null ? `${f.toeOutAngle.toFixed(1)}°` : "未測定";
-    const valgus = f.kneeValgusAngle !== null ? `${f.kneeValgusAngle.toFixed(1)}°` : "未測定";
-    const pelvis = f.pelvisObliquity !== null ? `${f.pelvisObliquity.toFixed(1)}°` : "未測定";
-    const shEl = f.shoulderElbowAngle !== null ? `${f.shoulderElbowAngle.toFixed(1)}°` : "未測定";
-    const trunk = f.trunkTiltFrontal !== null ? `${f.trunkTiltFrontal.toFixed(1)}°` : "未測定";
-    const pkTilt = (f.phases.pk && f.phases.pk.tilt !== undefined) ? `${f.phases.pk.tilt.toFixed(1)}°` : "未測定";
+    const toeOut = f.toeOutAngle !== null ? `${f.toeOutAngle.toFixed(1)}°` : "---°";
+    const valgus = f.kneeValgusAngle !== null ? `${f.kneeValgusAngle.toFixed(1)}°` : "---°";
+    const pelvis = f.pelvisObliquity !== null ? `${f.pelvisObliquity.toFixed(1)}°` : "---°";
+    const shEl = f.shoulderElbowAngle !== null ? `${f.shoulderElbowAngle.toFixed(1)}°` : "---°";
+    const trunk = f.trunkTiltFrontal !== null ? `${f.trunkTiltFrontal.toFixed(1)}°` : "---°";
+    const pkTilt = (f.phases.pk && f.phases.pk.tilt !== undefined) ? `${f.phases.pk.tilt.toFixed(1)}°` : "---°";
 
-    const report = 
-`【投球バイオメカニクス解析レポート】
-━━━━━━━━━━━━━━━
-■ 矢状面（横アングル）
-・FC 足移動幅 (歩幅): ${stride}
-・MER 肘屈曲角度: ${merElbow}
-・最大 捻転差: ${xFactor}
-・FF 前足膝角度: ${ffKnee}
-・BR 前足膝角度: ${brKnee}
-・リリース地上高: ${relH}
-────────────────
-■ 前額面（正面/背面アングル）
-・FC つま先開き角: ${toeOut}
-・FC 膝内外反角度: ${valgus}
-・FC 骨盤水平傾斜: ${pelvis}
-・BR 肘高(肩-肘線): ${shEl}
-・BR 体幹側屈角度: ${trunk}
-・PK 軸足傾斜: ${pkTilt}
-━━━━━━━━━━━━━━━
-#投球動作分析Pro`;
+    // 矢状面セクション
+    drawSection('🎯 矢状面（横アングル）', '#00ffcc', [
+        { label: 'FC 足移動幅 (歩幅):', val: stride, highlight: true },
+        { label: 'FF 前足膝角度:', val: ffKnee },
+        { label: 'MER 肘屈曲角度:', val: merElbow },
+        { label: 'BR 前足膝角度:', val: brKnee },
+        { label: '最大 捻転差:', val: xFactor },
+        { label: 'リリース地上高:', val: relH }
+    ], 480);
 
-    if (navigator.share) {
-        navigator.share({
-            title: "投球バイオメカニクス解析結果",
-            text: report
-        }).then(() => closeShareModal()).catch(() => {});
-    } else {
-        navigator.clipboard.writeText(report).then(() => {
-            alert("解析レポートをクリップボードにコピーしました！\nメールやLINE等にそのまま貼り付けて送信できます。");
-            closeShareModal();
-        }).catch(() => {
-            alert("クリップボードへのコピーに失敗しました。");
-        });
-    }
+    // 前額面セクション
+    drawSection('⚡ 前額面（正面/背面アングル）', '#ff9500', [
+        { label: 'FC つま先開き角:', val: toeOut, highlight: true },
+        { label: 'BR 肘高(肩-肘線):', val: shEl },
+        { label: 'FC 膝内外反角度:', val: valgus },
+        { label: 'BR 体幹側屈角度:', val: trunk },
+        { label: 'FC 骨盤水平傾斜:', val: pelvis },
+        { label: 'PK 軸足傾斜:', val: pkTilt }
+    ], 700);
+
+    // フッター
+    repCtx.fillStyle = '#666';
+    repCtx.font = '12px sans-serif';
+    repCtx.textAlign = 'center';
+    repCtx.fillText('Generated by 投球動作分析Pro - Baseball Biomechanics Analysis', 375, 935);
+    repCtx.textAlign = 'left';
+
+    document.getElementById('snapshot-modal-title').innerText = '📊 全体解析レポート';
+    document.getElementById('snapshot-img').src = repCanvas.toDataURL('image/png');
+    document.getElementById('snapshot-modal-overlay').style.display = 'flex';
 }
 
 async function renderCurrentFrame() {
@@ -1378,6 +1237,7 @@ function captureSnapshot() {
         snapCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, 15, outputCanvas.height + 50);
     }
     
+    document.getElementById('snapshot-modal-title').innerText = '📸 キャプチャ';
     document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); 
     document.getElementById('snapshot-modal-overlay').style.display = 'flex';
 }
@@ -1421,8 +1281,6 @@ document.getElementById('inputFile').addEventListener('change', (e) => {
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     video.pause(); resetZoom();
     
-    // Blobそのものを保持
-    planeData[currentPlane].videoBlob = file;
     const objUrl = URL.createObjectURL(file);
     planeData[currentPlane].videoSrc = objUrl;
     planeData[currentPlane].currentTime = 0.001;
