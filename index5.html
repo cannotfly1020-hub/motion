@@ -235,7 +235,6 @@ let recordedChunks = [];
 let isRecording = false;
 const recCanvas = document.createElement('canvas');
 const recCtx = recCanvas.getContext('2d');
-let recDimensions = { w: 0, h: 0, bannerH: 0 };
 
 const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
 pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
@@ -1054,9 +1053,15 @@ function generateComprehensiveReportCard() {
     repCtx.fillRect(25, 105, snapW, snapH);
 
     if (video.videoWidth) {
-        repCtx.drawImage(video, 25, 105, snapW, snapH);
-        repCtx.drawImage(outputCanvas, 25, 105, snapW, snapH);
-        repCtx.drawImage(interactionCanvas, 25, 105, snapW, snapH);
+        const videoRatio = video.videoWidth / video.videoHeight;
+        let dw = snapW, dh = snapW / videoRatio;
+        if (dh > snapH) { dh = snapH; dw = snapH * videoRatio; }
+        const dx = 25 + (snapW - dw) / 2;
+        const dy = 105 + (snapH - dh) / 2;
+
+        repCtx.drawImage(video, dx, dy, dw, dh);
+        repCtx.drawImage(outputCanvas, dx, dy, dw, dh);
+        repCtx.drawImage(interactionCanvas, dx, dy, dw, dh);
     } else {
         repCtx.fillStyle = '#444';
         repCtx.font = 'bold 18px sans-serif';
@@ -1159,34 +1164,42 @@ async function loop() {
         updateSeekBar(); 
     }
     
-    // 録画フレームの安定描画処理
-    if (isRecording && video.videoWidth > 0 && recDimensions.w > 0) {
-        const { w, h, bannerH } = recDimensions;
+    // 録画フレームの描画（アスペクト比完全維持 ＆ 下部スマートオーバーレイ）
+    if (isRecording && video.videoWidth > 0 && recCanvas.width > 0) {
+        const w = recCanvas.width;
+        const h = recCanvas.height;
 
-        recCtx.fillStyle = '#000';
-        recCtx.fillRect(0, 0, w, h + bannerH);
+        // 1. 動画を正確なアスペクト比で描画
         recCtx.drawImage(video, 0, 0, w, h);
 
+        // 2. 骨格・計測ラインを重ね合わせ
         const box = getVideoRenderBox();
         if (box.w > 0 && box.h > 0) {
             recCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, w, h);
             recCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, 0, 0, w, h);
         }
 
-        recCtx.fillStyle = '#1c1c1e';
-        recCtx.fillRect(0, h, w, bannerH);
+        // 3. 動画下部に半透明のグラデーション情報バーを描画
+        const overlayH = Math.round(h * 0.12);
+        const grad = recCtx.createLinearGradient(0, h - overlayH, 0, h);
+        grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        grad.addColorStop(0.3, 'rgba(28, 28, 30, 0.85)');
+        grad.addColorStop(1, 'rgba(28, 28, 30, 0.98)');
+        
+        recCtx.fillStyle = grad;
+        recCtx.fillRect(0, h - overlayH, w, overlayH);
 
-        const fontSize = Math.max(13, Math.round(h * 0.025));
+        const fontSize = Math.max(14, Math.round(h * 0.024));
         recCtx.font = `bold ${fontSize}px sans-serif`;
 
         recCtx.fillStyle = '#00ffcc';
-        recCtx.fillText(mainResult.innerText, Math.round(w * 0.03), h + Math.round(bannerH * 0.42));
+        recCtx.fillText(mainResult.innerText, Math.round(w * 0.03), h - Math.round(overlayH * 0.55));
 
         recCtx.fillStyle = '#ff9500';
         if (currentPlane === 'sagittal') {
-            recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, Math.round(w * 0.03), h + Math.round(bannerH * 0.82));
+            recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, Math.round(w * 0.03), h - Math.round(overlayH * 0.18));
         } else {
-            recCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 膝内外反: ${document.getElementById('res_knee_valgus').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, Math.round(w * 0.03), h + Math.round(bannerH * 0.82));
+            recCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 膝内外反: ${document.getElementById('res_knee_valgus').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, Math.round(w * 0.03), h - Math.round(overlayH * 0.18));
         }
     }
     animationFrameId = requestAnimationFrame(loop);
@@ -1251,7 +1264,7 @@ function toggleRecording() {
     if (!isRecording) {
         recordedChunks = [];
 
-        // モバイルのメモリクラッシュを防ぐため、アスペクト比を維持しつつ長辺を最大1280pxにスケーリング
+        // 元動画の正確なアスペクト比を維持しつつ、最大解像度を1280pxに安全制限
         const maxDim = 1280;
         let targetW = video.videoWidth;
         let targetH = video.videoHeight;
@@ -1266,23 +1279,18 @@ function toggleRecording() {
             }
         }
 
-        // 偶数解像度に丸める（ビデオエンコーダ用）
+        // エンコーダ用に必ず偶数にする
         targetW = Math.floor(targetW / 2) * 2;
         targetH = Math.floor(targetH / 2) * 2;
-        const bannerH = Math.floor(Math.round(targetH * 0.12) / 2) * 2;
 
-        recDimensions = { w: targetW, h: targetH, bannerH: bannerH };
         recCanvas.width = targetW;
-        recCanvas.height = targetH + bannerH;
+        recCanvas.height = targetH;
 
-        // 初回フレームを描画して真っ暗ストリームを防止
-        recCtx.fillStyle = '#000';
-        recCtx.fillRect(0, 0, recCanvas.width, recCanvas.height);
+        // 初回フレームを描画
         recCtx.drawImage(video, 0, 0, targetW, targetH);
 
         const stream = recCanvas.captureStream(30);
 
-        // Safari・Chrome・Androidに最適化したMIMEタイプ選定
         const types = [
             'video/mp4;codecs=avc1',
             'video/mp4',
@@ -1325,7 +1333,7 @@ function toggleRecording() {
             }, 500);
         };
 
-        mediaRecorder.start(100); // 100msごとにデータをチャンクへプッシュ
+        mediaRecorder.start(100);
         isRecording = true;
         btn.innerText = "⏹ 録画停止";
         btn.classList.add('rec-active');
