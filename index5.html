@@ -853,7 +853,18 @@ function markPhase(key) {
 
     if (cur.phases[key]) {
         cur.phases[key] = null;
-        if (key === 'fc' && currentPlane === 'sagittal') cur.leadLegSide = null;
+        if (currentPlane === 'sagittal') {
+            if (key === 'fc') cur.leadLegSide = null;
+        } else {
+            if (key === 'fc') {
+                cur.toeOutAngle = null;
+                cur.kneeValgusAngle = null;
+                cur.pelvisObliquity = null;
+            } else if (key === 'br') {
+                cur.trunkTiltFrontal = null;
+                cur.shoulderElbowAngle = null;
+            }
+        }
         updatePhaseBtnStyles();
         recalcPitchMetrics();
         redrawOverlay();
@@ -997,6 +1008,9 @@ function recalcPitchMetrics() {
 }
 
 function clearAllData() {
+    isScaleMode = isReleaseMode = isZoomMode = false;
+    document.getElementById('zoom-controls').style.display = 'none';
+
     if (currentPlane === 'sagittal') {
         const cur = planeData.sagittal;
         cur.phases = { fc: null, ff: null, mer: null };
@@ -1059,9 +1073,12 @@ function generateComprehensiveReportCard() {
         const dx = 25 + (snapW - dw) / 2;
         const dy = 105 + (snapH - dh) / 2;
 
+        const box = getVideoRenderBox();
         repCtx.drawImage(video, dx, dy, dw, dh);
-        repCtx.drawImage(outputCanvas, dx, dy, dw, dh);
-        repCtx.drawImage(interactionCanvas, dx, dy, dw, dh);
+        if (box.w > 0 && box.h > 0) {
+            repCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, dx, dy, dw, dh);
+            repCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, dx, dy, dw, dh);
+        }
     } else {
         repCtx.fillStyle = '#444';
         repCtx.font = 'bold 18px sans-serif';
@@ -1210,6 +1227,12 @@ seekSlider.addEventListener('input', () => { if (video.duration) { video.pause()
 
 video.addEventListener('seeked', () => { 
     if (video.paused) { updateSeekBar(); renderCurrentFrame(); } 
+});
+
+video.addEventListener('ended', () => {
+    btnPlayPause.innerText = '▶ 再生';
+    btnPlayPause.style.background = '#34c759';
+    if (isRecording) toggleRecording();
 });
 
 btnPlayPause.addEventListener('click', async () => {
