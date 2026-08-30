@@ -235,6 +235,7 @@ let recordedChunks = [];
 let isRecording = false;
 const recCanvas = document.createElement('canvas');
 const recCtx = recCanvas.getContext('2d');
+let recDimensions = { w: 0, h: 0, bannerH: 0 };
 
 const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
 pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
@@ -1158,36 +1159,34 @@ async function loop() {
         updateSeekBar(); 
     }
     
-    // 録画フレームの描画（縦動画・横動画に完全同期）
-    if (isRecording && video.videoWidth > 0) {
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        const bannerH = Math.round(vh * 0.12);
+    // 録画フレームの安定描画処理
+    if (isRecording && video.videoWidth > 0 && recDimensions.w > 0) {
+        const { w, h, bannerH } = recDimensions;
 
         recCtx.fillStyle = '#000';
-        recCtx.fillRect(0, 0, recCanvas.width, recCanvas.height);
-        recCtx.drawImage(video, 0, 0, vw, vh);
+        recCtx.fillRect(0, 0, w, h + bannerH);
+        recCtx.drawImage(video, 0, 0, w, h);
 
         const box = getVideoRenderBox();
         if (box.w > 0 && box.h > 0) {
-            recCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, vw, vh);
-            recCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, 0, 0, vw, vh);
+            recCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, w, h);
+            recCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, 0, 0, w, h);
         }
 
         recCtx.fillStyle = '#1c1c1e';
-        recCtx.fillRect(0, vh, vw, bannerH);
+        recCtx.fillRect(0, h, w, bannerH);
 
-        const fontSize = Math.max(16, Math.round(vh * 0.026));
+        const fontSize = Math.max(13, Math.round(h * 0.025));
         recCtx.font = `bold ${fontSize}px sans-serif`;
 
         recCtx.fillStyle = '#00ffcc';
-        recCtx.fillText(mainResult.innerText, Math.round(vw * 0.03), vh + Math.round(bannerH * 0.42));
+        recCtx.fillText(mainResult.innerText, Math.round(w * 0.03), h + Math.round(bannerH * 0.42));
 
         recCtx.fillStyle = '#ff9500';
         if (currentPlane === 'sagittal') {
-            recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, Math.round(vw * 0.03), vh + Math.round(bannerH * 0.82));
+            recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, Math.round(w * 0.03), h + Math.round(bannerH * 0.82));
         } else {
-            recCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 膝内外反: ${document.getElementById('res_knee_valgus').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, Math.round(vw * 0.03), vh + Math.round(bannerH * 0.82));
+            recCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 膝内外反: ${document.getElementById('res_knee_valgus').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, Math.round(w * 0.03), h + Math.round(bannerH * 0.82));
         }
     }
     animationFrameId = requestAnimationFrame(loop);
@@ -1248,40 +1247,101 @@ function captureSnapshot() {
 function toggleRecording() {
     if (!video.videoWidth) { alert("動画が読み込まれていません"); return; }
     const btn = document.getElementById('btnRecord');
+    
     if (!isRecording) {
         recordedChunks = [];
+
+        // モバイルのメモリクラッシュを防ぐため、アスペクト比を維持しつつ長辺を最大1280pxにスケーリング
+        const maxDim = 1280;
+        let targetW = video.videoWidth;
+        let targetH = video.videoHeight;
         
-        // 録画開始前に、キャンバスの縦横解像度を元動画に完全固定
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        const bannerH = Math.round(vh * 0.12);
-        recCanvas.width = vw;
-        recCanvas.height = vh + bannerH;
+        if (targetW > maxDim || targetH > maxDim) {
+            if (targetW > targetH) {
+                targetH = Math.round((targetH * maxDim) / targetW);
+                targetW = maxDim;
+            } else {
+                targetW = Math.round((targetW * maxDim) / targetH);
+                targetH = maxDim;
+            }
+        }
+
+        // 偶数解像度に丸める（ビデオエンコーダ用）
+        targetW = Math.floor(targetW / 2) * 2;
+        targetH = Math.floor(targetH / 2) * 2;
+        const bannerH = Math.floor(Math.round(targetH * 0.12) / 2) * 2;
+
+        recDimensions = { w: targetW, h: targetH, bannerH: bannerH };
+        recCanvas.width = targetW;
+        recCanvas.height = targetH + bannerH;
+
+        // 初回フレームを描画して真っ暗ストリームを防止
+        recCtx.fillStyle = '#000';
+        recCtx.fillRect(0, 0, recCanvas.width, recCanvas.height);
+        recCtx.drawImage(video, 0, 0, targetW, targetH);
 
         const stream = recCanvas.captureStream(30);
-        let mimeType = 'video/mp4';
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = 'video/webm;codecs=vp9';
-            if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+
+        // Safari・Chrome・Androidに最適化したMIMEタイプ選定
+        const types = [
+            'video/mp4;codecs=avc1',
+            'video/mp4',
+            'video/webm;codecs=vp9',
+            'video/webm;codecs=vp8',
+            'video/webm'
+        ];
+        let chosenMime = '';
+        for (const t of types) {
+            if (MediaRecorder.isTypeSupported(t)) {
+                chosenMime = t;
+                break;
+            }
         }
-        try { mediaRecorder = new MediaRecorder(stream, { mimeType }); } catch (e) { mediaRecorder = new MediaRecorder(stream); }
-        
-        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-        mediaRecorder.onstop = () => {
-            const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.style.display = 'none'; a.href = url;
-            a.download = `Pitching_Analysis_${currentPlane}_${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
-            document.body.appendChild(a); a.click();
-            setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+
+        try {
+            mediaRecorder = chosenMime ? new MediaRecorder(stream, { mimeType: chosenMime }) : new MediaRecorder(stream);
+        } catch (e) {
+            mediaRecorder = new MediaRecorder(stream);
+        }
+
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) recordedChunks.push(e.data);
         };
-        
-        mediaRecorder.start(); isRecording = true;
-        btn.innerText = "⏹ 録画停止"; btn.classList.add('rec-active');
-        if (video.paused) { video.play(); btnPlayPause.innerText = '⏸ 停止'; btnPlayPause.style.background = '#ff9500'; }
+
+        mediaRecorder.onstop = () => {
+            const finalMime = mediaRecorder.mimeType || chosenMime || 'video/mp4';
+            const isWebm = finalMime.includes('webm');
+            const blob = new Blob(recordedChunks, { type: finalMime });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `Pitching_${currentPlane}_${Date.now()}.${isWebm ? 'webm' : 'mp4'}`;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 500);
+        };
+
+        mediaRecorder.start(100); // 100msごとにデータをチャンクへプッシュ
+        isRecording = true;
+        btn.innerText = "⏹ 録画停止";
+        btn.classList.add('rec-active');
+
+        if (video.paused) {
+            video.play().catch(()=>{});
+            btnPlayPause.innerText = '⏸ 停止';
+            btnPlayPause.style.background = '#ff9500';
+        }
     } else {
-        mediaRecorder.stop(); isRecording = false;
-        btn.innerText = "🎥 録画開始"; btn.classList.remove('rec-active');
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        isRecording = false;
+        btn.innerText = "🎥 録画開始";
+        btn.classList.remove('rec-active');
     }
 }
 
