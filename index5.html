@@ -232,7 +232,6 @@ let recordedChunks = [];
 let isRecording = false;
 const recCanvas = document.createElement('canvas');
 const recCtx = recCanvas.getContext('2d');
-let recCrop = { sx: 0, sy: 0, sw: 0, sh: 0, dw: 0, dh: 0 };
 
 const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
 pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
@@ -358,7 +357,6 @@ function updateScaleInfo() {
     }
 }
 
-// 実際の画面上のレンダリング位置とアスペクト比を取得
 function getVideoRenderBox() {
     const cWidth = outputCanvas.width, cHeight = outputCanvas.height;
     if (!video.videoWidth || !video.videoHeight || cWidth === 0 || cHeight === 0) {
@@ -724,8 +722,8 @@ function redrawOverlay() {
             intCtx.setLineDash([4 / zoomScale, 4 / zoomScale]);
             
             cur.scalePoints.forEach(pt => {
-                intCtx.beginPath();
-                intCtx.arc(pt.x, pt.y, 4 / zoomScale, 0, Math.PI * 2);
+                intCtx.beginPath(); 
+                intCtx.arc(pt.x, pt.y, 4 / zoomScale, 0, Math.PI * 2); 
                 intCtx.fill();
             });
 
@@ -1181,40 +1179,40 @@ async function loop() {
         updateSeekBar(); 
     }
     
-    // 録画フレームの描画（画面上の正確な表示領域・アスペクト比を完全維持）
-    if (isRecording && video.videoWidth > 0 && recCrop.sw > 0) {
-        const { sx, sy, sw, sh, dw, dh } = recCrop;
+    // 録画フレームの描画（画面上の正確な動画領域のみをそのまま描画して歪みを完全排除）
+    if (isRecording && video.videoWidth > 0 && recCanvas.width > 0) {
+        const box = getVideoRenderBox();
+        const w = recCanvas.width;
+        const h = recCanvas.height;
 
-        // 1. 背景クリア
-        recCtx.fillStyle = '#000';
-        recCtx.fillRect(0, 0, dw, dh);
+        if (box.w > 0 && box.h > 0) {
+            // 1. 画面上の正確な動画領域のみを歪みなくキャンバス全面に転写
+            recCtx.drawImage(video, box.x, box.y, box.w, box.h, 0, 0, w, h);
+            recCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, w, h);
+            recCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, 0, 0, w, h);
 
-        // 2. 画面上の表示領域のみをそのまま切り出して等倍描画（歪み・太りゼロ）
-        recCtx.drawImage(video, 0, 0, dw, dh);
-        recCtx.drawImage(outputCanvas, sx, sy, sw, sh, 0, 0, dw, dh);
-        recCtx.drawImage(interactionCanvas, sx, sy, sw, sh, 0, 0, dw, dh);
+            // 2. 下部に半透明のグラデーション情報バーを描画
+            const overlayH = Math.round(h * 0.12);
+            const grad = recCtx.createLinearGradient(0, h - overlayH, 0, h);
+            grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            grad.addColorStop(0.3, 'rgba(28, 28, 30, 0.85)');
+            grad.addColorStop(1, 'rgba(28, 28, 30, 0.98)');
+            
+            recCtx.fillStyle = grad;
+            recCtx.fillRect(0, h - overlayH, w, overlayH);
 
-        // 3. 動画下部に半透明のグラデーション情報バーを描画
-        const overlayH = Math.round(dh * 0.12);
-        const grad = recCtx.createLinearGradient(0, dh - overlayH, 0, dh);
-        grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        grad.addColorStop(0.3, 'rgba(28, 28, 30, 0.85)');
-        grad.addColorStop(1, 'rgba(28, 28, 30, 0.98)');
-        
-        recCtx.fillStyle = grad;
-        recCtx.fillRect(0, dh - overlayH, dw, overlayH);
+            const fontSize = Math.max(14, Math.round(h * 0.024));
+            recCtx.font = `bold ${fontSize}px sans-serif`;
 
-        const fontSize = Math.max(14, Math.round(dh * 0.024));
-        recCtx.font = `bold ${fontSize}px sans-serif`;
+            recCtx.fillStyle = '#00ffcc';
+            recCtx.fillText(mainResult.innerText, Math.round(w * 0.03), h - Math.round(overlayH * 0.55));
 
-        recCtx.fillStyle = '#00ffcc';
-        recCtx.fillText(mainResult.innerText, Math.round(dw * 0.03), dh - Math.round(overlayH * 0.55));
-
-        recCtx.fillStyle = '#ff9500';
-        if (currentPlane === 'sagittal') {
-            recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, Math.round(dw * 0.03), dh - Math.round(overlayH * 0.18));
-        } else {
-            recCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 膝内外反: ${document.getElementById('res_knee_valgus').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, Math.round(dw * 0.03), dh - Math.round(overlayH * 0.18));
+            recCtx.fillStyle = '#ff9500';
+            if (currentPlane === 'sagittal') {
+                recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, Math.round(w * 0.03), h - Math.round(overlayH * 0.18));
+            } else {
+                recCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 膝内外反: ${document.getElementById('res_knee_valgus').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, Math.round(w * 0.03), h - Math.round(overlayH * 0.18));
+            }
         }
     }
     animationFrameId = requestAnimationFrame(loop);
@@ -1285,41 +1283,31 @@ function toggleRecording() {
     if (!isRecording) {
         recordedChunks = [];
 
-        // 画面上で実際に表示されている動画領域（ボックス）を取得
+        // 画面上で実際に表示されている「動画本体の領域（box）」のサイズから正確な比率を算出
         const box = getVideoRenderBox();
         const maxDim = 1280;
-        let dw = box.w;
-        let dh = box.h;
+        let targetW = box.w;
+        let targetH = box.h;
 
-        // 長辺を最大1280pxに安全制限しつつ、画面上のアスペクト比を100%完全維持
-        if (dw > maxDim || dh > maxDim) {
-            if (dw > dh) {
-                dh = Math.round((dh * maxDim) / dw);
-                dw = maxDim;
+        if (targetW > maxDim || targetH > maxDim) {
+            if (targetW > targetH) {
+                targetH = Math.round((targetH * maxDim) / targetW);
+                targetW = maxDim;
             } else {
-                dw = Math.round((dw * maxDim) / dh);
-                dh = maxDim;
+                targetW = Math.round((targetW * maxDim) / targetH);
+                targetH = maxDim;
             }
         }
 
         // エンコーダ用に偶数化
-        dw = Math.floor(dw / 2) * 2;
-        dh = Math.floor(dh / 2) * 2;
+        targetW = Math.floor(targetW / 2) * 2;
+        targetH = Math.floor(targetH / 2) * 2;
 
-        recCrop = {
-            sx: box.x, sy: box.y, sw: box.w, sh: box.h,
-            dw: dw, dh: dh
-        };
-
-        recCanvas.width = dw;
-        recCanvas.height = dh;
+        recCanvas.width = targetW;
+        recCanvas.height = targetH;
 
         // 初回フレームを描画
-        recCtx.fillStyle = '#000';
-        recCtx.fillRect(0, 0, dw, dh);
-        recCtx.drawImage(video, 0, 0, dw, dh);
-        recCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, dw, dh);
-        recCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, 0, 0, dw, dh);
+        recCtx.drawImage(video, box.x, box.y, box.w, box.h, 0, 0, targetW, targetH);
 
         const stream = recCanvas.captureStream(30);
 
