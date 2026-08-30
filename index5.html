@@ -125,10 +125,7 @@
         <input type="range" id="seekSlider" min="0" max="100" value="0" step="0.05">
     </div>
 
-    <!-- フェーズボタン -->
     <div class="phase-actions" id="phaseContainer"></div>
-
-    <!-- モード切り替えボタン群 -->
     <div class="mode-grid" id="modeGridContainer"></div>
 
     <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
@@ -137,7 +134,6 @@
         <button class="ctrl-btn" style="width:auto; padding:4px 10px; background:#444;" onclick="resetZoom()">等倍リセット</button>
     </div>
 
-    <!-- ダッシュボード -->
     <div class="dashboard-grid" id="dashboardContainer"></div>
 
     <div class="playback-row">
@@ -360,10 +356,11 @@ function updateScaleInfo() {
     }
 }
 
+// 実際の画面上のレンダリング位置とアスペクト比を取得
 function getVideoRenderBox() {
     const cWidth = outputCanvas.width, cHeight = outputCanvas.height;
     if (!video.videoWidth || !video.videoHeight || cWidth === 0 || cHeight === 0) {
-        return { x: 0, y: 0, w: cWidth, h: cHeight };
+        return { x: 0, y: 0, w: cWidth, h: cHeight, ratio: 1 };
     }
     const videoRatio = video.videoWidth / video.videoHeight;
     const canvasRatio = cWidth / cHeight;
@@ -376,7 +373,7 @@ function getVideoRenderBox() {
         renderW = cWidth; renderH = cWidth / videoRatio;
         offsetX = 0; offsetY = (cHeight - renderH) / 2;
     }
-    return { x: offsetX, y: offsetY, w: renderW, h: renderH };
+    return { x: offsetX, y: offsetY, w: renderW, h: renderH, ratio: videoRatio };
 }
 
 function fitCanvases() {
@@ -1067,13 +1064,13 @@ function generateComprehensiveReportCard() {
     repCtx.fillRect(25, 105, snapW, snapH);
 
     if (video.videoWidth) {
-        const videoRatio = video.videoWidth / video.videoHeight;
+        const box = getVideoRenderBox();
+        const videoRatio = box.ratio;
         let dw = snapW, dh = snapW / videoRatio;
         if (dh > snapH) { dh = snapH; dw = snapH * videoRatio; }
         const dx = 25 + (snapW - dw) / 2;
         const dy = 105 + (snapH - dh) / 2;
 
-        const box = getVideoRenderBox();
         repCtx.drawImage(video, dx, dy, dw, dh);
         if (box.w > 0 && box.h > 0) {
             repCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, dx, dy, dw, dh);
@@ -1287,19 +1284,21 @@ function toggleRecording() {
     if (!isRecording) {
         recordedChunks = [];
 
-        // 元動画の正確なアスペクト比を維持しつつ、最大解像度を1280pxに安全制限
-        const maxDim = 1280;
-        let targetW = video.videoWidth;
-        let targetH = video.videoHeight;
+        // 画面上の正確な表示比率を取得
+        const box = getVideoRenderBox();
+        const videoRatio = box.ratio; // 正確なアスペクト比 (w / h)
         
-        if (targetW > maxDim || targetH > maxDim) {
-            if (targetW > targetH) {
-                targetH = Math.round((targetH * maxDim) / targetW);
-                targetW = maxDim;
-            } else {
-                targetW = Math.round((targetW * maxDim) / targetH);
-                targetH = maxDim;
-            }
+        let targetW, targetH;
+        const maxDim = 1280;
+
+        if (videoRatio < 1) {
+            // 縦長動画の場合
+            targetH = maxDim;
+            targetW = Math.round(maxDim * videoRatio);
+        } else {
+            // 横長動画の場合
+            targetW = maxDim;
+            targetH = Math.round(maxDim / videoRatio);
         }
 
         // エンコーダ用に必ず偶数にする
