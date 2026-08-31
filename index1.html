@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>動作観察 & 3Dバイオメカニクス解析</title>
+  <!-- MediaPipe Pose CDN (最新安定版) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    html, body {
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background-color: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* ビューポートコンテナ */
+    .compare-viewport {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100dvh;
+      display: flex;
+      background: #000;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    /* モード1: 動画Aのみ */
+    .compare-viewport.mode-single #paneB { display: none !important; }
+    .compare-viewport.mode-single #paneA { flex: 1; width: 100%; height: 100%; border: none; }
+
+    /* モード2: 2画面並列 */
+    .compare-viewport.mode-split { flex-direction: row; }
+    .compare-viewport.mode-split #paneA,
+    .compare-viewport.mode-split #paneB {
+      flex: 1;
+      display: flex;
+      border: 1px solid #222;
+    }
+    @media (orientation: portrait) {
+      .compare-viewport.mode-split { flex-direction: column; }
+    }
+
+    /* モード3: 重ね合わせ */
+    .compare-viewport.mode-overlay { display: block; }
+    .compare-viewport.mode-overlay #paneA {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    .compare-viewport.mode-overlay #paneB {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.6;
+      border: none;
+    }
+
+    .video-pane {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    video { display: none; }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .pane-tag {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(0, 0, 0, 0.75);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: bold;
+      z-index: 5;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      pointer-events: none;
+    }
+    .pane-tag.tag-a { color: #4dabf7; border-color: #1971c2; }
+    .pane-tag.tag-b { color: #ff922b; border-color: #f76707; }
+
+    /* 上部：全体データ表示パネル */
+    .data-panel {
+      position: absolute;
+      top: env(safe-area-inset-top, 8px);
+      left: 8px;
+      right: 8px;
+      max-height: 40dvh;
+      background: rgba(15, 15, 15, 0.94);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 10px;
+      padding: 8px 12px;
+      z-index: 100;
+      overflow-y: auto;
+      font-size: 0.75rem;
+      transition: max-height 0.25s ease;
+      pointer-events: auto;
+    }
+    .data-panel.collapsed {
+      max-height: 36px;
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      font-weight: bold;
+      color: #4dabf7;
+    }
+    .grid-data {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+      gap: 4px 10px;
+      margin-top: 6px;
+      border-top: 1px solid rgba(255,255,255,0.15);
+      padding-top: 6px;
+    }
+    .data-group-title {
+      grid-column: 1 / -1;
+      font-weight: bold;
+      color: #ffd43b;
+      margin-top: 4px;
+      border-left: 3px solid #ffd43b;
+      padding-left: 4px;
+    }
+    .item {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px dashed rgba(255,255,255,0.15);
+      padding: 1px 0;
+    }
+    .item .val {
+      font-weight: 600;
+      color: #69db7c;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* 下部コントローラー */
+    .controls-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 6px 10px;
+      padding-bottom: max(8px, env(safe-area-inset-bottom));
+      background: linear-gradient(0deg, rgba(0,0,0,0.96) 0%, rgba(0,0,0,0.85) 80%, transparent 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      z-index: 100;
+      pointer-events: auto;
+    }
+
+    /* 3モード切替 */
+    .mode-bar {
+      display: flex;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 6px;
+      padding: 2px;
+      gap: 4px;
+    }
+    .mode-btn {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #bbb;
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 6px 0;
+      border-radius: 4px;
+      cursor: pointer;
+      text-align: center;
+      touch-action: manipulation;
+    }
+    .mode-btn.active {
+      background: #1971c2;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    /* タブ切替 */
+    .tab-bar {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      padding-bottom: 3px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: #888;
+      font-size: 0.72rem;
+      font-weight: bold;
+      padding: 2px 6px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .tab-btn.active {
+      color: #4dabf7;
+      border-bottom: 2px solid #4dabf7;
+    }
+
+    .chip-scroll-row {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 2px 0;
+      scrollbar-width: none;
+    }
+    .chip-scroll-row::-webkit-scrollbar { display: none; }
+    
+    .chip {
+      flex: 0 0 auto;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 12px;
+      padding: 4px 8px;
+      font-size: 0.68rem;
+      color: #ccc;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      touch-action: manipulation;
+    }
+    .chip.active {
+      background: rgba(255, 255, 255, 0.3);
+      font-weight: bold;
+    }
+    .chip-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .chip-angle.active {
+      background: #ffd43b !important;
+      color: #000 !important;
+      border-color: #ffd43b !important;
+    }
+
+    /* シークバー */
+    .seek-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
+    }
+    .seek-label { font-weight: bold; min-width: 48px; }
+    .seek-label.lbl-a { color: #4dabf7; }
+    .seek-label.lbl-b { color: #ff922b; }
+    input[type="range"] { flex: 1; height: 18px; cursor: pointer; }
+    #seekBarA { accent-color: #4dabf7; }
+    #seekBarB { accent-color: #ff922b; }
+    .time-txt { font-size: 0.7rem; min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+
+    .btn-grid { display: flex; gap: 4px; align-items: center; }
+    button, label.btn {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      padding: 8px 2px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      touch-action: manipulation;
+    }
+    button:active, label.btn:active { background: rgba(255, 255, 255, 0.4); }
+    .btn-a { background: #1971c2 !important; border-color: #4dabf7 !important; }
+    .btn-b { background: #d9480f !important; border-color: #ff922b !important; }
+    .btn-sync { background: #2f9e44 !important; border-color: #51cf66 !important; font-weight: bold; }
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+
+  <!-- ビューポート -->
+  <div class="compare-viewport mode-split" id="mainViewport">
+    <div class="video-pane" id="paneA">
+      <div class="pane-tag tag-a">動画 A</div>
+      <video id="videoA" playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
+      <canvas id="canvasA"></canvas>
+    </div>
+    <div class="video-pane" id="paneB">
+      <div class="pane-tag tag-b">動画 B</div>
+      <video id="videoB" playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
+      <canvas id="canvasB"></canvas>
+    </div>
+  </div>
+
+  <!-- 上部：全体データ表示パネル -->
+  <div class="data-panel collapsed" id="dataPanel">
+    <div class="panel-header" id="togglePanelBtn">
+      <span>📊 全関節運動 & アライメント数値 (動画A)</span>
+      <span id="collapseIcon">▲ タップで開く</span>
+    </div>
+    <div class="grid-data">
+      <div class="data-group-title">体幹 (Trunk)</div>
+      <div class="item"><span>屈曲/伸展:</span><span id="trunk_fe" class="val">--°</span></div>
+      <div class="item"><span>側屈(右/左):</span><span id="trunk_lb" class="val">--°</span></div>
+      <div class="item"><span>回旋(右/左):</span><span id="trunk_rot" class="val">--°</span></div>
+
+      <div class="data-group-title">上肢 (Upper Extremities)</div>
+      <div class="item"><span>右肘 屈曲/伸展:</span><span id="r_elbow_fe" class="val">--°</span></div>
+      <div class="item"><span>左肘 屈曲/伸展:</span><span id="l_elbow_fe" class="val">--°</span></div>
+      <div class="item"><span>右肩 屈伸/外内転:</span><span id="r_sho_fe_aa" class="val">--° / --°</span></div>
+      <div class="item"><span>左肩 屈伸/外内転:</span><span id="l_sho_fe_aa" class="val">--° / --°</span></div>
+      <div class="item"><span>右肩 水平内/外転:</span><span id="r_sho_ha" class="val">--°</span></div>
+      <div class="item"><span>左肩 水平内/外転:</span><span id="l_sho_ha" class="val">--°</span></div>
+      <div class="item"><span>右肩 内旋/外旋:</span><span id="r_sho_rot" class="val">--°</span></div>
+      <div class="item"><span>左肩 内旋/外旋:</span><span id="l_sho_rot" class="val">--°</span></div>
+
+      <div class="data-group-title">下肢 (Lower Extremities)</div>
+      <div class="item"><span>右股 屈伸/外内転:</span><span id="r_hip_fe_aa" class="val">--° / --°</span></div>
+      <div class="item"><span>左股 屈伸/外内転:</span><span id="l_hip_fe_aa" class="val">--° / --°</span></div>
+      <div class="item"><span>右股 内旋/外旋:</span><span id="r_hip_rot" class="val">--°</span></div>
+      <div class="item"><span>左股 内旋/外旋:</span><span id="l_hip_rot" class="val">--°</span></div>
+      <div class="item"><span>右膝 屈曲/伸展:</span><span id="r_knee_fe" class="val">--°</span></div>
+      <div class="item"><span>左膝 屈曲/伸展:</span><span id="l_knee_fe" class="val">--°</span></div>
+      <div class="item"><span>右足 背屈/底屈:</span><span id="r_ank_df" class="val">--°</span></div>
+      <div class="item"><span>左足 背屈/底屈:</span><span id="l_ank_df" class="val">--°</span></div>
+    </div>
+  </div>
+
+  <!-- 下部操作コントローラー -->
+  <div class="controls-overlay">
+    
+    <!-- 3モード切替 -->
+    <div class="mode-bar">
+      <button class="mode-btn" id="btnModeSingle">動画Aのみ</button>
+      <button class="mode-btn active" id="btnModeSplit">2画面並列</button>
+      <button class="mode-btn" id="btnModeOverlay">重ね合わせ</button>
+    </div>
+
+    <!-- タブ切替 -->
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tabAngle">📐 角度ピン留め</button>
+      <button class="tab-btn" id="tabTrail">✨ 軌跡ポイント選択</button>
+    </div>
+
+    <!-- 角度ピン留めチップ -->
+    <div class="chip-scroll-row" id="angleChipsRow">
+      <span class="chip chip-angle" data-joint="trunk_fe">体幹 屈伸</span>
+      <span class="chip chip-angle" data-joint="trunk_lb">体幹 側屈</span>
+      <span class="chip chip-angle" data-joint="trunk_rot">体幹 回旋</span>
+      <span class="chip chip-angle active" data-joint="r_knee">右膝 屈伸</span>
+      <span class="chip chip-angle" data-joint="l_knee">左膝 屈伸</span>
+      <span class="chip chip-angle" data-joint="r_hip">右股 屈伸</span>
+      <span class="chip chip-angle" data-joint="l_hip">左股 屈伸</span>
+      <span class="chip chip-angle" data-joint="r_elbow">右肘 屈伸</span>
+      <span class="chip chip-angle" data-joint="l_elbow">左肘 屈伸</span>
+      <span class="chip chip-angle" data-joint="r_sho">右肩 屈伸</span>
+      <span class="chip chip-angle" data-joint="l_sho">左肩 屈伸</span>
+      <span class="chip chip-angle" data-joint="r_ank">右足 背底屈</span>
+      <span class="chip chip-angle" data-joint="l_ank">左足 背底屈</span>
+    </div>
+
+    <!-- 軌跡ポイント選択チップ -->
+    <div class="chip-scroll-row" id="trailChipsRow" style="display: none;">
+      <span class="chip chip-trail active" data-trail="headTop"><span class="chip-dot" style="background:#00f0ff;"></span>頭頂部</span>
+      <span class="chip chip-trail active" data-trail="chin"><span class="chip-dot" style="background:#ff3399;"></span>顎先</span>
+      <span class="chip chip-trail active" data-trail="trunkCenter"><span class="chip-dot" style="background:#51cf66;"></span>体幹中心</span>
+      <span class="chip chip-trail" data-trail="rShoulder"><span class="chip-dot" style="background:#ff6b6b;"></span>右肩</span>
+      <span class="chip chip-trail" data-trail="lShoulder"><span class="chip-dot" style="background:#339af0;"></span>左肩</span>
+      <span class="chip chip-trail" data-trail="rElbow"><span class="chip-dot" style="background:#f76707;"></span>右肘</span>
+      <span class="chip chip-trail" data-trail="lElbow"><span class="chip-dot" style="background:#22b8cf;"></span>左肘</span>
+      <span class="chip chip-trail" data-trail="rWrist"><span class="chip-dot" style="background:#ff922b;"></span>右手首</span>
+      <span class="chip chip-trail" data-trail="lWrist"><span class="chip-dot" style="background:#20c997;"></span>左手首</span>
+      <span class="chip chip-trail" data-trail="rHip"><span class="chip-dot" style="background:#e8590c;"></span>右股</span>
+      <span class="chip chip-trail" data-trail="lHip"><span class="chip-dot" style="background:#4263eb;"></span>左股</span>
+      <span class="chip chip-trail" data-trail="rKnee"><span class="chip-dot" style="background:#fcc419;"></span>右膝</span>
+      <span class="chip chip-trail" data-trail="lKnee"><span class="chip-dot" style="background:#748ffc;"></span>左膝</span>
+      <span class="chip chip-trail" data-trail="rAnkle"><span class="chip-dot" style="background:#ffd43b;"></span>右足首</span>
+      <span class="chip chip-trail" data-trail="lAnkle"><span class="chip-dot" style="background:#94d82d;"></span>左足首</span>
+    </div>
+
+    <!-- シークバー A -->
+    <div class="seek-row" id="rowSeekA">
+      <span class="seek-label lbl-a">A コマ送り</span>
+      <button id="btnPrevA" style="flex:0 0 28px; padding:2px;">◀</button>
+      <input type="range" id="seekBarA" value="0" min="0" step="0.033" disabled>
+      <button id="btnNextA" style="flex:0 0 28px; padding:2px;">▶</button>
+      <span id="timeDisplayA" class="time-txt">0.00s</span>
+    </div>
+
+    <!-- シークバー B -->
+    <div class="seek-row" id="rowSeekB">
+      <span class="seek-label lbl-b">B コマ送り</span>
+      <button id="btnPrevB" style="flex:0 0 28px; padding:2px;">◀</button>
+      <input type="range" id="seekBarB" value="0" min="0" step="0.033" disabled>
+      <button id="btnNextB" style="flex:0 0 28px; padding:2px;">▶</button>
+      <span id="timeDisplayB" class="time-txt">0.00s</span>
+    </div>
+
+    <!-- ボタン列 -->
+    <div class="btn-grid">
+      <label class="btn btn-a" style="flex: 1;">
+        📁 動画A
+        <input type="file" id="uploaderA" accept="video/*">
+      </label>
+      <label class="btn btn-b" style="flex: 1;" id="btnUploadBLabel">
+        📁 動画B
+        <input type="file" id="uploaderB" accept="video/*">
+      </label>
+      <button id="btnSyncPlay" class="btn btn-sync" style="flex: 1.3;" disabled>▶ 再生</button>
+      <button id="btnClearTrail" style="flex: 0.8;">軌跡消去</button>
+    </div>
+  </div>
+
+  <script>
+    // --- 1. 3Dベクトル演算エンジン ---
+    const VCalc = {
+      sub: (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: (a.z || 0) - (b.z || 0) }),
+      mid: (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: ((a.z || 0) + (b.z || 0)) / 2 }),
+      dot: (a, b) => a.x * b.x + a.y * b.y + a.z * b.z,
+      cross: (a, b) => ({ x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }),
+      normalize: (a) => {
+        const n = Math.hypot(a.x, a.y, a.z) || 1;
+        return { x: a.x / n, y: a.y / n, z: a.z / n };
+      },
+      angleDeg: (a, b) => {
+        const dot = a.x * b.x + a.y * b.y + (a.z || 0) * (b.z || 0);
+        const norm = Math.hypot(a.x, a.y, a.z || 0) * Math.hypot(b.x, b.y, b.z || 0);
+        if (norm === 0) return 0;
+        return Math.acos(Math.min(Math.max(dot / norm, -1.0), 1.0)) * (180 / Math.PI);
+      }
+    };
+
+    // --- 2. 状態管理 ---
+    let currentMode = 'split';
+    const selectedOverlays = new Set(['r_knee']);
+    const selectedTrails = new Set(['headTop', 'chin', 'trunkCenter']);
+
+    const createTrailBuffer = () => ({
+      headTop: [], chin: [], trunkCenter: [],
+      rShoulder: [], lShoulder: [], rElbow: [], lElbow: [], rWrist: [], lWrist: [],
+      rHip: [], lHip: [], rKnee: [], lKnee: [], rAnkle: [], lAnkle: []
+    });
+
+    const trailsA = createTrailBuffer();
+    const trailsB = createTrailBuffer();
+
+    const trailColors = {
+      headTop: "#00f0ff", chin: "#ff3399", trunkCenter: "#51cf66",
+      rShoulder: "#ff6b6b", lShoulder: "#339af0", rElbow: "#f76707", lElbow: "#22b8cf",
+      rWrist: "#ff922b", lWrist: "#20c997", rHip: "#e8590c", lHip: "#4263eb",
+      rKnee: "#fcc419", lKnee: "#748ffc", rAnkle: "#ffd43b", lAnkle: "#94d82d"
+    };
+    const MAX_TRAIL_LENGTH = 120;
+
+    let activeTarget = 'A';
+    let isPoseBusy = false;
+    let animFrameId = null;
+
+    // --- 3. DOM要素キャッシュ ---
+    const mainViewport = document.getElementById('mainViewport');
+    const btnModeSingle = document.getElementById('btnModeSingle');
+    const btnModeSplit = document.getElementById('btnModeSplit');
+    const btnModeOverlay = document.getElementById('btnModeOverlay');
+    const rowSeekB = document.getElementById('rowSeekB');
+    const togglePanelBtn = document.getElementById('togglePanelBtn');
+    const dataPanel = document.getElementById('dataPanel');
+
+    const videoA = document.getElementById('videoA');
+    const canvasA = document.getElementById('canvasA');
+    const ctxA = canvasA.getContext('2d');
+    const seekBarA = document.getElementById('seekBarA');
+    const timeDisplayA = document.getElementById('timeDisplayA');
+    const btnPrevA = document.getElementById('btnPrevA');
+    const btnNextA = document.getElementById('btnNextA');
+    const uploaderA = document.getElementById('uploaderA');
+
+    const videoB = document.getElementById('videoB');
+    const canvasB = document.getElementById('canvasB');
+    const ctxB = canvasB.getContext('2d');
+    const seekBarB = document.getElementById('seekBarB');
+    const timeDisplayB = document.getElementById('timeDisplayB');
+    const btnPrevB = document.getElementById('btnPrevB');
+    const btnNextB = document.getElementById('btnNextB');
+    const uploaderB = document.getElementById('uploaderB');
+
+    const btnSyncPlay = document.getElementById('btnSyncPlay');
+    const btnClearTrail = document.getElementById('btnClearTrail');
+    const tabAngle = document.getElementById('tabAngle');
+    const tabTrail = document.getElementById('tabTrail');
+    const angleChipsRow = document.getElementById('angleChipsRow');
+    const trailChipsRow = document.getElementById('trailChipsRow');
+
+    // --- 4. イベントハンドラー登録 ---
+    togglePanelBtn.addEventListener('click', () => {
+      dataPanel.classList.toggle('collapsed');
+      document.getElementById('collapseIcon').innerText = dataPanel.classList.contains('collapsed') ? '▲ タップで開く' : '▼ タップで閉じる';
+    });
+
+    function setMode(mode) {
+      currentMode = mode;
+      mainViewport.className = `compare-viewport mode-${mode}`;
+      btnModeSingle.classList.toggle('active', mode === 'single');
+      btnModeSplit.classList.toggle('active', mode === 'split');
+      btnModeOverlay.classList.toggle('active', mode === 'overlay');
+
+      if (mode === 'single') {
+        rowSeekB.style.display = 'none';
+        btnSyncPlay.innerText = (!videoA.paused && !videoA.ended) ? '⏸ 一時停止' : '▶ 再生';
+      } else {
+        rowSeekB.style.display = 'flex';
+        btnSyncPlay.innerText = (!videoA.paused || !videoB.paused) ? '⏸ 一時停止' : '▶ 同期再生';
+      }
+      renderSafe();
+    }
+
+    btnModeSingle.addEventListener('click', () => setMode('single'));
+    btnModeSplit.addEventListener('click', () => setMode('split'));
+    btnModeOverlay.addEventListener('click', () => setMode('overlay'));
+
+    tabAngle.addEventListener('click', () => {
+      tabAngle.classList.add('active');
+      tabTrail.classList.remove('active');
+      angleChipsRow.style.display = 'flex';
+      trailChipsRow.style.display = 'none';
+    });
+
+    tabTrail.addEventListener('click', () => {
+      tabTrail.classList.add('active');
+      tabAngle.classList.remove('active');
+      trailChipsRow.style.display = 'flex';
+      angleChipsRow.style.display = 'none';
+    });
+
+    document.querySelectorAll('.chip-angle').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const k = chip.getAttribute('data-joint');
+        selectedOverlays.has(k) ? selectedOverlays.delete(k) : selectedOverlays.add(k);
+        chip.classList.toggle('active');
+        renderSafe();
+      });
+    });
+
+    document.querySelectorAll('.chip-trail').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const k = chip.getAttribute('data-trail');
+        selectedTrails.has(k) ? selectedTrails.delete(k) : selectedTrails.add(k);
+        chip.classList.toggle('active');
+        renderSafe();
+      });
+    });
+
+    btnClearTrail.addEventListener('click', () => {
+      Object.keys(trailsA).forEach(k => trailsA[k].length = 0);
+      Object.keys(trailsB).forEach(k => trailsB[k].length = 0);
+      renderSafe();
+    });
+
+    // --- 5. MediaPipe Pose 初期化 ---
+    const pose = new Pose({
+      locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`
+    });
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    pose.onResults(results => {
+      try {
+        if (activeTarget === 'A') {
+          drawFrame(canvasA, ctxA, videoA, results, trailsA, "#00e5ff", "A");
+        } else {
+          drawFrame(canvasB, ctxB, videoB, results, trailsB, currentMode === 'overlay' ? "#ff922b" : "#00e5ff", "B");
+        }
+      } catch (err) {
+        console.warn("DrawFrame warning:", err);
+      } finally {
+        isPoseBusy = false;
+      }
+    });
+
+    function addPt(tb, key, pt) {
+      tb[key].push(pt);
+      if (tb[key].length > MAX_TRAIL_LENGTH) tb[key].shift();
+    }
+
+    // --- 6. 描画処理 ---
+    function drawFrame(canvas, ctx, video, results, trailBuf, skeletonColor, label) {
+      if (!video.videoWidth || !video.videoHeight) return;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const w = canvas.width;
+      const h = canvas.height;
+
+      ctx.save();
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(results.image, 0, 0, w, h);
+
+      if (results.poseLandmarks) {
+        const lm = results.poseLandmarks;
+        const wlm = results.poseWorldLandmarks || lm;
+
+        const connections = [
+          [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+          [11, 23], [12, 24], [23, 24],
+          [23, 25], [25, 27], [27, 31],
+          [24, 26], [26, 28], [28, 32],
+          [27, 29], [28, 30]
+        ];
+
+        ctx.strokeStyle = skeletonColor;
+        ctx.lineWidth = Math.max(2, Math.floor(w / 220));
+        connections.forEach(([i, j]) => {
+          if (lm[i] && lm[j] && lm[i].visibility > 0.4 && lm[j].visibility > 0.4) {
+            ctx.beginPath();
+            ctx.moveTo(lm[i].x * w, lm[i].y * h);
+            ctx.lineTo(lm[j].x * w, lm[j].y * h);
+            ctx.stroke();
+          }
+        });
+
+        const validJoints = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32];
+        ctx.fillStyle = label === "B" && currentMode === 'overlay' ? "#ffa94d" : "#ff0055";
+        validJoints.forEach(i => {
+          if (lm[i] && lm[i].visibility > 0.4) {
+            ctx.beginPath();
+            ctx.arc(lm[i].x * w, lm[i].y * h, Math.max(3, Math.floor(w / 160)), 0, 2 * Math.PI);
+            ctx.fill();
+          }
+        });
+
+        // 軌跡点抽出
+        let trunkCenter = null;
+        if (lm[11] && lm[12] && lm[23] && lm[24] && lm[11].visibility > 0.4 && lm[12].visibility > 0.4 && lm[23].visibility > 0.4 && lm[24].visibility > 0.4) {
+          const shoMid = { x: (lm[11].x + lm[12].x) / 2, y: (lm[11].y + lm[12].y) / 2 };
+          const hipMid = { x: (lm[23].x + lm[24].x) / 2, y: (lm[23].y + lm[24].y) / 2 };
+          trunkCenter = { x: (shoMid.x + hipMid.x) / 2 * w, y: (shoMid.y + hipMid.y) / 2 * h };
+          addPt(trailBuf, 'trunkCenter', trunkCenter);
+        }
+
+        if (lm[0] && lm[11] && lm[12] && lm[0].visibility > 0.4 && lm[11].visibility > 0.4 && lm[12].visibility > 0.4) {
+          const shoMid = { x: (lm[11].x + lm[12].x) / 2, y: (lm[11].y + lm[12].y) / 2 };
+          const headUpVec = { x: lm[0].x - shoMid.x, y: lm[0].y - shoMid.y };
+          const headDist = Math.hypot(headUpVec.x, headUpVec.y) || 1;
+
+          const headTop = {
+            x: (lm[0].x + (headUpVec.x / headDist) * headDist * 0.65) * w,
+            y: (lm[0].y + (headUpVec.y / headDist) * headDist * 0.65) * h
+          };
+          let mouthMid = lm[0];
+          if (lm[9] && lm[10] && lm[9].visibility > 0.3 && lm[10].visibility > 0.3) {
+            mouthMid = { x: (lm[9].x + lm[10].x) / 2, y: (lm[9].y + lm[10].y) / 2 };
+          }
+          const chin = {
+            x: (mouthMid.x - (headUpVec.x / headDist) * headDist * 0.2) * w,
+            y: (mouthMid.y - (headUpVec.y / headDist) * headDist * 0.2) * h
+          };
+          addPt(trailBuf, 'headTop', headTop);
+          addPt(trailBuf, 'chin', chin);
+        }
+
+        if (lm[12] && lm[12].visibility > 0.4) addPt(trailBuf, 'rShoulder', { x: lm[12].x * w, y: lm[12].y * h });
+        if (lm[11] && lm[11].visibility > 0.4) addPt(trailBuf, 'lShoulder', { x: lm[11].x * w, y: lm[11].y * h });
+        if (lm[14] && lm[14].visibility > 0.4) addPt(trailBuf, 'rElbow', { x: lm[14].x * w, y: lm[14].y * h });
+        if (lm[13] && lm[13].visibility > 0.4) addPt(trailBuf, 'lElbow', { x: lm[13].x * w, y: lm[13].y * h });
+        if (lm[16] && lm[16].visibility > 0.4) addPt(trailBuf, 'rWrist', { x: lm[16].x * w, y: lm[16].y * h });
+        if (lm[15] && lm[15].visibility > 0.4) addPt(trailBuf, 'lWrist', { x: lm[15].x * w, y: lm[15].y * h });
+        if (lm[24] && lm[24].visibility > 0.4) addPt(trailBuf, 'rHip', { x: lm[24].x * w, y: lm[24].y * h });
+        if (lm[23] && lm[23].visibility > 0.4) addPt(trailBuf, 'lHip', { x: lm[23].x * w, y: lm[23].y * h });
+        if (lm[26] && lm[26].visibility > 0.4) addPt(trailBuf, 'rKnee', { x: lm[26].x * w, y: lm[26].y * h });
+        if (lm[25] && lm[25].visibility > 0.4) addPt(trailBuf, 'lKnee', { x: lm[25].x * w, y: lm[25].y * h });
+        if (lm[28] && lm[28].visibility > 0.4) addPt(trailBuf, 'rAnkle', { x: lm[28].x * w, y: lm[28].y * h });
+        if (lm[27] && lm[27].visibility > 0.4) addPt(trailBuf, 'lAnkle', { x: lm[27].x * w, y: lm[27].y * h });
+
+        // 軌跡の描画
+        selectedTrails.forEach(key => {
+          if (trailBuf[key] && trailBuf[key].length > 0) {
+            const pts = trailBuf[key];
+            for (let i = 1; i < pts.length; i++) {
+              ctx.strokeStyle = trailColors[key];
+              ctx.globalAlpha = (i / pts.length) * 0.85;
+              ctx.lineWidth = Math.max(2, Math.floor(w / 240));
+              ctx.beginPath();
+              ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+              ctx.lineTo(pts[i].x, pts[i].y);
+              ctx.stroke();
+            }
+            const last = pts[pts.length - 1];
+            ctx.fillStyle = trailColors[key];
+            ctx.beginPath();
+            ctx.arc(last.x, last.y, 4, 0, 2 * Math.PI);
+            ctx.fill();
+          }
+        });
+
+        // 角度オーバーレイ & パネル更新
+        drawAngles(ctx, lm, wlm, w, h, trunkCenter, label);
+      }
+      ctx.restore();
+    }
+
+    function drawBadge(ctx, pos, text) {
+      ctx.save();
+      const fontSize = Math.max(11, Math.floor(ctx.canvas.width / 38));
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      const metrics = ctx.measureText(text);
+      const bgW = metrics.width + 10;
+      const bgH = fontSize + 6;
+      const x = pos.x + 6;
+      const y = pos.y - bgH / 2;
+
+      ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+      ctx.strokeStyle = "#ffd43b";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.roundRect(x, y, bgW, bgH, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffd43b";
+      ctx.fillText(text, x + 5, y + fontSize);
+      ctx.restore();
+    }
+
+    function drawAngles(ctx, lm, p, w, h, trunkCenter, label) {
+      if (!p[11] || !p[12] || !p[23] || !p[24]) return;
+
+      const shoMid = VCalc.mid(p[11], p[12]);
+      const hipMid = VCalc.mid(p[23], p[24]);
+      const trunkVec = VCalc.sub(shoMid, hipMid);
+      const shoulderLine = VCalc.sub(p[12], p[11]);
+      const pelvisLine = VCalc.sub(p[24], p[23]);
+
+      const trunkZ = VCalc.normalize(VCalc.cross(shoulderLine, trunkVec));
+      const trunkX = VCalc.normalize(shoulderLine);
+      const prefix = currentMode === 'overlay' ? `[${label}] ` : '';
+
+      const flex = Math.atan2(trunkVec.z, -trunkVec.y) * (180 / Math.PI);
+      const lat = Math.atan2(trunkVec.x, -trunkVec.y) * (180 / Math.PI);
+      const rot = (Math.atan2(shoulderLine.z, shoulderLine.x) - Math.atan2(pelvisLine.z, pelvisLine.x)) * (180 / Math.PI);
+
+      if (label === 'A') {
+        document.getElementById('trunk_fe').innerText = `${flex >= 0 ? '屈 ' : '伸 '}${Math.abs(flex).toFixed(1)}°`;
+        document.getElementById('trunk_lb').innerText = `${lat >= 0 ? '右 ' : '左 '}${Math.abs(lat).toFixed(1)}°`;
+        document.getElementById('trunk_rot').innerText = `${rot >= 0 ? '右 ' : '左 '}${Math.abs(rot).toFixed(1)}°`;
+      }
+
+      if (selectedOverlays.has('trunk_fe') && trunkCenter) drawBadge(ctx, trunkCenter, `${prefix}体幹:${flex >= 0 ? '屈' : '伸'}${Math.abs(flex).toFixed(0)}°`);
+      if (selectedOverlays.has('trunk_lb') && trunkCenter) drawBadge(ctx, trunkCenter, `${prefix}側屈:${lat >= 0 ? '右' : '左'}${Math.abs(lat).toFixed(0)}°`);
+      if (selectedOverlays.has('trunk_rot') && trunkCenter) drawBadge(ctx, trunkCenter, `${prefix}回旋:${rot >= 0 ? '右' : '左'}${Math.abs(rot).toFixed(0)}°`);
+
+      // 肘
+      if (p[14] && p[16] && p[13] && p[15]) {
+        const rElbow = 180 - VCalc.angleDeg(VCalc.sub(p[12], p[14]), VCalc.sub(p[16], p[14]));
+        const lElbow = 180 - VCalc.angleDeg(VCalc.sub(p[11], p[13]), VCalc.sub(p[15], p[13]));
+        if (label === 'A') {
+          document.getElementById('r_elbow_fe').innerText = `屈 ${Math.max(0, rElbow).toFixed(1)}°`;
+          document.getElementById('l_elbow_fe').innerText = `屈 ${Math.max(0, lElbow).toFixed(1)}°`;
+        }
+        if (selectedOverlays.has('r_elbow') && lm[14] && lm[14].visibility > 0.4) drawBadge(ctx, { x: lm[14].x * w, y: lm[14].y * h }, `${prefix}右肘:${Math.max(0, rElbow).toFixed(0)}°`);
+        if (selectedOverlays.has('l_elbow') && lm[13] && lm[13].visibility > 0.4) drawBadge(ctx, { x: lm[13].x * w, y: lm[13].y * h }, `${prefix}左肘:${Math.max(0, lElbow).toFixed(0)}°`);
+      }
+
+      // 膝
+      if (p[26] && p[28] && p[25] && p[27]) {
+        const rKnee = 180 - VCalc.angleDeg(VCalc.sub(p[24], p[26]), VCalc.sub(p[28], p[26]));
+        const lKnee = 180 - VCalc.angleDeg(VCalc.sub(p[23], p[25]), VCalc.sub(p[27], p[25]));
+        if (label === 'A') {
+          document.getElementById('r_knee_fe').innerText = `屈 ${Math.max(0, rKnee).toFixed(1)}°`;
+          document.getElementById('l_knee_fe').innerText = `屈 ${Math.max(0, lKnee).toFixed(1)}°`;
+        }
+        if (selectedOverlays.has('r_knee') && lm[26] && lm[26].visibility > 0.4) drawBadge(ctx, { x: lm[26].x * w, y: lm[26].y * h }, `${prefix}右膝:${Math.max(0, rKnee).toFixed(0)}°`);
+        if (selectedOverlays.has('l_knee') && lm[25] && lm[25].visibility > 0.4) drawBadge(ctx, { x: lm[25].x * w, y: lm[25].y * h }, `${prefix}左膝:${Math.max(0, lKnee).toFixed(0)}°`);
+      }
+
+      // 肩
+      if (p[14] && p[13] && p[16] && p[15]) {
+        const rArm = VCalc.normalize(VCalc.sub(p[14], p[12]));
+        const lArm = VCalc.normalize(VCalc.sub(p[13], p[11]));
+        const rShoFlex = Math.asin(Math.min(Math.max(VCalc.dot(rArm, trunkZ), -1), 1)) * (180 / Math.PI);
+        const lShoFlex = Math.asin(Math.min(Math.max(VCalc.dot(lArm, trunkZ), -1), 1)) * (180 / Math.PI);
+        const rShoAbd = Math.asin(Math.min(Math.max(VCalc.dot(rArm, trunkX), -1), 1)) * (180 / Math.PI);
+        const lShoAbd = Math.asin(Math.min(Math.max(-VCalc.dot(lArm, trunkX), -1), 1)) * (180 / Math.PI);
+        const rShoHa = Math.atan2(VCalc.dot(rArm, trunkZ), VCalc.dot(rArm, trunkX)) * (180 / Math.PI);
+        const lShoHa = Math.atan2(VCalc.dot(lArm, trunkZ), -VCalc.dot(lArm, trunkX)) * (180 / Math.PI);
+        const rForeArm = VCalc.normalize(VCalc.sub(p[16], p[14]));
+        const lForeArm = VCalc.normalize(VCalc.sub(p[15], p[13]));
+        const rShoRot = Math.asin(Math.min(Math.max(VCalc.dot(rForeArm, trunkZ), -1), 1)) * (180 / Math.PI);
+        const lShoRot = Math.asin(Math.min(Math.max(-VCalc.dot(lForeArm, trunkZ), -1), 1)) * (180 / Math.PI);
+
+        if (label === 'A') {
+          document.getElementById('r_sho_fe_aa').innerText = `${rShoFlex >= 0 ? '屈' : '伸'}${Math.abs(rShoFlex).toFixed(0)}° / ${rShoAbd >= 0 ? '外' : '内'}${Math.abs(rShoAbd).toFixed(0)}°`;
+          document.getElementById('l_sho_fe_aa').innerText = `${lShoFlex >= 0 ? '屈' : '伸'}${Math.abs(lShoFlex).toFixed(0)}° / ${lShoAbd >= 0 ? '外' : '内'}${Math.abs(lShoAbd).toFixed(0)}°`;
+          document.getElementById('r_sho_ha').innerText = `${rShoHa >= 0 ? '水内 ' : '水外 '}${Math.abs(rShoHa).toFixed(1)}°`;
+          document.getElementById('l_sho_ha').innerText = `${lShoHa >= 0 ? '水内 ' : '水外 '}${Math.abs(lShoHa).toFixed(1)}°`;
+          document.getElementById('r_sho_rot').innerText = `${rShoRot >= 0 ? '内旋 ' : '外旋 '}${Math.abs(rShoRot).toFixed(1)}°`;
+          document.getElementById('l_sho_rot').innerText = `${lShoRot >= 0 ? '内旋 ' : '外旋 '}${Math.abs(lShoRot).toFixed(1)}°`;
+        }
+
+        if (selectedOverlays.has('r_sho') && lm[12] && lm[12].visibility > 0.4) drawBadge(ctx, { x: lm[12].x * w, y: lm[12].y * h }, `${prefix}右肩:${rShoFlex >= 0 ? '屈' : '伸'}${Math.abs(rShoFlex).toFixed(0)}°`);
+        if (selectedOverlays.has('l_sho') && lm[11] && lm[11].visibility > 0.4) drawBadge(ctx, { x: lm[11].x * w, y: lm[11].y * h }, `${prefix}左肩:${lShoFlex >= 0 ? '屈' : '伸'}${Math.abs(lShoFlex).toFixed(0)}°`);
+      }
+
+      // 股関節
+      if (p[26] && p[25] && p[28] && p[27]) {
+        const rThigh = VCalc.normalize(VCalc.sub(p[26], p[24]));
+        const lThigh = VCalc.normalize(VCalc.sub(p[25], p[23]));
+        const rHipFlex = Math.asin(Math.min(Math.max(VCalc.dot(rThigh, trunkZ), -1), 1)) * (180 / Math.PI);
+        const lHipFlex = Math.asin(Math.min(Math.max(VCalc.dot(lThigh, trunkZ), -1), 1)) * (180 / Math.PI);
+        const rHipAbd = Math.asin(Math.min(Math.max(VCalc.dot(rThigh, trunkX), -1), 1)) * (180 / Math.PI);
+        const lHipAbd = Math.asin(Math.min(Math.max(-VCalc.dot(lThigh, trunkX), -1), 1)) * (180 / Math.PI);
+        const rShank = VCalc.normalize(VCalc.sub(p[28], p[26]));
+        const lShank = VCalc.normalize(VCalc.sub(p[27], p[25]));
+        const rHipRot = Math.asin(Math.min(Math.max(VCalc.dot(rShank, trunkX), -1), 1)) * (180 / Math.PI);
+        const lHipRot = Math.asin(Math.min(Math.max(-VCalc.dot(lShank, trunkX), -1), 1)) * (180 / Math.PI);
+
+        if (label === 'A') {
+          document.getElementById('r_hip_fe_aa').innerText = `${rHipFlex >= 0 ? '屈' : '伸'}${Math.abs(rHipFlex).toFixed(0)}° / ${rHipAbd >= 0 ? '外' : '内'}${Math.abs(rHipAbd).toFixed(0)}°`;
+          document.getElementById('l_hip_fe_aa').innerText = `${lHipFlex >= 0 ? '屈' : '伸'}${Math.abs(lHipFlex).toFixed(0)}° / ${lHipAbd >= 0 ? '外' : '内'}${Math.abs(lHipAbd).toFixed(0)}°`;
+          document.getElementById('r_hip_rot').innerText = `${rHipRot >= 0 ? '外旋 ' : '内旋 '}${Math.abs(rHipRot).toFixed(1)}°`;
+          document.getElementById('l_hip_rot').innerText = `${lHipRot >= 0 ? '外旋 ' : '内旋 '}${Math.abs(lHipRot).toFixed(1)}°`;
+        }
+
+        if (selectedOverlays.has('r_hip') && lm[24] && lm[24].visibility > 0.4) drawBadge(ctx, { x: lm[24].x * w, y: lm[24].y * h }, `${prefix}右股:${rHipFlex >= 0 ? '屈' : '伸'}${Math.abs(rHipFlex).toFixed(0)}°`);
+        if (selectedOverlays.has('l_hip') && lm[23] && lm[23].visibility > 0.4) drawBadge(ctx, { x: lm[23].x * w, y: lm[23].y * h }, `${prefix}左股:${lHipFlex >= 0 ? '屈' : '伸'}${Math.abs(lHipFlex).toFixed(0)}°`);
+      }
+
+      // 足関節
+      if (p[26] && p[28] && p[32] && p[25] && p[27] && p[31]) {
+        const rAnk = VCalc.angleDeg(VCalc.sub(p[26], p[28]), VCalc.sub(p[32], p[28])) - 90;
+        const lAnk = VCalc.angleDeg(VCalc.sub(p[25], p[27]), VCalc.sub(p[31], p[27])) - 90;
+        if (label === 'A') {
+          document.getElementById('r_ank_df').innerText = `${rAnk >= 0 ? '背 ' : '底 '}${Math.abs(rAnk).toFixed(1)}°`;
+          document.getElementById('l_ank_df').innerText = `${lAnk >= 0 ? '背 ' : '底 '}${Math.abs(lAnk).toFixed(1)}°`;
+        }
+        if (selectedOverlays.has('r_ank') && lm[28] && lm[28].visibility > 0.4) drawBadge(ctx, { x: lm[28].x * w, y: lm[28].y * h }, `${prefix}右足:${rAnk >= 0 ? '背' : '底'}${Math.abs(rAnk).toFixed(0)}°`);
+        if (selectedOverlays.has('l_ank') && lm[27] && lm[27].visibility > 0.4) drawBadge(ctx, { x: lm[27].x * w, y: lm[27].y * h }, `${prefix}左足:${lAnk >= 0 ? '背' : '底'}${Math.abs(lAnk).toFixed(0)}°`);
+      }
+    }
+
+    // --- 7. 非同期推論コントローラー ---
+    async function processVideo(video, targetLabel) {
+      if (isPoseBusy || video.readyState < 2) return;
+      isPoseBusy = true;
+      activeTarget = targetLabel;
+      try {
+        await pose.send({ image: video });
+      } catch (e) {
+        console.warn("Pose estimation error:", e);
+        isPoseBusy = false;
+      }
+    }
+
+    async function renderSafe() {
+      if (videoA.readyState >= 2) {
+        await processVideo(videoA, 'A');
+        seekBarA.value = videoA.currentTime;
+        timeDisplayA.innerText = `${videoA.currentTime.toFixed(2)}s`;
+      }
+      if (currentMode !== 'single' && videoB.readyState >= 2) {
+        await processVideo(videoB, 'B');
+        seekBarB.value = videoB.currentTime;
+        timeDisplayB.innerText = `${videoB.currentTime.toFixed(2)}s`;
+      }
+    }
+
+    async function syncPlayLoop() {
+      const anyPlaying = (!videoA.paused && !videoA.ended) || (currentMode !== 'single' && !videoB.paused && !videoB.ended);
+      if (anyPlaying) {
+        if (!videoA.paused && !videoA.ended) {
+          await processVideo(videoA, 'A');
+          seekBarA.value = videoA.currentTime;
+          timeDisplayA.innerText = `${videoA.currentTime.toFixed(2)}s`;
+        }
+        if (currentMode !== 'single' && !videoB.paused && !videoB.ended) {
+          await processVideo(videoB, 'B');
+          seekBarB.value = videoB.currentTime;
+          timeDisplayB.innerText = `${videoB.currentTime.toFixed(2)}s`;
+        }
+        animFrameId = requestAnimationFrame(syncPlayLoop);
+      }
+    }
+
+    // --- 8. ファイル読み込みハンドラー ---
+    uploaderA.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      Object.keys(trailsA).forEach(k => trailsA[k].length = 0);
+      videoA.src = URL.createObjectURL(file);
+      videoA.load();
+      videoA.onloadedmetadata = () => {
+        seekBarA.max = videoA.duration;
+        seekBarA.value = 0;
+        seekBarA.disabled = false;
+        btnSyncPlay.disabled = false;
+        videoA.currentTime = 0.001;
+      };
+    });
+    videoA.addEventListener('seeked', () => { if (videoA.paused) processVideo(videoA, 'A'); });
+
+    uploaderB.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      Object.keys(trailsB).forEach(k => trailsB[k].length = 0);
+      videoB.src = URL.createObjectURL(file);
+      videoB.load();
+      videoB.onloadedmetadata = () => {
+        seekBarB.max = videoB.duration;
+        seekBarB.value = 0;
+        seekBarB.disabled = false;
+        btnSyncPlay.disabled = false;
+        videoB.currentTime = 0.001;
+      };
+    });
+    videoB.addEventListener('seeked', () => { if (videoB.paused) processVideo(videoB, 'B'); });
+
+    // --- 9. 再生 & コマ送り操作 ---
+    btnSyncPlay.addEventListener('click', () => {
+      const isPlaying = (!videoA.paused && !videoA.ended) || (currentMode !== 'single' && !videoB.paused && !videoB.ended);
+      if (isPlaying) {
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+        videoA.pause();
+        videoB.pause();
+        btnSyncPlay.innerText = currentMode === 'single' ? '▶ 再生' : '▶ 同期再生';
+      } else {
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+        if (videoA.src) videoA.play();
+        if (currentMode !== 'single' && videoB.src) videoB.play();
+        btnSyncPlay.innerText = '⏸ 一時停止';
+        syncPlayLoop();
+      }
+    });
+
+    seekBarA.addEventListener('input', () => { videoA.currentTime = parseFloat(seekBarA.value); });
+    seekBarB.addEventListener('input', () => { videoB.currentTime = parseFloat(seekBarB.value); });
+
+    btnPrevA.addEventListener('click', () => {
+      videoA.pause();
+      btnSyncPlay.innerText = currentMode === 'single' ? '▶ 再生' : '▶ 同期再生';
+      videoA.currentTime = Math.max(0, videoA.currentTime - 0.033);
+    });
+    btnNextA.addEventListener('click', () => {
+      videoA.pause();
+      btnSyncPlay.innerText = currentMode === 'single' ? '▶ 再生' : '▶ 同期再生';
+      videoA.currentTime = Math.min(videoA.duration, videoA.currentTime + 0.033);
+    });
+
+    btnPrevB.addEventListener('click', () => {
+      videoB.pause();
+      btnSyncPlay.innerText = '▶ 同期再生';
+      videoB.currentTime = Math.max(0, videoB.currentTime - 0.033);
+    });
+    btnNextB.addEventListener('click', () => {
+      videoB.pause();
+      btnSyncPlay.innerText = '▶ 同期再生';
+      videoB.currentTime = Math.min(videoB.duration, videoB.currentTime + 0.033);
+    });
+  </script>
+</body>
+</html>
