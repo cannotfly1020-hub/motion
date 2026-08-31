@@ -25,7 +25,7 @@
       -webkit-user-select: none;
     }
 
-    /* ビューポートコンテナ */
+    /* ビューポートコンテナ（ピンチ・ドラッグ操作を受け取る） */
     .compare-viewport {
       position: absolute;
       top: 0;
@@ -35,14 +35,15 @@
       display: flex;
       background: #000;
       z-index: 1;
-      pointer-events: none;
+      pointer-events: auto; /* タッチジェスチャーを受け取る */
+      touch-action: none;   /* ブラウザ標準スクロールを防止 */
     }
 
     /* モード1: 動画Aのみ */
     .compare-viewport.mode-single #paneB { display: none !important; }
     .compare-viewport.mode-single #paneA { flex: 1; width: 100%; height: 100%; border: none; }
 
-    /* モード2: 2画面並列（縦持ち・横持ち問わず常時左右分割） */
+    /* モード2: 2画面並列（常時左右分割） */
     .compare-viewport.mode-split {
       flex-direction: row !important;
     }
@@ -87,10 +88,13 @@
 
     video { display: none; }
 
+    /* Canvas: スケール・トランスレートを適用 */
     canvas {
       width: 100%;
       height: 100%;
       object-fit: contain;
+      transform-origin: center center;
+      will-change: transform;
     }
 
     .pane-tag {
@@ -315,12 +319,12 @@
   <!-- ビューポート -->
   <div class="compare-viewport mode-split" id="mainViewport">
     <div class="video-pane" id="paneA">
-      <div class="pane-tag tag-a">動画 A</div>
+      <div class="pane-tag tag-a">動画 A (ピンチで拡縮)</div>
       <video id="videoA" playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
       <canvas id="canvasA"></canvas>
     </div>
     <div class="video-pane" id="paneB">
-      <div class="pane-tag tag-b">動画 B</div>
+      <div class="pane-tag tag-b">動画 B (ピンチで拡縮)</div>
       <video id="videoB" playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
       <canvas id="canvasB"></canvas>
     </div>
@@ -492,6 +496,8 @@
 
     // --- 3. DOM要素キャッシュ ---
     const mainViewport = document.getElementById('mainViewport');
+    const paneA = document.getElementById('paneA');
+    const paneB = document.getElementById('paneB');
     const btnModeSingle = document.getElementById('btnModeSingle');
     const btnModeSplit = document.getElementById('btnModeSplit');
     const btnModeOverlay = document.getElementById('btnModeOverlay');
@@ -524,7 +530,80 @@
     const angleChipsRow = document.getElementById('angleChipsRow');
     const trailChipsRow = document.getElementById('trailChipsRow');
 
-    // --- 4. イベントハンドラー登録 ---
+    // --- 4. ピンチイン/アウト & ドラッグ移動ジェスチャー管理 ---
+    function setupPanZoom(pane, canvas) {
+      let scale = 1.0;
+      let panX = 0;
+      let panY = 0;
+      let startDist = 0;
+      let initialScale = 1.0;
+      let startX = 0;
+      let startY = 0;
+      let isDragging = false;
+      let lastTapTime = 0;
+
+      function updateTransform() {
+        canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+      }
+
+      pane.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+          // ピンチ操作の開始
+          isDragging = false;
+          startDist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          initialScale = scale;
+        } else if (e.touches.length === 1) {
+          // ドラッグまたはダブルタップ判定
+          const now = Date.now();
+          if (now - lastTapTime < 300) {
+            // ダブルタップでリセット
+            scale = 1.0;
+            panX = 0;
+            panY = 0;
+            updateTransform();
+            lastTapTime = 0;
+            return;
+          }
+          lastTapTime = now;
+
+          isDragging = true;
+          startX = e.touches[0].clientX - panX;
+          startY = e.touches[0].clientY - panY;
+        }
+      }, { passive: false });
+
+      pane.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2) {
+          e.preventDefault();
+          const dist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+          );
+          if (startDist > 0) {
+            scale = Math.min(Math.max(1.0, initialScale * (dist / startDist)), 5.0);
+            updateTransform();
+          }
+        } else if (e.touches.length === 1 && isDragging && scale > 1.0) {
+          e.preventDefault();
+          panX = e.touches[0].clientX - startX;
+          panY = e.touches[0].clientY - startY;
+          updateTransform();
+        }
+      }, { passive: false });
+
+      pane.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2) startDist = 0;
+        if (e.touches.length === 0) isDragging = false;
+      });
+    }
+
+    setupPanZoom(paneA, canvasA);
+    setupPanZoom(paneB, canvasB);
+
+    // --- 5. UIイベントハンドラー登録 ---
     togglePanelBtn.addEventListener('click', () => {
       dataPanel.classList.toggle('collapsed');
       document.getElementById('collapseIcon').innerText = dataPanel.classList.contains('collapsed') ? '▲ タップで開く' : '▼ タップで閉じる';
@@ -589,7 +668,7 @@
       renderSafe();
     });
 
-    // --- 5. MediaPipe Pose 初期化 ---
+    // --- 6. MediaPipe Pose 初期化 ---
     const poseA = new Pose({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
     poseA.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
     poseA.onResults(results => {
@@ -619,7 +698,7 @@
       if (tb[key].length > MAX_TRAIL_LENGTH) tb[key].shift();
     }
 
-    // --- 6. 描画処理 ---
+    // --- 7. 描画処理 ---
     function drawFrame(canvas, ctx, video, results, trailBuf, skeletonColor, label) {
       if (!video.videoWidth || !video.videoHeight) return;
       canvas.width = video.videoWidth;
@@ -873,7 +952,7 @@
       }
     }
 
-    // --- 7. 非同期推論コントローラー ---
+    // --- 8. 非同期推論コントローラー ---
     async function processFrameA() {
       if (isPoseA_Busy || videoA.readyState < 2) return;
       isPoseA_Busy = true;
@@ -924,7 +1003,7 @@
       }
     }
 
-    // --- 8. ファイル読み込みハンドラー ---
+    // --- 9. ファイル読み込みハンドラー ---
     uploaderA.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -957,7 +1036,7 @@
     });
     videoB.addEventListener('seeked', () => { if (videoB.paused) processFrameB(); });
 
-    // --- 9. 再生 & コマ送り操作 ---
+    // --- 10. 再生 & コマ送り操作 ---
     btnSyncPlay.addEventListener('click', () => {
       const isPlaying = (!videoA.paused && !videoA.ended) || (currentMode !== 'single' && !videoB.paused && !videoB.ended);
       if (isPlaying) {
