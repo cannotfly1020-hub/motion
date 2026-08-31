@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>動作観察 & 3Dバイオメカニクス解析</title>
-  <!-- MediaPipe Pose CDN (最新安定版) -->
+  <!-- MediaPipe Pose CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
   
   <style>
@@ -42,16 +42,17 @@
     .compare-viewport.mode-single #paneB { display: none !important; }
     .compare-viewport.mode-single #paneA { flex: 1; width: 100%; height: 100%; border: none; }
 
-    /* モード2: 2画面並列 */
-    .compare-viewport.mode-split { flex-direction: row; }
+    /* モード2: 2画面並列（縦持ち・横持ち問わず常時左右分割） */
+    .compare-viewport.mode-split {
+      flex-direction: row !important;
+    }
     .compare-viewport.mode-split #paneA,
     .compare-viewport.mode-split #paneB {
       flex: 1;
+      width: 50%;
+      height: 100%;
       display: flex;
       border: 1px solid #222;
-    }
-    @media (orientation: portrait) {
-      .compare-viewport.mode-split { flex-direction: column; }
     }
 
     /* モード3: 重ね合わせ */
@@ -485,8 +486,8 @@
     };
     const MAX_TRAIL_LENGTH = 120;
 
-    let activeTarget = 'A';
-    let isPoseBusy = false;
+    let isPoseA_Busy = false;
+    let isPoseB_Busy = false;
     let animFrameId = null;
 
     // --- 3. DOM要素キャッシュ ---
@@ -589,27 +590,27 @@
     });
 
     // --- 5. MediaPipe Pose 初期化 ---
-    const pose = new Pose({
-      locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`
-    });
-    pose.setOptions({
-      modelComplexity: 1,
-      smoothLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
+    const poseA = new Pose({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
+    poseA.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    poseA.onResults(results => {
+      try {
+        drawFrame(canvasA, ctxA, videoA, results, trailsA, "#00e5ff", "A");
+      } catch (err) {
+        console.warn("PoseA draw error:", err);
+      } finally {
+        isPoseA_Busy = false;
+      }
     });
 
-    pose.onResults(results => {
+    const poseB = new Pose({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
+    poseB.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    poseB.onResults(results => {
       try {
-        if (activeTarget === 'A') {
-          drawFrame(canvasA, ctxA, videoA, results, trailsA, "#00e5ff", "A");
-        } else {
-          drawFrame(canvasB, ctxB, videoB, results, trailsB, currentMode === 'overlay' ? "#ff922b" : "#00e5ff", "B");
-        }
+        drawFrame(canvasB, ctxB, videoB, results, trailsB, currentMode === 'overlay' ? "#ff922b" : "#00e5ff", "B");
       } catch (err) {
-        console.warn("DrawFrame warning:", err);
+        console.warn("PoseB draw error:", err);
       } finally {
-        isPoseBusy = false;
+        isPoseB_Busy = false;
       }
     });
 
@@ -706,7 +707,7 @@
         if (lm[28] && lm[28].visibility > 0.4) addPt(trailBuf, 'rAnkle', { x: lm[28].x * w, y: lm[28].y * h });
         if (lm[27] && lm[27].visibility > 0.4) addPt(trailBuf, 'lAnkle', { x: lm[27].x * w, y: lm[27].y * h });
 
-        // 軌跡の描画
+        // 軌跡描画
         selectedTrails.forEach(key => {
           if (trailBuf[key] && trailBuf[key].length > 0) {
             const pts = trailBuf[key];
@@ -873,26 +874,34 @@
     }
 
     // --- 7. 非同期推論コントローラー ---
-    async function processVideo(video, targetLabel) {
-      if (isPoseBusy || video.readyState < 2) return;
-      isPoseBusy = true;
-      activeTarget = targetLabel;
+    async function processFrameA() {
+      if (isPoseA_Busy || videoA.readyState < 2) return;
+      isPoseA_Busy = true;
       try {
-        await pose.send({ image: video });
+        await poseA.send({ image: videoA });
       } catch (e) {
-        console.warn("Pose estimation error:", e);
-        isPoseBusy = false;
+        isPoseA_Busy = false;
+      }
+    }
+
+    async function processFrameB() {
+      if (isPoseB_Busy || videoB.readyState < 2) return;
+      isPoseB_Busy = true;
+      try {
+        await poseB.send({ image: videoB });
+      } catch (e) {
+        isPoseB_Busy = false;
       }
     }
 
     async function renderSafe() {
       if (videoA.readyState >= 2) {
-        await processVideo(videoA, 'A');
+        await processFrameA();
         seekBarA.value = videoA.currentTime;
         timeDisplayA.innerText = `${videoA.currentTime.toFixed(2)}s`;
       }
       if (currentMode !== 'single' && videoB.readyState >= 2) {
-        await processVideo(videoB, 'B');
+        await processFrameB();
         seekBarB.value = videoB.currentTime;
         timeDisplayB.innerText = `${videoB.currentTime.toFixed(2)}s`;
       }
@@ -902,12 +911,12 @@
       const anyPlaying = (!videoA.paused && !videoA.ended) || (currentMode !== 'single' && !videoB.paused && !videoB.ended);
       if (anyPlaying) {
         if (!videoA.paused && !videoA.ended) {
-          await processVideo(videoA, 'A');
+          await processFrameA();
           seekBarA.value = videoA.currentTime;
           timeDisplayA.innerText = `${videoA.currentTime.toFixed(2)}s`;
         }
         if (currentMode !== 'single' && !videoB.paused && !videoB.ended) {
-          await processVideo(videoB, 'B');
+          await processFrameB();
           seekBarB.value = videoB.currentTime;
           timeDisplayB.innerText = `${videoB.currentTime.toFixed(2)}s`;
         }
@@ -930,7 +939,7 @@
         videoA.currentTime = 0.001;
       };
     });
-    videoA.addEventListener('seeked', () => { if (videoA.paused) processVideo(videoA, 'A'); });
+    videoA.addEventListener('seeked', () => { if (videoA.paused) processFrameA(); });
 
     uploaderB.addEventListener('change', (e) => {
       const file = e.target.files[0];
@@ -946,7 +955,7 @@
         videoB.currentTime = 0.001;
       };
     });
-    videoB.addEventListener('seeked', () => { if (videoB.paused) processVideo(videoB, 'B'); });
+    videoB.addEventListener('seeked', () => { if (videoB.paused) processFrameB(); });
 
     // --- 9. 再生 & コマ送り操作 ---
     btnSyncPlay.addEventListener('click', () => {
