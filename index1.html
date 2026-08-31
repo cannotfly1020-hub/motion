@@ -362,8 +362,8 @@
       <div class="item"><span>回旋(右/左):</span><span id="trunk_rot" class="val">--°</span></div>
 
       <div class="data-group-title">上肢 (Upper Extremities)</div>
-      <div class="item"><span>右肘 屈曲/伸展:</span><span id="r_elbow_fe" class="val">--°</span></div>
-      <div class="item"><span>左肘 屈曲/伸展:</span><span id="l_elbow_fe" class="val">--°</span></div>
+      <div class="item"><span>右肘 屈曲:</span><span id="r_elbow_fe" class="val">--°</span></div>
+      <div class="item"><span>左肘 屈曲:</span><span id="l_elbow_fe" class="val">--°</span></div>
       <div class="item"><span>右肩 屈伸/外内転:</span><span id="r_sho_fe_aa" class="val">--° / --°</span></div>
       <div class="item"><span>左肩 屈伸/外内転:</span><span id="l_sho_fe_aa" class="val">--° / --°</span></div>
       <div class="item"><span>右肩 水平内/外転:</span><span id="r_sho_ha" class="val">--°</span></div>
@@ -376,8 +376,8 @@
       <div class="item"><span>左股 屈伸/外内転:</span><span id="l_hip_fe_aa" class="val">--° / --°</span></div>
       <div class="item"><span>右股 内旋/外旋:</span><span id="r_hip_rot" class="val">--°</span></div>
       <div class="item"><span>左股 内旋/外旋:</span><span id="l_hip_rot" class="val">--°</span></div>
-      <div class="item"><span>右膝 屈曲/伸展:</span><span id="r_knee_fe" class="val">--°</span></div>
-      <div class="item"><span>左膝 屈曲/伸展:</span><span id="l_knee_fe" class="val">--°</span></div>
+      <div class="item"><span>右膝 屈曲:</span><span id="r_knee_fe" class="val">--°</span></div>
+      <div class="item"><span>左膝 屈曲:</span><span id="l_knee_fe" class="val">--°</span></div>
       <div class="item"><span>右足 背屈/底屈:</span><span id="r_ank_df" class="val">--°</span></div>
       <div class="item"><span>左足 背屈/底屈:</span><span id="l_ank_df" class="val">--°</span></div>
     </div>
@@ -390,6 +390,7 @@
       <button class="mode-btn" id="btnModeOverlay">重ね合わせ</button>
     </div>
 
+    <!-- 操作モード切り替え -->
     <div class="touch-mode-bar">
       <button class="touch-mode-btn active" id="btnTouchModeZoom">🔍 ズーム / 移動</button>
       <button class="touch-mode-btn" id="btnTouchModeEdit">✏️ 点調整</button>
@@ -405,12 +406,12 @@
       <span class="chip chip-angle" data-joint="trunk_fe">体幹 屈伸</span>
       <span class="chip chip-angle" data-joint="trunk_lb">体幹 側屈</span>
       <span class="chip chip-angle" data-joint="trunk_rot">体幹 回旋</span>
-      <span class="chip chip-angle active" data-joint="r_knee">右膝 屈伸</span>
-      <span class="chip chip-angle" data-joint="l_knee">左膝 屈伸</span>
+      <span class="chip chip-angle active" data-joint="r_knee">右膝 屈曲</span>
+      <span class="chip chip-angle" data-joint="l_knee">左膝 屈曲</span>
       <span class="chip chip-angle" data-joint="r_hip">右股 屈伸</span>
       <span class="chip chip-angle" data-joint="l_hip">左股 屈伸</span>
-      <span class="chip chip-angle" data-joint="r_elbow">右肘 屈伸</span>
-      <span class="chip chip-angle" data-joint="l_elbow">左肘 屈伸</span>
+      <span class="chip chip-angle" data-joint="r_elbow">右肘 屈曲</span>
+      <span class="chip chip-angle" data-joint="l_elbow">左肘 屈曲</span>
       <span class="chip chip-angle" data-joint="r_sho">右肩 屈伸</span>
       <span class="chip chip-angle" data-joint="l_sho">左肩 屈伸</span>
       <span class="chip chip-angle" data-joint="r_ank">右足 背底屈</span>
@@ -470,11 +471,15 @@
     const VCalc = {
       sub: (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: (a.z || 0) - (b.z || 0) }),
       mid: (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: ((a.z || 0) + (b.z || 0)) / 2 }),
-      dot: (a, b) => a.x * b.x + a.y * b.y + a.z * b.z,
-      cross: (a, b) => ({ x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }),
+      dot: (a, b) => a.x * b.x + a.y * b.y + (a.z || 0) * (b.z || 0),
+      cross: (a, b) => ({
+        x: a.y * (b.z || 0) - (a.z || 0) * b.y,
+        y: (a.z || 0) * b.x - a.x * (b.z || 0),
+        z: a.x * b.y - a.y * b.x
+      }),
       normalize: (a) => {
-        const n = Math.hypot(a.x, a.y, a.z) || 1;
-        return { x: a.x / n, y: a.y / n, z: a.z / n };
+        const n = Math.hypot(a.x, a.y, a.z || 0) || 1;
+        return { x: a.x / n, y: a.y / n, z: (a.z || 0) / n };
       },
       angleDeg: (a, b) => {
         const dot = a.x * b.x + a.y * b.y + (a.z || 0) * (b.z || 0);
@@ -510,10 +515,8 @@
     const manualOffsetsA = {};
     const manualOffsetsB = {};
 
-    let lastMappedLandmarksA = null;
-    let lastMappedWorldLandmarksA = null;
-    let lastMappedLandmarksB = null;
-    let lastMappedWorldLandmarksB = null;
+    let lastLandmarksA = null;
+    let lastLandmarksB = null;
 
     const trailColors = {
       headTop: "#00f0ff", chin: "#ff3399", trunkCenter: "#51cf66",
@@ -526,6 +529,9 @@
     let isPoseA_Busy = false;
     let isPoseB_Busy = false;
     let animFrameId = null;
+
+    let urlA = null;
+    let urlB = null;
 
     const mainViewport = document.getElementById('mainViewport');
     const paneA = document.getElementById('paneA');
@@ -608,9 +614,10 @@
         drawY = (paneH - drawH) / 2;
       }
 
-      const normX = (unscaledX - drawX) / drawW;
-      const normY = (unscaledY - drawY) / drawH;
-      return { normX, normY };
+      return {
+        normX: (unscaledX - drawX) / drawW,
+        normY: (unscaledY - drawY) / drawH
+      };
     }
 
     function setupInteractions(pane, canvas, offsets, getLmFunc, drawCallback, isPaneA) {
@@ -648,10 +655,10 @@
             const newRoi = { cx: normX, cy: normY, boxSize: 0.65 };
             if (isPaneA) {
               targetRoiA = newRoi;
-              processFrameA();
+              triggerPoseA();
             } else {
               targetRoiB = newRoi;
-              processFrameB();
+              triggerPoseB();
             }
             setTouchMode('zoom');
           }
@@ -759,12 +766,12 @@
       window.addEventListener('mouseup', handleEnd);
     }
 
-    setupInteractions(paneA, canvasA, manualOffsetsA, () => lastMappedLandmarksA, () => {
-      drawFrame(canvasA, ctxA, videoA, lastMappedLandmarksA, lastMappedWorldLandmarksA, trailsA, "#00e5ff", "A", manualOffsetsA, targetRoiA);
+    setupInteractions(paneA, canvasA, manualOffsetsA, () => lastLandmarksA, () => {
+      drawFrame(canvasA, ctxA, videoA, lastLandmarksA, trailsA, "#00e5ff", "A", manualOffsetsA, targetRoiA);
     }, true);
 
-    setupInteractions(paneB, canvasB, manualOffsetsB, () => lastMappedLandmarksB, () => {
-      drawFrame(canvasB, ctxB, videoB, lastMappedLandmarksB, lastMappedWorldLandmarksB, trailsB, currentMode === 'overlay' ? "#ff922b" : "#00e5ff", "B", manualOffsetsB, targetRoiB);
+    setupInteractions(paneB, canvasB, manualOffsetsB, () => lastLandmarksB, () => {
+      drawFrame(canvasB, ctxB, videoB, lastLandmarksB, trailsB, currentMode === 'overlay' ? "#ff922b" : "#00e5ff", "B", manualOffsetsB, targetRoiB);
     }, false);
 
     togglePanelBtn.addEventListener('click', () => {
@@ -851,63 +858,57 @@
       let minX = Math.max(0, Math.min(1 - bw, roi.cx - bw / 2));
       let minY = Math.max(0, Math.min(1 - bh, roi.cy - bh / 2));
       return {
-        x: minX * vw,
-        y: minY * vh,
-        w: bw * vw,
-        h: bh * vh,
-        normX: minX,
-        normY: minY,
-        normW: bw,
-        normH: bh
+        x: minX * vw, y: minY * vh,
+        w: bw * vw, h: bh * vh,
+        normX: minX, normY: minY,
+        normW: bw, normH: bh
       };
     }
 
     const poseA = new Pose({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
     poseA.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
     poseA.onResults(results => {
+      isPoseA_Busy = false;
       if (results.poseLandmarks) {
         const roiBox = getRoiBox(targetRoiA, videoA.videoWidth, videoA.videoHeight);
-        lastMappedLandmarksA = results.poseLandmarks.map(pt => ({
+        lastLandmarksA = results.poseLandmarks.map(pt => ({
           x: roiBox.normX + pt.x * roiBox.normW,
           y: roiBox.normY + pt.y * roiBox.normH,
           z: pt.z,
           visibility: pt.visibility
         }));
-        lastMappedWorldLandmarksA = results.poseWorldLandmarks || lastMappedLandmarksA;
 
-        if (targetRoiA && lastMappedLandmarksA[11] && lastMappedLandmarksA[12] && lastMappedLandmarksA[23] && lastMappedLandmarksA[24]) {
-          const cx = (lastMappedLandmarksA[11].x + lastMappedLandmarksA[12].x + lastMappedLandmarksA[23].x + lastMappedLandmarksA[24].x) / 4;
-          const cy = (lastMappedLandmarksA[11].y + lastMappedLandmarksA[12].y + lastMappedLandmarksA[23].y + lastMappedLandmarksA[24].y) / 4;
+        if (targetRoiA && lastLandmarksA[11] && lastLandmarksA[12] && lastLandmarksA[23] && lastLandmarksA[24]) {
+          const cx = (lastLandmarksA[11].x + lastLandmarksA[12].x + lastLandmarksA[23].x + lastLandmarksA[24].x) / 4;
+          const cy = (lastLandmarksA[11].y + lastLandmarksA[12].y + lastLandmarksA[23].y + lastLandmarksA[24].y) / 4;
           targetRoiA.cx = targetRoiA.cx * 0.7 + cx * 0.3;
           targetRoiA.cy = targetRoiA.cy * 0.7 + cy * 0.3;
         }
       }
-      drawFrame(canvasA, ctxA, videoA, lastMappedLandmarksA, lastMappedWorldLandmarksA, trailsA, "#00e5ff", "A", manualOffsetsA, targetRoiA);
-      isPoseA_Busy = false;
+      drawFrame(canvasA, ctxA, videoA, lastLandmarksA, trailsA, "#00e5ff", "A", manualOffsetsA, targetRoiA);
     });
 
     const poseB = new Pose({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
     poseB.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
     poseB.onResults(results => {
+      isPoseB_Busy = false;
       if (results.poseLandmarks) {
         const roiBox = getRoiBox(targetRoiB, videoB.videoWidth, videoB.videoHeight);
-        lastMappedLandmarksB = results.poseLandmarks.map(pt => ({
+        lastLandmarksB = results.poseLandmarks.map(pt => ({
           x: roiBox.normX + pt.x * roiBox.normW,
           y: roiBox.normY + pt.y * roiBox.normH,
           z: pt.z,
           visibility: pt.visibility
         }));
-        lastMappedWorldLandmarksB = results.poseWorldLandmarks || lastMappedLandmarksB;
 
-        if (targetRoiB && lastMappedLandmarksB[11] && lastMappedLandmarksB[12] && lastMappedLandmarksB[23] && lastMappedLandmarksB[24]) {
-          const cx = (lastMappedLandmarksB[11].x + lastMappedLandmarksB[12].x + lastMappedLandmarksB[23].x + lastMappedLandmarksB[24].x) / 4;
-          const cy = (lastMappedLandmarksB[11].y + lastMappedLandmarksB[12].y + lastMappedLandmarksB[23].y + lastMappedLandmarksB[24].y) / 4;
+        if (targetRoiB && lastLandmarksB[11] && lastLandmarksB[12] && lastLandmarksB[23] && lastLandmarksB[24]) {
+          const cx = (lastLandmarksB[11].x + lastLandmarksB[12].x + lastLandmarksB[23].x + lastLandmarksB[24].x) / 4;
+          const cy = (lastLandmarksB[11].y + lastLandmarksB[12].y + lastLandmarksB[23].y + lastLandmarksB[24].y) / 4;
           targetRoiB.cx = targetRoiB.cx * 0.7 + cx * 0.3;
           targetRoiB.cy = targetRoiB.cy * 0.7 + cy * 0.3;
         }
       }
-      drawFrame(canvasB, ctxB, videoB, lastMappedLandmarksB, lastMappedWorldLandmarksB, trailsB, currentMode === 'overlay' ? "#ff922b" : "#00e5ff", "B", manualOffsetsB, targetRoiB);
-      isPoseB_Busy = false;
+      drawFrame(canvasB, ctxB, videoB, lastLandmarksB, trailsB, currentMode === 'overlay' ? "#ff922b" : "#00e5ff", "B", manualOffsetsB, targetRoiB);
     });
 
     function addPt(tb, key, pt) {
@@ -915,8 +916,8 @@
       if (tb[key].length > MAX_TRAIL_LENGTH) tb[key].shift();
     }
 
-    function drawFrame(canvas, ctx, video, lmRaw, wlmRaw, trailBuf, skeletonColor, label, offsets = {}, targetRoi = null) {
-      if (!video.videoWidth || !video.videoHeight) return;
+    function drawFrame(canvas, ctx, video, lmRaw, trailBuf, skeletonColor, label, offsets = {}, targetRoi = null) {
+      if (!video.videoWidth || !video.videoHeight || video.readyState < 2) return;
       if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -946,10 +947,6 @@
           const off = offsets[idx] || { x: 0, y: 0 };
           return { ...pt, x: pt.x + off.x, y: pt.y + off.y };
         });
-        const wlm = wlmRaw ? wlmRaw.map((pt, idx) => {
-          const off = offsets[idx] || { x: 0, y: 0 };
-          return { ...pt, x: pt.x + off.x, y: pt.y + off.y };
-        }) : lm;
 
         const connections = [
           [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
@@ -1047,7 +1044,7 @@
           }
         });
 
-        drawAngles(ctx, lm, wlm, w, h, trunkCenter, label);
+        drawAngles(ctx, lm, w, h, trunkCenter, label);
       }
       ctx.restore();
     }
@@ -1075,22 +1072,24 @@
       ctx.restore();
     }
 
-    function drawAngles(ctx, lm, p, w, h, trunkCenter, label) {
-      if (!p[11] || !p[12] || !p[23] || !p[24]) return;
+    function drawAngles(ctx, lm, w, h, trunkCenter, label) {
+      if (!lm[11] || !lm[12] || !lm[23] || !lm[24]) return;
 
-      const shoMid = VCalc.mid(p[11], p[12]);
-      const hipMid = VCalc.mid(p[23], p[24]);
+      const shoMid = VCalc.mid(lm[11], lm[12]);
+      const hipMid = VCalc.mid(lm[23], lm[24]);
       const trunkVec = VCalc.sub(shoMid, hipMid);
-      const shoulderLine = VCalc.sub(p[12], p[11]);
-      const pelvisLine = VCalc.sub(p[24], p[23]);
+      const shoulderLine = VCalc.sub(lm[12], lm[11]);
+      const pelvisLine = VCalc.sub(lm[24], lm[23]);
 
-      const trunkZ = VCalc.normalize(VCalc.cross(shoulderLine, trunkVec));
-      const trunkX = VCalc.normalize(shoulderLine);
+      const trunkY = VCalc.normalize(trunkVec);
+      const trunkX = VCalc.normalize(VCalc.sub(lm[11], lm[12]));
+      const trunkZ = VCalc.normalize(VCalc.cross(trunkX, trunkY));
+
       const prefix = currentMode === 'overlay' ? `[${label}] ` : '';
 
-      const flex = Math.atan2(trunkVec.z, -trunkVec.y) * (180 / Math.PI);
-      const lat = Math.atan2(trunkVec.x, -trunkVec.y) * (180 / Math.PI);
-      const rot = (Math.atan2(shoulderLine.z, shoulderLine.x) - Math.atan2(pelvisLine.z, pelvisLine.x)) * (180 / Math.PI);
+      const flex = Math.atan2(trunkVec.z || 0, trunkVec.y) * (180 / Math.PI);
+      const lat = Math.atan2(trunkVec.x, trunkVec.y) * (180 / Math.PI);
+      const rot = (Math.atan2(shoulderLine.z || 0, shoulderLine.x) - Math.atan2(pelvisLine.z || 0, pelvisLine.x)) * (180 / Math.PI);
 
       if (label === 'A') {
         document.getElementById('trunk_fe').innerText = `${flex >= 0 ? '屈 ' : '伸 '}${Math.abs(flex).toFixed(1)}°`;
@@ -1102,41 +1101,45 @@
       if (selectedOverlays.has('trunk_lb') && trunkCenter) drawBadge(ctx, trunkCenter, `${prefix}側屈:${lat >= 0 ? '右' : '左'}${Math.abs(lat).toFixed(0)}°`);
       if (selectedOverlays.has('trunk_rot') && trunkCenter) drawBadge(ctx, trunkCenter, `${prefix}回旋:${rot >= 0 ? '右' : '左'}${Math.abs(rot).toFixed(0)}°`);
 
-      if (p[14] && p[16] && p[13] && p[15]) {
-        const rElbow = 180 - VCalc.angleDeg(VCalc.sub(p[12], p[14]), VCalc.sub(p[16], p[14]));
-        const lElbow = 180 - VCalc.angleDeg(VCalc.sub(p[11], p[13]), VCalc.sub(p[15], p[13]));
+      if (lm[14] && lm[16] && lm[13] && lm[15]) {
+        const rElbow = Math.max(0, 180 - VCalc.angleDeg(VCalc.sub(lm[12], lm[14]), VCalc.sub(lm[16], lm[14])));
+        const lElbow = Math.max(0, 180 - VCalc.angleDeg(VCalc.sub(lm[11], lm[13]), VCalc.sub(lm[15], lm[13])));
         if (label === 'A') {
-          document.getElementById('r_elbow_fe').innerText = `屈 ${Math.max(0, rElbow).toFixed(1)}°`;
-          document.getElementById('l_elbow_fe').innerText = `屈 ${Math.max(0, lElbow).toFixed(1)}°`;
+          document.getElementById('r_elbow_fe').innerText = `屈 ${rElbow.toFixed(1)}°`;
+          document.getElementById('l_elbow_fe').innerText = `屈 ${lElbow.toFixed(1)}°`;
         }
-        if (selectedOverlays.has('r_elbow') && lm[14] && lm[14].visibility > 0.4) drawBadge(ctx, { x: lm[14].x * w, y: lm[14].y * h }, `${prefix}右肘:${Math.max(0, rElbow).toFixed(0)}°`);
-        if (selectedOverlays.has('l_elbow') && lm[13] && lm[13].visibility > 0.4) drawBadge(ctx, { x: lm[13].x * w, y: lm[13].y * h }, `${prefix}左肘:${Math.max(0, lElbow).toFixed(0)}°`);
+        if (selectedOverlays.has('r_elbow') && lm[14].visibility > 0.4) drawBadge(ctx, { x: lm[14].x * w, y: lm[14].y * h }, `${prefix}右肘:${rElbow.toFixed(0)}°`);
+        if (selectedOverlays.has('l_elbow') && lm[13].visibility > 0.4) drawBadge(ctx, { x: lm[13].x * w, y: lm[13].y * h }, `${prefix}左肘:${lElbow.toFixed(0)}°`);
       }
 
-      if (p[26] && p[28] && p[25] && p[27]) {
-        const rKnee = 180 - VCalc.angleDeg(VCalc.sub(p[24], p[26]), VCalc.sub(p[28], p[26]));
-        const lKnee = 180 - VCalc.angleDeg(VCalc.sub(p[23], p[25]), VCalc.sub(p[27], p[25]));
+      if (lm[26] && lm[28] && lm[25] && lm[27]) {
+        const rKnee = Math.max(0, 180 - VCalc.angleDeg(VCalc.sub(lm[24], lm[26]), VCalc.sub(lm[28], lm[26])));
+        const lKnee = Math.max(0, 180 - VCalc.angleDeg(VCalc.sub(lm[23], lm[25]), VCalc.sub(lm[27], lm[25])));
         if (label === 'A') {
-          document.getElementById('r_knee_fe').innerText = `屈 ${Math.max(0, rKnee).toFixed(1)}°`;
-          document.getElementById('l_knee_fe').innerText = `屈 ${Math.max(0, lKnee).toFixed(1)}°`;
+          document.getElementById('r_knee_fe').innerText = `屈 ${rKnee.toFixed(1)}°`;
+          document.getElementById('l_knee_fe').innerText = `屈 ${lKnee.toFixed(1)}°`;
         }
-        if (selectedOverlays.has('r_knee') && lm[26] && lm[26].visibility > 0.4) drawBadge(ctx, { x: lm[26].x * w, y: lm[26].y * h }, `${prefix}右膝:${Math.max(0, rKnee).toFixed(0)}°`);
-        if (selectedOverlays.has('l_knee') && lm[25] && lm[25].visibility > 0.4) drawBadge(ctx, { x: lm[25].x * w, y: lm[25].y * h }, `${prefix}左膝:${Math.max(0, lKnee).toFixed(0)}°`);
+        if (selectedOverlays.has('r_knee') && lm[26].visibility > 0.4) drawBadge(ctx, { x: lm[26].x * w, y: lm[26].y * h }, `${prefix}右膝:${rKnee.toFixed(0)}°`);
+        if (selectedOverlays.has('l_knee') && lm[25].visibility > 0.4) drawBadge(ctx, { x: lm[25].x * w, y: lm[25].y * h }, `${prefix}左膝:${lKnee.toFixed(0)}°`);
       }
 
-      if (p[14] && p[13] && p[16] && p[15]) {
-        const rArm = VCalc.normalize(VCalc.sub(p[14], p[12]));
-        const lArm = VCalc.normalize(VCalc.sub(p[11], p[13]));
+      if (lm[14] && lm[13] && lm[16] && lm[15]) {
+        const rArm = VCalc.normalize(VCalc.sub(lm[14], lm[12]));
+        const lArm = VCalc.normalize(VCalc.sub(lm[13], lm[11]));
+
         const rShoFlex = Math.asin(Math.min(Math.max(VCalc.dot(rArm, trunkZ), -1), 1)) * (180 / Math.PI);
         const lShoFlex = Math.asin(Math.min(Math.max(VCalc.dot(lArm, trunkZ), -1), 1)) * (180 / Math.PI);
+
         const rShoAbd = Math.asin(Math.min(Math.max(VCalc.dot(rArm, trunkX), -1), 1)) * (180 / Math.PI);
         const lShoAbd = Math.asin(Math.min(Math.max(-VCalc.dot(lArm, trunkX), -1), 1)) * (180 / Math.PI);
+
         const rShoHa = Math.atan2(VCalc.dot(rArm, trunkZ), VCalc.dot(rArm, trunkX)) * (180 / Math.PI);
         const lShoHa = Math.atan2(VCalc.dot(lArm, trunkZ), -VCalc.dot(lArm, trunkX)) * (180 / Math.PI);
-        const rForeArm = VCalc.normalize(VCalc.sub(p[16], p[14]));
-        const lForeArm = VCalc.normalize(VCalc.sub(p[15], p[13]));
-        const rShoRot = Math.asin(Math.min(Math.max(VCalc.dot(rForeArm, trunkZ), -1), 1)) * (180 / Math.PI);
-        const lShoRot = Math.asin(Math.min(Math.max(-VCalc.dot(lForeArm, trunkZ), -1), 1)) * (180 / Math.PI);
+
+        const rForeArm = VCalc.normalize(VCalc.sub(lm[16], lm[14]));
+        const lForeArm = VCalc.normalize(VCalc.sub(lm[15], lm[13]));
+        const rShoRot = Math.asin(Math.min(Math.max(-VCalc.dot(rForeArm, trunkX), -1), 1)) * (180 / Math.PI);
+        const lShoRot = Math.asin(Math.min(Math.max(VCalc.dot(lForeArm, trunkX), -1), 1)) * (180 / Math.PI);
 
         if (label === 'A') {
           document.getElementById('r_sho_fe_aa').innerText = `${rShoFlex >= 0 ? '屈' : '伸'}${Math.abs(rShoFlex).toFixed(0)}° / ${rShoAbd >= 0 ? '外' : '内'}${Math.abs(rShoAbd).toFixed(0)}°`;
@@ -1147,50 +1150,50 @@
           document.getElementById('l_sho_rot').innerText = `${lShoRot >= 0 ? '内旋 ' : '外旋 '}${Math.abs(lShoRot).toFixed(1)}°`;
         }
 
-        if (selectedOverlays.has('r_sho') && lm[12] && lm[12].visibility > 0.4) drawBadge(ctx, { x: lm[12].x * w, y: lm[12].y * h }, `${prefix}右肩:${rShoFlex >= 0 ? '屈' : '伸'}${Math.abs(rShoFlex).toFixed(0)}°`);
-        if (selectedOverlays.has('l_sho') && lm[11] && lm[11].visibility > 0.4) drawBadge(ctx, { x: lm[11].x * w, y: lm[11].y * h }, `${prefix}左肩:${lShoFlex >= 0 ? '屈' : '伸'}${Math.abs(lShoFlex).toFixed(0)}°`);
+        if (selectedOverlays.has('r_sho') && lm[12].visibility > 0.4) drawBadge(ctx, { x: lm[12].x * w, y: lm[12].y * h }, `${prefix}右肩:${rShoFlex >= 0 ? '屈' : '伸'}${Math.abs(rShoFlex).toFixed(0)}°`);
+        if (selectedOverlays.has('l_sho') && lm[11].visibility > 0.4) drawBadge(ctx, { x: lm[11].x * w, y: lm[11].y * h }, `${prefix}左肩:${lShoFlex >= 0 ? '屈' : '伸'}${Math.abs(lShoFlex).toFixed(0)}°`);
       }
 
-      if (p[26] && p[25] && p[28] && p[27]) {
-        const rThigh = VCalc.normalize(VCalc.sub(p[26], p[24]));
-        const lThigh = VCalc.normalize(VCalc.sub(p[25], p[23]));
+      if (lm[26] && lm[25] && lm[28] && lm[27]) {
+        const rThigh = VCalc.normalize(VCalc.sub(lm[26], lm[24]));
+        const lThigh = VCalc.normalize(VCalc.sub(lm[25], lm[23]));
+
         const rHipFlex = Math.asin(Math.min(Math.max(VCalc.dot(rThigh, trunkZ), -1), 1)) * (180 / Math.PI);
         const lHipFlex = Math.asin(Math.min(Math.max(VCalc.dot(lThigh, trunkZ), -1), 1)) * (180 / Math.PI);
+
         const rHipAbd = Math.asin(Math.min(Math.max(VCalc.dot(rThigh, trunkX), -1), 1)) * (180 / Math.PI);
         const lHipAbd = Math.asin(Math.min(Math.max(-VCalc.dot(lThigh, trunkX), -1), 1)) * (180 / Math.PI);
-        const rShank = VCalc.normalize(VCalc.sub(p[28], p[26]));
-        const lShank = VCalc.normalize(VCalc.sub(p[27], p[25]));
-        const rHipRot = Math.asin(Math.min(Math.max(VCalc.dot(rShank, trunkX), -1), 1)) * (180 / Math.PI);
-        const lHipRot = Math.asin(Math.min(Math.max(-VCalc.dot(lShank, trunkX), -1), 1)) * (180 / Math.PI);
+
+        const rShank = VCalc.normalize(VCalc.sub(lm[28], lm[26]));
+        const lShank = VCalc.normalize(VCalc.sub(lm[27], lm[25]));
+        const rHipRot = Math.asin(Math.min(Math.max(-VCalc.dot(rShank, trunkX), -1), 1)) * (180 / Math.PI);
+        const lHipRot = Math.asin(Math.min(Math.max(VCalc.dot(lShank, trunkX), -1), 1)) * (180 / Math.PI);
 
         if (label === 'A') {
           document.getElementById('r_hip_fe_aa').innerText = `${rHipFlex >= 0 ? '屈' : '伸'}${Math.abs(rHipFlex).toFixed(0)}° / ${rHipAbd >= 0 ? '外' : '内'}${Math.abs(rHipAbd).toFixed(0)}°`;
           document.getElementById('l_hip_fe_aa').innerText = `${lHipFlex >= 0 ? '屈' : '伸'}${Math.abs(lHipFlex).toFixed(0)}° / ${lHipAbd >= 0 ? '外' : '内'}${Math.abs(lHipAbd).toFixed(0)}°`;
-          document.getElementById('r_hip_rot').innerText = `${rHipRot >= 0 ? '外旋 ' : '内旋 '}${Math.abs(rHipRot).toFixed(1)}°`;
-          document.getElementById('l_hip_rot').innerText = `${lHipRot >= 0 ? '外旋 ' : '内旋 '}${Math.abs(lHipRot).toFixed(1)}°`;
+          document.getElementById('r_hip_rot').innerText = `${rHipRot >= 0 ? '内旋 ' : '外旋 '}${Math.abs(rHipRot).toFixed(1)}°`;
+          document.getElementById('l_hip_rot').innerText = `${lHipRot >= 0 ? '内旋 ' : '外旋 '}${Math.abs(lHipRot).toFixed(1)}°`;
         }
 
-        if (selectedOverlays.has('r_hip') && lm[24] && lm[24].visibility > 0.4) drawBadge(ctx, { x: lm[24].x * w, y: lm[24].y * h }, `${prefix}右股:${rHipFlex >= 0 ? '屈' : '伸'}${Math.abs(rHipFlex).toFixed(0)}°`);
-        if (selectedOverlays.has('l_hip') && lm[23] && lm[23].visibility > 0.4) drawBadge(ctx, { x: lm[23].x * w, y: lm[23].y * h }, `${prefix}左股:${lHipFlex >= 0 ? '屈' : '伸'}${Math.abs(lHipFlex).toFixed(0)}°`);
+        if (selectedOverlays.has('r_hip') && lm[24].visibility > 0.4) drawBadge(ctx, { x: lm[24].x * w, y: lm[24].y * h }, `${prefix}右股:${rHipFlex >= 0 ? '屈' : '伸'}${Math.abs(rHipFlex).toFixed(0)}°`);
+        if (selectedOverlays.has('l_hip') && lm[23].visibility > 0.4) drawBadge(ctx, { x: lm[23].x * w, y: lm[23].y * h }, `${prefix}左股:${lHipFlex >= 0 ? '屈' : '伸'}${Math.abs(lHipFlex).toFixed(0)}°`);
       }
 
-      if (p[26] && p[28] && p[32] && p[25] && p[27] && p[31]) {
-        const rAnk = VCalc.angleDeg(VCalc.sub(p[26], p[28]), VCalc.sub(p[32], p[28])) - 90;
-        const lAnk = VCalc.angleDeg(VCalc.sub(p[25], p[27]), VCalc.sub(p[31], p[27])) - 90;
+      if (lm[26] && lm[28] && lm[32] && lm[25] && lm[27] && lm[31]) {
+        const rAnk = 90 - VCalc.angleDeg(VCalc.sub(lm[26], lm[28]), VCalc.sub(lm[32], lm[28]));
+        const lAnk = 90 - VCalc.angleDeg(VCalc.sub(lm[25], lm[27]), VCalc.sub(lm[31], lm[27]));
         if (label === 'A') {
           document.getElementById('r_ank_df').innerText = `${rAnk >= 0 ? '背 ' : '底 '}${Math.abs(rAnk).toFixed(1)}°`;
           document.getElementById('l_ank_df').innerText = `${lAnk >= 0 ? '背 ' : '底 '}${Math.abs(lAnk).toFixed(1)}°`;
         }
-        if (selectedOverlays.has('r_ank') && lm[28] && lm[28].visibility > 0.4) drawBadge(ctx, { x: lm[28].x * w, y: lm[28].y * h }, `${prefix}右足:${rAnk >= 0 ? '背' : '底'}${Math.abs(rAnk).toFixed(0)}°`);
-        if (selectedOverlays.has('l_ank') && lm[27] && lm[27].visibility > 0.4) drawBadge(ctx, { x: lm[27].x * w, y: lm[27].y * h }, `${prefix}左足:${lAnk >= 0 ? '背' : '底'}${Math.abs(lAnk).toFixed(0)}°`);
+        if (selectedOverlays.has('r_ank') && lm[28].visibility > 0.4) drawBadge(ctx, { x: lm[28].x * w, y: lm[28].y * h }, `${prefix}右足:${rAnk >= 0 ? '背' : '底'}${Math.abs(rAnk).toFixed(0)}°`);
+        if (selectedOverlays.has('l_ank') && lm[27].visibility > 0.4) drawBadge(ctx, { x: lm[27].x * w, y: lm[27].y * h }, `${prefix}左足:${lAnk >= 0 ? '背' : '底'}${Math.abs(lAnk).toFixed(0)}°`);
       }
     }
 
-    async function processFrameA() {
-      if (videoA.readyState < 2) return;
-      drawFrame(canvasA, ctxA, videoA, lastMappedLandmarksA, lastMappedWorldLandmarksA, trailsA, "#00e5ff", "A", manualOffsetsA, targetRoiA);
-
-      if (isPoseA_Busy) return;
+    async function triggerPoseA() {
+      if (isPoseA_Busy || videoA.readyState < 2) return;
       isPoseA_Busy = true;
       try {
         const vw = videoA.videoWidth;
@@ -1201,18 +1204,14 @@
         cropCanvasA.width = 384;
         cropCanvasA.height = 384;
         cropCtxA.drawImage(videoA, box.x, box.y, box.w, box.h, 0, 0, 384, 384);
-
         await poseA.send({ image: cropCanvasA });
       } catch (e) {
         isPoseA_Busy = false;
       }
     }
 
-    async function processFrameB() {
-      if (videoB.readyState < 2) return;
-      drawFrame(canvasB, ctxB, videoB, lastMappedLandmarksB, lastMappedWorldLandmarksB, trailsB, currentMode === 'overlay' ? "#ff922b" : "#00e5ff", "B", manualOffsetsB, targetRoiB);
-
-      if (isPoseB_Busy) return;
+    async function triggerPoseB() {
+      if (isPoseB_Busy || videoB.readyState < 2) return;
       isPoseB_Busy = true;
       try {
         const vw = videoB.videoWidth;
@@ -1223,36 +1222,39 @@
         cropCanvasB.width = 384;
         cropCanvasB.height = 384;
         cropCtxB.drawImage(videoB, box.x, box.y, box.w, box.h, 0, 0, 384, 384);
-
         await poseB.send({ image: cropCanvasB });
       } catch (e) {
         isPoseB_Busy = false;
       }
     }
 
-    async function renderSafe() {
+    function renderSafe() {
       if (videoA.readyState >= 2) {
-        await processFrameA();
+        drawFrame(canvasA, ctxA, videoA, lastLandmarksA, trailsA, "#00e5ff", "A", manualOffsetsA, targetRoiA);
+        triggerPoseA();
         seekBarA.value = videoA.currentTime;
         timeDisplayA.innerText = `${videoA.currentTime.toFixed(2)}s`;
       }
       if (currentMode !== 'single' && videoB.readyState >= 2) {
-        await processFrameB();
+        drawFrame(canvasB, ctxB, videoB, lastLandmarksB, trailsB, currentMode === 'overlay' ? "#ff922b" : "#00e5ff", "B", manualOffsetsB, targetRoiB);
+        triggerPoseB();
         seekBarB.value = videoB.currentTime;
         timeDisplayB.innerText = `${videoB.currentTime.toFixed(2)}s`;
       }
     }
 
-    async function syncPlayLoop() {
+    function syncPlayLoop() {
       const anyPlaying = (!videoA.paused && !videoA.ended) || (currentMode !== 'single' && !videoB.paused && !videoB.ended);
       if (anyPlaying) {
         if (!videoA.paused && !videoA.ended) {
-          await processFrameA();
+          drawFrame(canvasA, ctxA, videoA, lastLandmarksA, trailsA, "#00e5ff", "A", manualOffsetsA, targetRoiA);
+          triggerPoseA();
           seekBarA.value = videoA.currentTime;
           timeDisplayA.innerText = `${videoA.currentTime.toFixed(2)}s`;
         }
         if (currentMode !== 'single' && !videoB.paused && !videoB.ended) {
-          await processFrameB();
+          drawFrame(canvasB, ctxB, videoB, lastLandmarksB, trailsB, currentMode === 'overlay' ? "#ff922b" : "#00e5ff", "B", manualOffsetsB, targetRoiB);
+          triggerPoseB();
           seekBarB.value = videoB.currentTime;
           timeDisplayB.innerText = `${videoB.currentTime.toFixed(2)}s`;
         }
@@ -1263,11 +1265,15 @@
     uploaderA.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      if (urlA) URL.revokeObjectURL(urlA);
+      urlA = URL.createObjectURL(file);
+
       Object.keys(trailsA).forEach(k => trailsA[k].length = 0);
       Object.keys(manualOffsetsA).forEach(k => delete manualOffsetsA[k]);
       targetRoiA = null;
-      lastMappedLandmarksA = null;
-      videoA.src = URL.createObjectURL(file);
+      lastLandmarksA = null;
+
+      videoA.src = urlA;
       videoA.load();
       videoA.onloadeddata = () => {
         seekBarA.max = videoA.duration;
@@ -1275,20 +1281,23 @@
         seekBarA.disabled = false;
         btnSyncPlay.disabled = false;
         videoA.currentTime = 0.001;
-        drawFrame(canvasA, ctxA, videoA, null, null, trailsA, "#00e5ff", "A", manualOffsetsA, targetRoiA);
-        processFrameA();
+        renderSafe();
       };
     });
-    videoA.addEventListener('seeked', () => { if (videoA.paused) processFrameA(); });
+    videoA.addEventListener('seeked', () => { if (videoA.paused) renderSafe(); });
 
     uploaderB.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      if (urlB) URL.revokeObjectURL(urlB);
+      urlB = URL.createObjectURL(file);
+
       Object.keys(trailsB).forEach(k => trailsB[k].length = 0);
       Object.keys(manualOffsetsB).forEach(k => delete manualOffsetsB[k]);
       targetRoiB = null;
-      lastMappedLandmarksB = null;
-      videoB.src = URL.createObjectURL(file);
+      lastLandmarksB = null;
+
+      videoB.src = urlB;
       videoB.load();
       videoB.onloadeddata = () => {
         seekBarB.max = videoB.duration;
@@ -1296,11 +1305,10 @@
         seekBarB.disabled = false;
         btnSyncPlay.disabled = false;
         videoB.currentTime = 0.001;
-        drawFrame(canvasB, ctxB, videoB, null, null, trailsB, currentMode === 'overlay' ? "#ff922b" : "#00e5ff", "B", manualOffsetsB, targetRoiB);
-        processFrameB();
+        renderSafe();
       };
     });
-    videoB.addEventListener('seeked', () => { if (videoB.paused) processFrameB(); });
+    videoB.addEventListener('seeked', () => { if (videoB.paused) renderSafe(); });
 
     btnSyncPlay.addEventListener('click', () => {
       const isPlaying = (!videoA.paused && !videoA.ended) || (currentMode !== 'single' && !videoB.paused && !videoB.ended);
@@ -1318,29 +1326,33 @@
       }
     });
 
-    seekBarA.addEventListener('input', () => { videoA.currentTime = parseFloat(seekBarA.value); });
-    seekBarB.addEventListener('input', () => { videoB.currentTime = parseFloat(seekBarB.value); });
+    seekBarA.addEventListener('input', () => { videoA.currentTime = parseFloat(seekBarA.value); renderSafe(); });
+    seekBarB.addEventListener('input', () => { videoB.currentTime = parseFloat(seekBarB.value); renderSafe(); });
 
     btnPrevA.addEventListener('click', () => {
       videoA.pause();
       btnSyncPlay.innerText = currentMode === 'single' ? '▶ 再生' : '▶ 同期再生';
       videoA.currentTime = Math.max(0, videoA.currentTime - 0.033);
+      renderSafe();
     });
     btnNextA.addEventListener('click', () => {
       videoA.pause();
       btnSyncPlay.innerText = currentMode === 'single' ? '▶ 再生' : '▶ 同期再生';
       videoA.currentTime = Math.min(videoA.duration, videoA.currentTime + 0.033);
+      renderSafe();
     });
 
     btnPrevB.addEventListener('click', () => {
       videoB.pause();
       btnSyncPlay.innerText = '▶ 同期再生';
       videoB.currentTime = Math.max(0, videoB.currentTime - 0.033);
+      renderSafe();
     });
     btnNextB.addEventListener('click', () => {
       videoB.pause();
       btnSyncPlay.innerText = '▶ 同期再生';
       videoB.currentTime = Math.min(videoB.duration, videoB.currentTime + 0.033);
+      renderSafe();
     });
   </script>
 </body>
