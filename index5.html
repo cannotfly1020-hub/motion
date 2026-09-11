@@ -193,6 +193,11 @@ const dashboardContainer = document.getElementById('dashboardContainer');
 const modeGridContainer = document.getElementById('modeGridContainer');
 const scaleModalOverlay = document.getElementById('scale-modal-overlay');
 const snapshotModalOverlay = document.getElementById('snapshot-modal-overlay');
+const appInteractionRoots = [
+    document.getElementById('header'),
+    document.getElementById('stage'),
+    document.getElementById('controls')
+];
 
 const STEP_SEC = 0.0166;
 const playbackRates = [1.0, 0.5, 0.25];
@@ -238,6 +243,14 @@ let recDimensions = { w: 0, h: 0, bannerH: 0 };
 
 function isModalOpen() {
     return scaleModalOverlay.style.display === 'flex' || snapshotModalOverlay.style.display === 'flex';
+}
+
+function setModalOpenState(overlay, isOpen) {
+    overlay.style.display = isOpen ? 'flex' : 'none';
+    const shouldDisableApp = isModalOpen();
+    appInteractionRoots.forEach((root) => {
+        root.style.pointerEvents = shouldDisableApp ? 'none' : '';
+    });
 }
 
 function swallowModalEvent(e) {
@@ -672,11 +685,11 @@ function openScaleModal() {
     if (currentPlane !== 'sagittal') return;
     const cur = planeData.sagittal;
     if (cur.scalePoints.length !== 2) return;
-    document.getElementById('scale-modal-overlay').style.display = 'flex';
+    setModalOpenState(scaleModalOverlay, true);
     document.getElementById('scale-input-value').focus();
 }
 function closeScaleModal() {
-    document.getElementById('scale-modal-overlay').style.display = 'none';
+    setModalOpenState(scaleModalOverlay, false);
 }
 
 function submitScaleModal() {
@@ -1051,7 +1064,7 @@ function clearAllData() {
 }
 
 function closeSnapshotModal() {
-    document.getElementById('snapshot-modal-overlay').style.display = 'none';
+    setModalOpenState(snapshotModalOverlay, false);
 }
 
 function generateComprehensiveReportCard() {
@@ -1180,7 +1193,7 @@ function generateComprehensiveReportCard() {
 
     document.getElementById('snapshot-modal-title').innerText = '📊 全体解析レポート';
     document.getElementById('snapshot-img').src = repCanvas.toDataURL('image/png');
-    document.getElementById('snapshot-modal-overlay').style.display = 'flex';
+    setModalOpenState(snapshotModalOverlay, true);
 }
 
 async function renderCurrentFrame() {
@@ -1323,7 +1336,7 @@ function captureSnapshot() {
     
     document.getElementById('snapshot-modal-title').innerText = '📸 キャプチャ';
     document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); 
-    document.getElementById('snapshot-modal-overlay').style.display = 'flex';
+    setModalOpenState(snapshotModalOverlay, true);
 }
 
 function toggleRecording() {
