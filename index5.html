@@ -197,7 +197,7 @@ const appInteractionRoots = [
     document.getElementById('header'),
     document.getElementById('stage'),
     document.getElementById('controls')
-];
+].filter(Boolean);
 
 const STEP_SEC = 0.0166;
 const playbackRates = [1.0, 0.5, 0.25];
