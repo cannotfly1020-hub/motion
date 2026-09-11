@@ -191,6 +191,8 @@ const btnTogglePlane = document.getElementById('btnTogglePlane');
 const phaseContainer = document.getElementById('phaseContainer');
 const dashboardContainer = document.getElementById('dashboardContainer');
 const modeGridContainer = document.getElementById('modeGridContainer');
+const scaleModalOverlay = document.getElementById('scale-modal-overlay');
+const snapshotModalOverlay = document.getElementById('snapshot-modal-overlay');
 
 const STEP_SEC = 0.0166;
 const playbackRates = [1.0, 0.5, 0.25];
@@ -233,6 +235,20 @@ let isRecording = false;
 const recCanvas = document.createElement('canvas');
 const recCtx = recCanvas.getContext('2d');
 let recDimensions = { w: 0, h: 0, bannerH: 0 };
+
+function isModalOpen() {
+    return scaleModalOverlay.style.display === 'flex' || snapshotModalOverlay.style.display === 'flex';
+}
+
+function swallowModalEvent(e) {
+    e.stopPropagation();
+}
+
+[scaleModalOverlay, snapshotModalOverlay].forEach((overlay) => {
+    ['click', 'pointerdown', 'pointerup', 'touchstart', 'touchend'].forEach((eventName) => {
+        overlay.addEventListener(eventName, swallowModalEvent);
+    });
+});
 
 const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
 pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
@@ -1236,6 +1252,7 @@ video.addEventListener('ended', () => {
 
 btnPlayPause.addEventListener('click', async () => {
     if (!video.src || video.readyState < 2) return;
+    if (isModalOpen()) return;
     if (video.paused) { 
         try { await video.play(); btnPlayPause.innerText = '⏸ 停止'; btnPlayPause.style.background = '#ff9500'; } catch (e) {} 
     } else { 
@@ -1311,6 +1328,7 @@ function captureSnapshot() {
 
 function toggleRecording() {
     if (!video.videoWidth) { alert("動画が読み込まれていません"); return; }
+    if (isModalOpen()) return;
     const btn = document.getElementById('btnRecord');
     
     if (!isRecording) {
