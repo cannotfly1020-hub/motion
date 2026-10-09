@@ -1,179 +1,3 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="投球動作分析Pro">
-<title>投手バイオメカニクス解析 - 動作分析Pro</title>
-
-<!-- MediaPipe Pose -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
-
-<style>
-    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
-    html, body { width: 100%; height: 100dvh; background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; overflow: hidden; }
-    
-    #header { width: 100%; background: #1c1c1e; padding-top: calc(6px + env(safe-area-inset-top)); padding-left: calc(8px + env(safe-area-inset-left)); padding-right: calc(8px + env(safe-area-inset-right)); padding-bottom: 6px; display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid #333; z-index: 30; flex-shrink: 0; }
-    .header-top-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 4px; }
-    .btn-group-header { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; flex: 1; min-width: 0; }
-    
-    .hdr-btn { -webkit-appearance: none; appearance: none; background: #007aff; color: white; border: none; padding: 5px 8px; border-radius: 6px; font-weight: bold; font-size: 11px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
-    .hdr-btn.secondary { background: #3a3a3c; }
-    .hdr-btn.plane-btn { background: #af52de; color: #fff; }
-    .hdr-btn.report-btn { background: #30d158; color: #000; font-weight: bold; }
-    .hdr-btn.rec-active { background: #ff3b30 !important; animation: pulse-red 1s infinite; }
-    @keyframes pulse-red { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
-    
-    #result-box { width: 100%; background: #262629; border-radius: 6px; padding: 5px 8px; border: 1px solid #3a3a3c; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-    .result-text-area { flex: 1; min-width: 0; }
-    #main-result { color: #00ffcc; font-size: 12px; font-weight: bold; line-height: 1.2; }
-    #sub-result { color: #aaa; font-size: 10px; margin-top: 2px; font-weight: 500; line-height: 1.2; }
-    #btn-confirm-scale { display: none; background: #ff9500; color: #000; font-size: 11px; font-weight: bold; padding: 5px 10px; border: none; border-radius: 6px; cursor: pointer; flex-shrink: 0; white-space: nowrap; }
-    #scale-info-text { font-size: 10px; color: #ff9500; font-weight: 600; white-space: nowrap; }
-
-    #stage { width: 100%; position: relative; flex: 1; min-height: 0; display: flex; background: #000; overflow: hidden; }
-    .video-pane { position: relative; flex: 1; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    .zoom-target { width: 100%; height: 100%; position: relative; transform-origin: center center; }
-    video { width: 100%; height: 100%; object-fit: contain; display: block; }
-    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-    #outputCanvas { z-index: 1; pointer-events: none; }
-    #interactionCanvas { z-index: 10; touch-action: none; cursor: crosshair; }
-
-    #controls { width: 100%; background: #1c1c1e; padding-top: 5px; padding-left: calc(8px + env(safe-area-inset-left)); padding-right: calc(8px + env(safe-area-inset-right)); padding-bottom: calc(6px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 5px; border-top: 1px solid #333; z-index: 30; flex-shrink: 0; }
-    
-    .seek-row { display: flex; align-items: center; gap: 6px; width: 100%; }
-    .seek-label { font-size: 10px; font-weight: bold; color: #007aff; width: 14px; flex-shrink: 0; text-align: center; }
-    input[type=range] { flex: 1; height: 18px; accent-color: #007aff; }
-
-    .phase-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
-    .phase-btn { background: #2c2c2e; color: #888; border: 1.5px solid #444; padding: 7px 0; border-radius: 6px; font-size: 11px; font-weight: bold; text-align: center; cursor: pointer; transition: all 0.2s; }
-    .phase-btn.active-fc { background: #007aff; color: #fff; border-color: #007aff; }
-    .phase-btn.active-ff { background: #5e5ce6; color: #fff; border-color: #5e5ce6; }
-    .phase-btn.active-mer { background: #ff9500; color: #000; border-color: #ff9500; }
-    .phase-btn.active-pk { background: #30d158; color: #000; border-color: #30d158; }
-    .phase-btn.active-br { background: #ff375f; color: #fff; border-color: #ff375f; }
-
-    .mode-grid { width: 100%; display: grid; gap: 4px; }
-    button.ctrl-btn { -webkit-appearance: none; appearance: none; width: 100%; padding: 6px 0; background: #2c2c2e; color: white; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; }
-    button.ctrl-btn:active { background: #444; }
-    button.mode-active { background: #ff9500 !important; color: #000 !important; font-weight: bold; }
-    #btnModeRelease.mode-active { background: #ff375f !important; color: #fff !important; }
-    #btnModeZoom.mode-active { background: #007aff !important; color: #fff !important; }
-
-    .dashboard-grid { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-    .side-box { background: #262629; border-radius: 6px; padding: 4px 6px; border: 1px solid #3a3a3c; }
-    .side-box.kinematics { border-top: 2.5px solid #00ffcc; }
-    .side-box.kinetics { border-top: 2.5px solid #ff9500; }
-    .side-title { font-size: 10px; font-weight: bold; text-align: center; margin-bottom: 2px; }
-    .metric-row { display: flex; justify-content: space-between; font-size: 9.5px; padding: 1px 0; color: #ccc; }
-    .metric-val { font-weight: bold; font-family: monospace; color: #fff; }
-    .highlight-val { color: #00ffcc !important; }
-
-    .playback-row { width: 100%; display: grid; grid-template-columns: 1fr 1.4fr 1fr 1fr; gap: 4px; }
-    #btnPlayPause { background: #34c759; color: #000; font-weight: bold; }
-
-    .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); display: none; justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
-    .modal-card { background: #2c2c2e; border: 1px solid #444; border-radius: 12px; width: 90%; max-width: 340px; padding: 16px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
-    .modal-card h3 { font-size: 15px; margin-bottom: 6px; color: #ff9500; }
-    .modal-card p { font-size: 12px; color: #ccc; margin-bottom: 12px; }
-    .modal-input-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 14px; }
-    .modal-input-row input { width: 100px; font-size: 16px; padding: 6px; text-align: center; border-radius: 6px; border: 1px solid #555; background: #1c1c1e; color: #fff; }
-    .modal-btn-row { display: flex; gap: 8px; }
-    .modal-btn-row button { flex: 1; padding: 8px 0; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; }
-    #snapshot-img { max-width: 100%; max-height: 60vh; border-radius: 6px; border: 1px solid #555; margin-bottom: 10px; object-fit: contain; }
-</style>
-</head>
-<body>
-
-<div id="header">
-    <div class="header-top-row">
-        <div class="btn-group-header">
-            <button class="hdr-btn" onclick="document.getElementById('inputFile').click()">動画選択</button>
-            <input type="file" id="inputFile" accept="video/*" style="display:none;">
-            <button class="hdr-btn plane-btn" id="btnTogglePlane" onclick="togglePlaneMode()">➡️ 前額面(正面)へ</button>
-            <button class="hdr-btn report-btn" onclick="generateComprehensiveReportCard()">📊 レポート画像</button>
-            <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 静止画</button>
-            <button class="hdr-btn" id="btnRecord" style="background:#ff3b30;" onclick="toggleRecording()">🎥 録画開始</button>
-        </div>
-        <span id="scale-info-text">物差し: 未設定</span>
-    </div>
-    <div id="result-box">
-        <div class="result-text-area">
-            <div id="main-result">投手バイオメカニクス解析 (矢状面/横)</div>
-            <div id="sub-result">「📏 物差し設定」後、各フェーズ・リリース点を記録してください</div>
-        </div>
-        <button id="btn-confirm-scale" onclick="openScaleModal()">📏 長さ確定</button>
-    </div>
-</div>
-
-<div id="stage">
-    <div class="video-pane" id="viewportArea">
-        <div class="zoom-target" id="zoomTarget">
-            <video id="videoElement" playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
-            <canvas id="outputCanvas"></canvas>
-            <canvas id="interactionCanvas"></canvas>
-        </div>
-    </div>
-</div>
-
-<div id="controls">
-    <div class="seek-row">
-        <span class="seek-label">①</span>
-        <input type="range" id="seekSlider" min="0" max="100" value="0" step="0.05">
-    </div>
-
-    <!-- フェーズボタン -->
-    <div class="phase-actions" id="phaseContainer"></div>
-    <div class="mode-grid" id="modeGridContainer"></div>
-
-    <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
-        <span style="font-size:11px; font-weight:bold; color:#007aff;">倍率</span>
-        <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1">
-        <button class="ctrl-btn" style="width:auto; padding:4px 10px; background:#444;" onclick="resetZoom()">等倍リセット</button>
-    </div>
-
-    <div class="dashboard-grid" id="dashboardContainer"></div>
-
-    <div class="playback-row">
-        <button class="ctrl-btn" id="btnStepBack">◀ -1</button>
-        <button class="ctrl-btn" id="btnPlayPause">▶ 再生</button>
-        <button class="ctrl-btn" id="btnStepForward">+1 ▶</button>
-        <button class="ctrl-btn" id="btnSpeed" onclick="togglePlaybackRate()">1.0x</button>
-    </div>
-</div>
-
-<!-- Scale Modal -->
-<div id="scale-modal-overlay" class="modal-overlay">
-    <div class="modal-card">
-        <h3>物差しの長さ設定</h3>
-        <p>画面上で指定した2点の実際の長さを入力</p>
-        <div class="modal-input-row">
-            <input type="number" id="scale-input-value" inputmode="decimal" placeholder="100" value="100">
-            <span style="font-weight:bold; font-size:15px;">cm</span>
-        </div>
-        <div class="modal-btn-row">
-            <button style="background:#444; color:#fff;" onclick="closeScaleModal()">キャンセル</button>
-            <button style="background:#ff9500; color:#000;" onclick="submitScaleModal()">確定</button>
-        </div>
-    </div>
-</div>
-
-<!-- Snapshot / Report Preview Modal -->
-<div id="snapshot-modal-overlay" class="modal-overlay">
-    <div class="modal-card" style="max-width:360px;">
-        <h3 id="snapshot-modal-title" style="color:#5856d6;">📸 キャプチャ</h3>
-        <p style="font-size:11px; color:#aaa;">画像を長押しして「写真に追加」やLINEで送信できます</p>
-        <img id="snapshot-img" src="" alt="Screenshot">
-        <div class="modal-btn-row">
-            <button style="background:#444; color:#fff;" onclick="closeSnapshotModal()">閉じる</button>
-        </div>
-    </div>
-</div>
-
-<script>
 const video = document.getElementById('videoElement');
 const outputCanvas = document.getElementById('outputCanvas');
 const outCtx = outputCanvas.getContext('2d');
@@ -234,9 +58,7 @@ const recCanvas = document.createElement('canvas');
 const recCtx = recCanvas.getContext('2d');
 let recDimensions = { w: 0, h: 0, bannerH: 0 };
 
-const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
-pose.onResults(onResults);
+window.addEventListener('resize', fitCanvases);
 
 function buildUI() {
     const scaleBadge = document.getElementById('scale-info-text');
@@ -245,13 +67,13 @@ function buildUI() {
         btnTogglePlane.innerText = '➡️ 前額面(正面)へ';
         btnTogglePlane.style.background = '#af52de';
         scaleBadge.style.display = 'inline-block';
-        
+
         phaseContainer.innerHTML = `
             <button class="phase-btn" id="btnFC" onclick="markPhase('fc')">① FC (接地)</button>
             <button class="phase-btn" id="btnFF" onclick="markPhase('ff')">② FF (完全接地)</button>
             <button class="phase-btn" id="btnMER" onclick="markPhase('mer')">③ MER (最大外旋)</button>
         `;
-        
+
         modeGridContainer.style.gridTemplateColumns = '1fr 1fr 1fr 1fr';
         modeGridContainer.innerHTML = `
             <button class="ctrl-btn" id="btnModeRelease" onclick="toggleReleaseMode()">⚾️ リリース点</button>
@@ -281,15 +103,15 @@ function buildUI() {
         btnTogglePlane.style.background = '#007aff';
         scaleBadge.style.display = 'none';
         btnConfirmScale.style.display = 'none';
-        
+
         isScaleMode = isReleaseMode = false;
-        
+
         phaseContainer.innerHTML = `
             <button class="phase-btn" id="btnPK" onclick="markPhase('pk')">① PK (足上げ頂点)</button>
             <button class="phase-btn" id="btnFC" onclick="markPhase('fc')">② FC (接地時)</button>
             <button class="phase-btn" id="btnBR" onclick="markPhase('br')">③ BR (リリース時)</button>
         `;
-        
+
         modeGridContainer.style.gridTemplateColumns = '1fr 1fr';
         modeGridContainer.innerHTML = `
             <button class="ctrl-btn" id="btnModeZoom" onclick="toggleZoomMode()">🔍 ズーム操作</button>
@@ -357,37 +179,6 @@ function updateScaleInfo() {
         document.getElementById('scale-info-text').innerText = cur.pxPerCm ? `物差し: ${(cur.pxPerCm).toFixed(1)}px/cm` : "物差し: 未設定";
     }
 }
-
-// 実際の画面上のレンダリング位置とアスペクト比を取得
-function getVideoRenderBox() {
-    const cWidth = outputCanvas.width, cHeight = outputCanvas.height;
-    if (!video.videoWidth || !video.videoHeight || cWidth === 0 || cHeight === 0) {
-        return { x: 0, y: 0, w: cWidth, h: cHeight };
-    }
-    const videoRatio = video.videoWidth / video.videoHeight;
-    const canvasRatio = cWidth / cHeight;
-    let renderW, renderH, offsetX, offsetY;
-
-    if (canvasRatio > videoRatio) {
-        renderH = cHeight; renderW = cHeight * videoRatio;
-        offsetX = (cWidth - renderW) / 2; offsetY = 0;
-    } else {
-        renderW = cWidth; renderH = cWidth / videoRatio;
-        offsetX = 0; offsetY = (cHeight - renderH) / 2;
-    }
-    return { x: offsetX, y: offsetY, w: renderW, h: renderH };
-}
-
-function fitCanvases() {
-    const rect = video.parentElement.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-        outputCanvas.width = interactionCanvas.width = rect.width;
-        outputCanvas.height = interactionCanvas.height = rect.height;
-    }
-    redrawOverlay();
-    if (latestLandmarks) drawPitchingBiomechanics(latestLandmarks);
-}
-window.addEventListener('resize', fitCanvases);
 
 function togglePlaybackRate() {
     currentRateIdx = (currentRateIdx + 1) % playbackRates.length;
@@ -460,19 +251,15 @@ function updateButtons() {
     }
 }
 
-function applyZoom() { 
-    zoomTarget.style.transform = `translate(${panOffsetX}px, ${panOffsetY}px) scale(${zoomScale})`; 
-}
-
-function resetZoom() { 
-    zoomScale = 1.0; panOffsetX = 0; panOffsetY = 0; 
-    document.getElementById('zoom-slider').value = 1.0; 
-    applyZoom(); 
+function resetZoom() {
+    zoomScale = 1.0; panOffsetX = 0; panOffsetY = 0;
+    document.getElementById('zoom-slider').value = 1.0;
+    applyZoom();
     redrawOverlay();
 }
-document.getElementById('zoom-slider').addEventListener('input', (e) => { 
-    zoomScale = parseFloat(e.target.value); 
-    applyZoom(); 
+document.getElementById('zoom-slider').addEventListener('input', (e) => {
+    zoomScale = parseFloat(e.target.value);
+    applyZoom();
     redrawOverlay();
 });
 
@@ -480,9 +267,9 @@ function getCanvasPoint(e) {
     const rect = interactionCanvas.getBoundingClientRect();
     const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
     const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
-    return { 
-        x: (clientX - rect.left) * (interactionCanvas.width / rect.width), 
-        y: (clientY - rect.top) * (interactionCanvas.height / rect.height) 
+    return {
+        x: (clientX - rect.left) * (interactionCanvas.width / rect.width),
+        y: (clientY - rect.top) * (interactionCanvas.height / rect.height)
     };
 }
 
@@ -525,23 +312,6 @@ stage.addEventListener('touchmove', (e) => {
 stage.addEventListener('touchend', (e) => {
     if (e.touches.length === 0) isTouchPanning = false;
 });
-
-function calcCurrentLeadKneeAngle(lm, box) {
-    if (!lm) return null;
-    const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
-    const hipL = lm[23], hipR = lm[24], kneeL = lm[25], kneeR = lm[26], ankL = lm[27], ankR = lm[28];
-    if (!hipL || !hipR || !kneeL || !kneeR || !ankL || !ankR) return null;
-
-    const cur = planeData.sagittal;
-    let useLeft = (cur.leadLegSide === 'left');
-    if (!cur.leadLegSide) {
-        useLeft = ankL.y > ankR.y || Math.abs(ankL.x - (hipL.x + hipR.x)/2) > Math.abs(ankR.x - (hipL.x + hipR.x)/2);
-    }
-    const leadHip = useLeft ? toPx(hipL) : toPx(hipR);
-    const leadKnee = useLeft ? toPx(kneeL) : toPx(kneeR);
-    const leadAnk = useLeft ? toPx(ankL) : toPx(ankR);
-    return calcAngle(leadHip, leadKnee, leadAnk);
-}
 
 interactionCanvas.addEventListener('pointerdown', (e) => {
     if (currentPlane !== 'sagittal') return;
@@ -590,7 +360,7 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
                 break;
             }
         }
-        
+
         if (hitIndex !== -1) {
             draggingScaleIdx = hitIndex;
             try { interactionCanvas.setPointerCapture(e.pointerId); } catch(err){}
@@ -672,10 +442,10 @@ function submitScaleModal() {
         const normP1 = { x: (cur.scalePoints[0].x - box.x) / box.w, y: (cur.scalePoints[0].y - box.y) / box.h };
         const normP2 = { x: (cur.scalePoints[1].x - box.x) / box.w, y: (cur.scalePoints[1].y - box.y) / box.h };
         const distPx = Math.hypot((normP2.x - normP1.x) * box.w, (normP2.y - normP1.y) * box.h);
-        
+
         cur.pxPerCm = distPx / realCm;
         updateScaleInfo();
-        closeScaleModal(); 
+        closeScaleModal();
         isScaleMode = false;
         updateButtons();
         mainResult.innerHTML = "<span style='color:#30d158;'>✅ 物差し設定完了</span>";
@@ -683,85 +453,6 @@ function submitScaleModal() {
         redrawOverlay();
     } else {
         alert("有効な数値を入力してください");
-    }
-}
-
-function redrawOverlay() {
-    intCtx.clearRect(0, 0, interactionCanvas.width, interactionCanvas.height);
-    if (currentPlane !== 'sagittal') return;
-
-    const box = getVideoRenderBox();
-    const cur = planeData.sagittal;
-
-    if (cur.scalePoints.length > 0) {
-        intCtx.save();
-        if (isScaleMode) {
-            intCtx.fillStyle = '#ff9500'; 
-            intCtx.strokeStyle = '#ff9500';
-            intCtx.lineWidth = Math.max(1, 3 / zoomScale); 
-            
-            cur.scalePoints.forEach((pt, i) => {
-                intCtx.beginPath(); 
-                intCtx.arc(pt.x, pt.y, 8 / zoomScale, 0, Math.PI * 2); 
-                intCtx.fill();
-                intCtx.fillStyle = '#fff';
-                intCtx.font = `bold ${Math.max(9, 12 / zoomScale)}px sans-serif`;
-                intCtx.fillText(`点${i + 1}`, pt.x + (10 / zoomScale), pt.y - (6 / zoomScale));
-                intCtx.fillStyle = '#ff9500';
-            });
-
-            if (cur.scalePoints.length === 2) {
-                intCtx.beginPath(); 
-                intCtx.moveTo(cur.scalePoints[0].x, cur.scalePoints[0].y); 
-                intCtx.lineTo(cur.scalePoints[1].x, cur.scalePoints[1].y); 
-                intCtx.stroke();
-            }
-        } else {
-            intCtx.strokeStyle = 'rgba(255, 149, 0, 0.3)';
-            intCtx.fillStyle = 'rgba(255, 149, 0, 0.4)';
-            intCtx.lineWidth = Math.max(1, 1.5 / zoomScale);
-            intCtx.setLineDash([4 / zoomScale, 4 / zoomScale]);
-            
-            cur.scalePoints.forEach(pt => {
-                intCtx.beginPath(); 
-                intCtx.arc(pt.x, pt.y, 4 / zoomScale, 0, Math.PI * 2); 
-                intCtx.fill();
-            });
-
-            if (cur.scalePoints.length === 2) {
-                intCtx.beginPath(); 
-                intCtx.moveTo(cur.scalePoints[0].x, cur.scalePoints[0].y); 
-                intCtx.lineTo(cur.scalePoints[1].x, cur.scalePoints[1].y); 
-                intCtx.stroke();
-            }
-        }
-        intCtx.restore();
-    }
-
-    if (cur.manualReleasePoint && cur.manualGroundYNorm !== null) {
-        const rx = box.x + cur.manualReleasePoint.x * box.w;
-        const ry = box.y + cur.manualReleasePoint.y * box.h;
-        const groundY = box.y + cur.manualGroundYNorm * box.h;
-
-        intCtx.save();
-        intCtx.strokeStyle = '#30d158'; 
-        intCtx.lineWidth = Math.max(1, 2 / zoomScale); 
-        intCtx.setLineDash([4 / zoomScale, 4 / zoomScale]);
-        intCtx.beginPath(); intCtx.moveTo(rx, ry); intCtx.lineTo(rx, groundY); intCtx.stroke(); intCtx.setLineDash([]);
-
-        intCtx.fillStyle = '#30d158'; 
-        intCtx.fillRect(rx - (25 / zoomScale), groundY - (3 / zoomScale), 50 / zoomScale, 6 / zoomScale);
-        
-        intCtx.strokeStyle = '#ff375f'; intCtx.fillStyle = '#ff375f'; 
-        intCtx.lineWidth = Math.max(1, 2.5 / zoomScale);
-        intCtx.beginPath(); intCtx.arc(rx, ry, 9 / zoomScale, 0, Math.PI * 2); intCtx.stroke();
-        intCtx.beginPath(); intCtx.arc(rx, ry, 3.5 / zoomScale, 0, Math.PI * 2); intCtx.fill();
-
-        const heightCm = cur.pxPerCm ? ((groundY - ry) / cur.pxPerCm).toFixed(1) : null;
-        intCtx.fillStyle = '#fff'; 
-        intCtx.font = `bold ${Math.max(9, 12 / zoomScale)}px sans-serif`;
-        intCtx.fillText(`⚾️ リリース高: ${heightCm ? heightCm + 'cm' : '物差し未設定'}`, rx + (12 / zoomScale), ry - (6 / zoomScale));
-        intCtx.restore();
     }
 }
 
@@ -775,234 +466,6 @@ function updatePhaseBtnStyles() {
         document.getElementById('btnPK').className = `phase-btn ${cur.phases.pk ? 'active-pk' : ''}`;
         document.getElementById('btnFC').className = `phase-btn ${cur.phases.fc ? 'active-fc' : ''}`;
         document.getElementById('btnBR').className = `phase-btn ${cur.phases.br ? 'active-br' : ''}`;
-    }
-}
-
-function calcAngle(p1, p2, p3) {
-    const v1 = { x: p1.x - p2.x, y: p1.y - p2.y };
-    const v2 = { x: p3.x - p2.x, y: p3.y - p2.y };
-    const dot = v1.x * v2.x + v1.y * v2.y;
-    const mag1 = Math.hypot(v1.x, v1.y), mag2 = Math.hypot(v2.x, v2.y);
-    if (mag1 === 0 || mag2 === 0) return 0;
-    return Math.acos(Math.max(-1, Math.min(1, dot / (mag1 * mag2)))) * (180 / Math.PI);
-}
-
-function onResults(results) {
-    if (!results.poseLandmarks) {
-        outCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-        return;
-    }
-    latestLandmarks = results.poseLandmarks;
-    drawPitchingBiomechanics(latestLandmarks);
-}
-
-function drawPitchingBiomechanics(lm) {
-    outCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
-    outCtx.save();
-    outCtx.lineWidth = Math.max(1, 3 / zoomScale);
-
-    const box = getVideoRenderBox();
-    const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
-
-    const shL = lm[11], shR = lm[12], hipL = lm[23], hipR = lm[24];
-
-    if (shL && shR && hipL && hipR) {
-        const pShL = toPx(shL), pShR = toPx(shR), pHipL = toPx(hipL), pHipR = toPx(hipR);
-
-        if (currentPlane === 'sagittal') {
-            const cur = planeData.sagittal;
-            const shAngle = Math.atan2((shR.z || 0) - (shL.z || 0), (shR.x - shL.x)) * (180 / Math.PI);
-            const hipAngle = Math.atan2((hipR.z || 0) - (hipL.z || 0), (hipR.x - hipL.x)) * (180 / Math.PI);
-            let xFactor = Math.abs(shAngle - hipAngle);
-            if (xFactor > 90) xFactor = 180 - xFactor;
-            if (xFactor > cur.maxRecordedXFactor && !video.paused) {
-                cur.maxRecordedXFactor = xFactor;
-                const elem = document.getElementById('res_max_xfactor');
-                if (elem) elem.innerText = `${cur.maxRecordedXFactor.toFixed(1)}°`;
-            }
-        }
-
-        outCtx.strokeStyle = '#00ffcc'; outCtx.beginPath(); outCtx.moveTo(pShL.x, pShL.y); outCtx.lineTo(pShR.x, pShR.y); outCtx.stroke();
-        outCtx.strokeStyle = '#ffd60a'; outCtx.beginPath(); outCtx.moveTo(pHipL.x, pHipL.y); outCtx.lineTo(pHipR.x, pHipR.y); outCtx.stroke();
-    }
-
-    const drawL = (p1, p2, color) => {
-        if (lm[p1] && lm[p2] && (lm[p1].visibility === undefined || lm[p1].visibility > 0.2) && (lm[p2].visibility === undefined || lm[p2].visibility > 0.2)) {
-            const pt1 = toPx(lm[p1]), pt2 = toPx(lm[p2]);
-            outCtx.strokeStyle = color; outCtx.beginPath(); outCtx.moveTo(pt1.x, pt1.y); outCtx.lineTo(pt2.x, pt2.y); outCtx.stroke();
-        }
-    };
-    drawL(12, 14, '#ff9500'); drawL(14, 16, '#ff9500');
-    drawL(11, 13, '#00ffcc'); drawL(13, 15, '#00ffcc');
-    drawL(24, 26, '#ffd60a'); drawL(26, 28, '#ffd60a');
-    drawL(23, 25, '#ffd60a'); drawL(25, 27, '#ffd60a');
-
-    outCtx.restore();
-}
-
-function markPhase(key) {
-    const cur = planeData[currentPlane];
-    const names = {
-        fc: currentPlane === 'sagittal' ? "① 接地(FC)" : "② 接地時(FC)",
-        ff: "② 完全接地(FF)",
-        mer: "③ 最大外旋(MER)",
-        pk: "① 足上げ頂点(PK)",
-        br: "③ リリース時(BR)"
-    };
-
-    if (cur.phases[key]) {
-        cur.phases[key] = null;
-        if (currentPlane === 'sagittal') {
-            if (key === 'fc') cur.leadLegSide = null;
-        } else {
-            if (key === 'fc') {
-                cur.toeOutAngle = null;
-                cur.kneeValgusAngle = null;
-                cur.pelvisObliquity = null;
-            } else if (key === 'br') {
-                cur.trunkTiltFrontal = null;
-                cur.shoulderElbowAngle = null;
-            }
-        }
-        updatePhaseBtnStyles();
-        recalcPitchMetrics();
-        redrawOverlay();
-        mainResult.innerHTML = `<span style='color:#ff9500;'>${names[key]} を解除しました</span>`;
-        return;
-    }
-
-    if (!video.videoWidth || !latestLandmarks) return;
-    const box = getVideoRenderBox();
-    const lm = latestLandmarks;
-    const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
-
-    cur.phases[key] = { time: video.currentTime };
-
-    if (currentPlane === 'sagittal') {
-        if (key === 'fc') {
-            const ankL = lm[27], ankR = lm[28], heelL = lm[29], heelR = lm[30];
-            const p1 = (ankL && ankL.visibility > 0.3) ? ankL : heelL;
-            const p2 = (ankR && ankR.visibility > 0.3) ? ankR : heelR;
-            if (p1 && p2) {
-                const px1 = toPx(p1), px2 = toPx(p2);
-                cur.phases.fc.stridePx = Math.hypot(px1.x - px2.x, px1.y - px2.y);
-                cur.phases.fc.groundYNorm = Math.max(p1.y, p2.y);
-                if (cur.manualGroundYNorm === null) cur.manualGroundYNorm = cur.phases.fc.groundYNorm;
-            }
-            const hipL = lm[23], hipR = lm[24];
-            if (hipL && hipR && ankL && ankR) {
-                cur.leadLegSide = (ankL.y > ankR.y || Math.abs(ankL.x - (hipL.x + hipR.x)/2) > Math.abs(ankR.x - (hipL.x + hipR.x)/2)) ? 'left' : 'right';
-            }
-        }
-        if (key === 'ff') cur.phases.ff.kneeAngle = calcCurrentLeadKneeAngle(lm, box);
-        if (key === 'mer') {
-            const shR = lm[12], elR = lm[14], wrR = lm[16];
-            if (shR && elR && wrR) cur.phases.mer.elbowAngle = calcAngle(toPx(shR), toPx(elR), toPx(wrR));
-        }
-    } else {
-        if (key === 'pk') {
-            const hipR = lm[24], ankR = lm[28];
-            if (hipR && ankR) {
-                const tilt = Math.atan2(hipR.x - ankR.x, -(hipR.y - ankR.y)) * (180 / Math.PI);
-                cur.phases.pk.tilt = Math.abs(tilt);
-            }
-        }
-        if (key === 'fc') {
-            const ankL = lm[27], ankR = lm[28], hipL = lm[23], hipR = lm[24], kneeL = lm[25], kneeR = lm[26];
-            const footL = lm[31], footR = lm[32];
-            
-            const isLeftLead = (ankL && ankR) ? (ankL.y > ankR.y) : true;
-            const leadHip = isLeftLead ? hipL : hipR;
-            const leadKnee = isLeftLead ? kneeL : kneeR;
-            const leadAnk = isLeftLead ? ankL : ankR;
-            const leadFoot = isLeftLead ? footL : footR;
-
-            if (leadHip && leadKnee && leadAnk) {
-                cur.kneeValgusAngle = calcAngle(toPx(leadHip), toPx(leadKnee), toPx(leadAnk));
-            }
-
-            if (leadAnk && leadFoot) {
-                const pAnk = toPx(leadAnk), pFoot = toPx(leadFoot);
-                const toeAngle = Math.atan2(pFoot.x - pAnk.x, pFoot.y - pAnk.y) * (180 / Math.PI);
-                cur.toeOutAngle = Math.abs(toeAngle);
-            }
-
-            if (hipL && hipR) {
-                const p1 = toPx(hipL), p2 = toPx(hipR);
-                const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * (180 / Math.PI);
-                cur.pelvisObliquity = Math.abs(angle);
-            }
-        }
-        if (key === 'br') {
-            const shL = lm[11], shR = lm[12], elR = lm[14], hipL = lm[23], hipR = lm[24];
-            if (shL && shR && hipL && hipR) {
-                const midSh = { x: (shL.x + shR.x) / 2, y: (shL.y + shR.y) / 2 };
-                const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
-                const spineAngle = Math.atan2(midSh.x - midHip.x, -(midSh.y - midHip.y)) * (180 / Math.PI);
-                cur.trunkTiltFrontal = Math.abs(spineAngle);
-            }
-            if (shL && shR && elR) {
-                const shVec = { x: shR.x - shL.x, y: shR.y - shL.y };
-                const armVec = { x: elR.x - shR.x, y: elR.y - shR.y };
-                const dot = shVec.x * armVec.x + shVec.y * armVec.y;
-                const mag = Math.hypot(shVec.x, shVec.y) * Math.hypot(armVec.x, armVec.y);
-                if (mag > 0) cur.shoulderElbowAngle = Math.acos(Math.max(-1, Math.min(1, dot / mag))) * (180 / Math.PI);
-            }
-        }
-    }
-
-    updatePhaseBtnStyles();
-    recalcPitchMetrics();
-    redrawOverlay();
-    mainResult.innerHTML = `<span style='color:#00ffcc;'>${names[key]} を記録しました</span>`;
-}
-
-function recalcPitchMetrics() {
-    const box = getVideoRenderBox();
-    
-    if (currentPlane === 'sagittal') {
-        const cur = planeData.sagittal;
-        const resStride = document.getElementById('res_stride');
-        if (resStride) resStride.innerText = (cur.phases.fc && cur.phases.fc.stridePx && cur.pxPerCm) ? `${(cur.phases.fc.stridePx / cur.pxPerCm).toFixed(1)} cm` : "--- cm";
-
-        const resMer = document.getElementById('res_mer_elbow');
-        if (resMer) resMer.innerText = (cur.phases.mer && cur.phases.mer.elbowAngle) ? `${cur.phases.mer.elbowAngle.toFixed(1)}°` : "---°";
-
-        const resFFKnee = document.getElementById('res_ff_knee');
-        if (resFFKnee) resFFKnee.innerText = (cur.phases.ff && cur.phases.ff.kneeAngle) ? `${cur.phases.ff.kneeAngle.toFixed(1)}°` : "---°";
-
-        const resBRKnee = document.getElementById('res_br_knee');
-        if (resBRKnee) resBRKnee.innerText = (cur.brKneeAngle !== null) ? `${cur.brKneeAngle.toFixed(1)}°` : "---°";
-
-        const resRelH = document.getElementById('res_release_h');
-        if (resRelH) {
-            if (cur.manualReleasePoint && cur.manualGroundYNorm !== null && cur.pxPerCm) {
-                const wristY = box.y + cur.manualReleasePoint.y * box.h;
-                const groundY = box.y + cur.manualGroundYNorm * box.h;
-                resRelH.innerText = `${Math.max(0, (groundY - wristY) / cur.pxPerCm).toFixed(1)} cm`;
-            } else {
-                resRelH.innerText = "--- cm";
-            }
-        }
-    } else {
-        const cur = planeData.frontal;
-        const resToe = document.getElementById('res_toe_out');
-        if (resToe) resToe.innerText = (cur.toeOutAngle !== null) ? `${cur.toeOutAngle.toFixed(1)}°` : "---°";
-
-        const resValgus = document.getElementById('res_knee_valgus');
-        if (resValgus) resValgus.innerText = (cur.kneeValgusAngle !== null) ? `${cur.kneeValgusAngle.toFixed(1)}°` : "---°";
-
-        const resPelvis = document.getElementById('res_pelvis_tilt');
-        if (resPelvis) resPelvis.innerText = (cur.pelvisObliquity !== null) ? `${cur.pelvisObliquity.toFixed(1)}°` : "---°";
-
-        const resTrunk = document.getElementById('res_trunk_lateral');
-        if (resTrunk) resTrunk.innerText = (cur.trunkTiltFrontal !== null) ? `${cur.trunkTiltFrontal.toFixed(1)}°` : "---°";
-
-        const resShEl = document.getElementById('res_shoulder_elbow');
-        if (resShEl) resShEl.innerText = (cur.shoulderElbowAngle !== null) ? `${cur.shoulderElbowAngle.toFixed(1)}°` : "---°";
-
-        const resPK = document.getElementById('res_pk_tilt');
-        if (resPK) resPK.innerText = (cur.phases.pk && cur.phases.pk.tilt !== undefined) ? `${cur.phases.pk.tilt.toFixed(1)}°` : "---°";
     }
 }
 
@@ -1044,7 +507,7 @@ function generateComprehensiveReportCard() {
 
     const repCanvas = document.createElement('canvas');
     const repCtx = repCanvas.getContext('2d');
-    
+
     repCanvas.width = 750;
     repCanvas.height = 960;
 
@@ -1123,7 +586,7 @@ function generateComprehensiveReportCard() {
     const xFactor = s.maxRecordedXFactor > 0 ? `${s.maxRecordedXFactor.toFixed(1)}°` : "0.0°";
     const ffKnee = (s.phases.ff && s.phases.ff.kneeAngle) ? `${s.phases.ff.kneeAngle.toFixed(1)}°` : "---°";
     const brKnee = s.brKneeAngle !== null ? `${s.brKneeAngle.toFixed(1)}°` : "---°";
-    
+
     let relH = "--- cm";
     if (s.manualReleasePoint && s.manualGroundYNorm !== null && s.pxPerCm) {
         const wristY = box.y + s.manualReleasePoint.y * box.h;
@@ -1167,65 +630,11 @@ function generateComprehensiveReportCard() {
     document.getElementById('snapshot-modal-overlay').style.display = 'flex';
 }
 
-async function renderCurrentFrame() {
-    if (isProcessing || video.readyState < 2) return;
-    isProcessing = true;
-    try {
-        await pose.send({ image: video });
-    } catch(e) {} finally { isProcessing = false; }
-}
-
-async function loop() {
-    if (!video.paused && !video.ended) { 
-        await renderCurrentFrame(); 
-        updateSeekBar(); 
-    }
-    
-    // 【録画時の完全同期描画】動画本来のファイルサイズ（縦横比）を100%基準にする
-    if (isRecording && video.videoWidth > 0 && recCanvas.width > 0) {
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        const bannerH = recCanvas.height - recCanvas.width * (vh / vw);
-
-        recCtx.fillStyle = '#000';
-        recCtx.fillRect(0, 0, recCanvas.width, recCanvas.height);
-
-        // 1. 動画本来のアスペクト比でキャンバス上部に描画（歪みゼロ）
-        recCtx.drawImage(video, 0, 0, recCanvas.width, recCanvas.height - bannerH);
-
-        // 2. 骨格キャンバスから動画領域（box）だけを正確に切り抜き、動画に完全フィットさせて描画
-        const box = getVideoRenderBox();
-        if (box.w > 0 && box.h > 0) {
-            recCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, recCanvas.width, recCanvas.height - bannerH);
-            recCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, 0, 0, recCanvas.width, recCanvas.height - bannerH);
-        }
-
-        // 3. 情報バナー領域
-        const textStartY = recCanvas.height - bannerH;
-        recCtx.fillStyle = '#1c1c1e';
-        recCtx.fillRect(0, textStartY, recCanvas.width, bannerH);
-
-        const fontSize = Math.max(14, Math.floor(recCanvas.width * 0.025));
-        recCtx.font = `bold ${fontSize}px sans-serif`;
-
-        recCtx.fillStyle = '#00ffcc';
-        recCtx.fillText(mainResult.innerText, Math.floor(recCanvas.width * 0.03), textStartY + Math.floor(bannerH * 0.42));
-
-        recCtx.fillStyle = '#ff9500';
-        if (currentPlane === 'sagittal') {
-            recCtx.fillText(`歩幅: ${document.getElementById('res_stride').innerText} ｜ MER肘角: ${document.getElementById('res_mer_elbow').innerText} ｜ リリース高: ${document.getElementById('res_release_h').innerText}`, Math.floor(recCanvas.width * 0.03), textStartY + Math.floor(bannerH * 0.82));
-        } else {
-            recCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 膝内外反: ${document.getElementById('res_knee_valgus').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, Math.floor(recCanvas.width * 0.03), textStartY + Math.floor(bannerH * 0.82));
-        }
-    }
-    animationFrameId = requestAnimationFrame(loop);
-}
-
 function updateSeekBar() { if (video.duration) seekSlider.value = (video.currentTime / video.duration) * 100; }
 seekSlider.addEventListener('input', () => { if (video.duration) { video.pause(); btnPlayPause.innerText = '▶ 再生'; video.currentTime = (seekSlider.value / 100) * video.duration; } });
 
-video.addEventListener('seeked', () => { 
-    if (video.paused) { updateSeekBar(); renderCurrentFrame(); } 
+video.addEventListener('seeked', () => {
+    if (video.paused) { updateSeekBar(); renderCurrentFrame(); }
 });
 
 video.addEventListener('ended', () => {
@@ -1236,29 +645,29 @@ video.addEventListener('ended', () => {
 
 btnPlayPause.addEventListener('click', async () => {
     if (!video.src || video.readyState < 2) return;
-    if (video.paused) { 
-        try { await video.play(); btnPlayPause.innerText = '⏸ 停止'; btnPlayPause.style.background = '#ff9500'; } catch (e) {} 
-    } else { 
-        video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759'; 
+    if (video.paused) {
+        try { await video.play(); btnPlayPause.innerText = '⏸ 停止'; btnPlayPause.style.background = '#ff9500'; } catch (e) {}
+    } else {
+        video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759';
     }
 });
 
-btnStepForward.addEventListener('click', () => { 
+btnStepForward.addEventListener('click', () => {
     if (!video.src) return;
-    video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759'; 
-    video.currentTime = Math.min(video.duration, video.currentTime + STEP_SEC); 
+    video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759';
+    video.currentTime = Math.min(video.duration, video.currentTime + STEP_SEC);
 });
-btnStepBack.addEventListener('click', () => { 
+btnStepBack.addEventListener('click', () => {
     if (!video.src) return;
-    video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759'; 
-    video.currentTime = Math.max(0, video.currentTime - STEP_SEC); 
+    video.pause(); btnPlayPause.innerText = '▶ 再生'; btnPlayPause.style.background = '#34c759';
+    video.currentTime = Math.max(0, video.currentTime - STEP_SEC);
 });
 
 function captureSnapshot() {
     if (!video.videoWidth) { alert("動画が読み込まれていません"); return; }
     const box = getVideoRenderBox();
     const snapCanvas = document.createElement('canvas'), snapCtx = snapCanvas.getContext('2d');
-    
+
     // スナップショットも動画本来の比率を100%継承する
     const vw = video.videoWidth;
     const vh = video.videoHeight;
@@ -1283,36 +692,36 @@ function captureSnapshot() {
     snapCtx.fillStyle = '#000';
     snapCtx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
     snapCtx.drawImage(video, 0, 0, targetW, targetH);
-    
+
     if (box.w > 0 && box.h > 0) {
         snapCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, targetW, targetH);
         snapCtx.drawImage(interactionCanvas, box.x, box.y, box.w, box.h, 0, 0, targetW, targetH);
     }
-    
+
     snapCtx.fillStyle = '#1c1c1e'; snapCtx.fillRect(0, targetH, targetW, bannerH);
-    
+
     const fontSize1 = Math.max(14, Math.round(targetH * 0.024));
     const fontSize2 = Math.max(12, Math.round(targetH * 0.021));
 
     snapCtx.fillStyle = '#00ffcc'; snapCtx.font = `bold ${fontSize1}px sans-serif`;
     snapCtx.fillText(mainResult.innerText, Math.round(targetW * 0.03), targetH + Math.round(bannerH * 0.42));
-    
+
     snapCtx.fillStyle = '#ff9500'; snapCtx.font = `bold ${fontSize2}px sans-serif`;
     if (currentPlane === 'sagittal') {
         snapCtx.fillText(`リリース高: ${document.getElementById('res_release_h').innerText}`, Math.round(targetW * 0.03), targetH + Math.round(bannerH * 0.82));
     } else {
         snapCtx.fillText(`つま先角: ${document.getElementById('res_toe_out').innerText} ｜ 肘高: ${document.getElementById('res_shoulder_elbow').innerText}`, Math.round(targetW * 0.03), targetH + Math.round(bannerH * 0.82));
     }
-    
+
     document.getElementById('snapshot-modal-title').innerText = '📸 キャプチャ';
-    document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png'); 
+    document.getElementById('snapshot-img').src = snapCanvas.toDataURL('image/png');
     document.getElementById('snapshot-modal-overlay').style.display = 'flex';
 }
 
 function toggleRecording() {
     if (!video.videoWidth) { alert("動画が読み込まれていません"); return; }
     const btn = document.getElementById('btnRecord');
-    
+
     if (!isRecording) {
         recordedChunks = [];
 
@@ -1344,7 +753,7 @@ function toggleRecording() {
         recCtx.fillStyle = '#000';
         recCtx.fillRect(0, 0, recCanvas.width, recCanvas.height);
         recCtx.drawImage(video, 0, 0, targetW, targetH);
-        
+
         const box = getVideoRenderBox();
         if (box.w > 0 && box.h > 0) {
             recCtx.drawImage(outputCanvas, box.x, box.y, box.w, box.h, 0, 0, targetW, targetH);
@@ -1420,24 +829,21 @@ document.getElementById('inputFile').addEventListener('change', (e) => {
     const file = e.target.files[0]; if (!file) return;
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     video.pause(); resetZoom();
-    
+
     const objUrl = URL.createObjectURL(file);
     planeData[currentPlane].videoSrc = objUrl;
     planeData[currentPlane].currentTime = 0.001;
 
     video.src = objUrl;
     video.load();
-    const onCanPlay = () => { 
-        video.removeEventListener('canplay', onCanPlay); 
-        fitCanvases(); btnPlayPause.innerText = '▶ 再生'; 
-        video.currentTime = 0.001; loop(); 
+    const onCanPlay = () => {
+        video.removeEventListener('canplay', onCanPlay);
+        fitCanvases(); btnPlayPause.innerText = '▶ 再生';
+        video.currentTime = 0.001; loop();
     };
-    video.addEventListener('canplay', onCanPlay); 
+    video.addEventListener('canplay', onCanPlay);
     e.target.value = '';
     buildUI();
 });
 
 buildUI();
-</script>
-</body>
-</html>

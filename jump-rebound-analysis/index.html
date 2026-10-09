@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="動作分析Pro">
+<title>連続ジャンプ・リバウンド解析 - 動作分析Pro</title>
+
+<link rel="stylesheet" href="css/style.css">
+
+<!-- MediaPipe Pose -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+<div id="header">
+    <div class="header-top-row">
+        <div class="btn-group-header">
+            <a class="hdr-btn secondary" href="../index.html">← 総合ポータルへ</a>
+            <button class="hdr-btn" onclick="document.getElementById('inputFile').click()">動画選択</button>
+            <input type="file" id="inputFile" accept="video/*" style="display:none;">
+            <button class="hdr-btn fps-badge" id="btnFps" onclick="toggleFPS()">60fps</button>
+            <button class="hdr-btn secondary" id="btnToggleRoi" onclick="toggleRoiMode()">🔲 対象者指定</button>
+            <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 静止画</button>
+            <button class="hdr-btn" id="btnRecord" style="background:#ff3b30;" onclick="toggleRecording()">🎥 録画開始</button>
+        </div>
+        <span id="scale-info-text">物差し: 未設定</span>
+    </div>
+    <div id="result-box">
+        <div class="result-text-area">
+            <div id="main-result">連続ジャンプ・リバウンド解析</div>
+            <div id="sub-result">1回目と2回目の「離地」「頂点」「着地」をコマ送りで記録してください</div>
+        </div>
+    </div>
+</div>
+
+<div id="stage">
+    <div class="video-pane" id="viewportArea">
+        <div class="zoom-target" id="zoomTarget">
+            <video id="videoElement" playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
+            <canvas id="outputCanvas"></canvas>
+            <canvas id="interactionCanvas"></canvas>
+        </div>
+    </div>
+</div>
+
+<div id="controls">
+    <div class="seek-row">
+        <span class="seek-label">①</span>
+        <input type="range" id="seekSlider" min="0" max="100" value="0" step="0.05">
+    </div>
+
+    <!-- 1回目＆2回目 記録ボタン群 -->
+    <div class="jump-actions-container">
+        <div class="jump-actions-row">
+            <span class="row-label" style="color:#00ffcc;">1回目</span>
+            <button class="jump-btn" id="btnJ1Takeoff" onclick="markJumpPhase('j1_takeoff')">🛫 離地</button>
+            <button class="jump-btn" id="btnJ1Peak" onclick="markJumpPhase('j1_peak')">⛰️ 頂点</button>
+            <button class="jump-btn" id="btnJ1Landing" onclick="markJumpPhase('j1_landing')">🛬 着地(接地)</button>
+        </div>
+        <div class="jump-actions-row">
+            <span class="row-label" style="color:#ffd60a;">2回目</span>
+            <button class="jump-btn" id="btnJ2Takeoff" onclick="markJumpPhase('j2_takeoff')">🛫 離地(再跳躍)</button>
+            <button class="jump-btn" id="btnJ2Peak" onclick="markJumpPhase('j2_peak')">⛰️ 頂点</button>
+            <button class="jump-btn" id="btnJ2Landing" onclick="markJumpPhase('j2_landing')">🛬 着地</button>
+        </div>
+    </div>
+
+    <div class="mode-grid">
+        <button class="ctrl-btn" id="btnModeScale" onclick="toggleScaleMode()">📏 物差し</button>
+        <button class="ctrl-btn" id="btnModeFloor" onclick="toggleFloorMode()">🟦 地面</button>
+        <button class="ctrl-btn" id="btnModeZoom" onclick="toggleZoomMode()">🔍 ズーム</button>
+        <button class="ctrl-btn" onclick="resetZoom()">1x 表示</button>
+    </div>
+
+    <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
+        <span style="font-size:11px; font-weight:bold; color:#007aff;">倍率</span>
+        <input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1">
+    </div>
+
+    <!-- 3列比較ダッシュボード -->
+    <div class="dashboard-grid">
+        <div class="side-box j1">
+            <div class="side-title" style="color:#00ffcc;">1回目ジャンプ</div>
+            <div class="metric-row"><span>高さ:</span><span id="res_j1_h" class="metric-val highlight-val">--- cm</span></div>
+            <div class="metric-row"><span>滞空:</span><span id="res_j1_t" class="metric-val">--- s</span></div>
+        </div>
+        <div class="side-box j2">
+            <div class="side-title" style="color:#ffd60a;">2回目ジャンプ</div>
+            <div class="metric-row"><span>高さ:</span><span id="res_j2_h" class="metric-val" style="color:#ffd60a;">--- cm</span></div>
+            <div class="metric-row"><span>滞空:</span><span id="res_j2_t" class="metric-val">--- s</span></div>
+        </div>
+        <div class="side-box rj">
+            <div class="side-title" style="color:#ff375f;">🔄 バネ能力(RJ)</div>
+            <div class="metric-row"><span>接地時間:</span><span id="res_contact_t" class="metric-val" style="color:#ff9500;">--- s</span></div>
+            <div class="metric-row"><span>RSI(バネ):</span><span id="res_rsi" class="metric-val" style="color:#ff375f;">---</span></div>
+        </div>
+    </div>
+
+    <div class="playback-row">
+        <button class="ctrl-btn" id="btnStepBack">◀ -1</button>
+        <button class="ctrl-btn" id="btnPlayPause">▶ 再生</button>
+        <button class="ctrl-btn" id="btnStepForward">+1 ▶</button>
+        <button class="ctrl-btn" id="btnSpeed" onclick="togglePlaybackRate()">1.0x</button>
+        <button class="ctrl-btn" style="background:#555;" onclick="fitCanvases()">🔄 更新</button>
+    </div>
+</div>
+
+<!-- Scale Modal -->
+<div id="scale-modal-overlay" class="modal-overlay">
+    <div class="modal-card">
+        <h3>物差しの長さ設定</h3>
+        <p>指定した2点間の実際の長さを入力</p>
+        <div class="modal-input-row">
+            <input type="number" id="scale-input-value" inputmode="decimal" placeholder="100" value="100">
+            <span style="font-weight:bold; font-size:15px;">cm</span>
+        </div>
+        <div class="modal-btn-row">
+            <button style="background:#444; color:#fff;" onclick="closeScaleModal(true)">キャンセル</button>
+            <button style="background:#ff9500; color:#000;" onclick="submitScaleModal()">確定</button>
+        </div>
+    </div>
+</div>
+
+<!-- Snapshot Modal -->
+<div id="snapshot-modal-overlay" class="modal-overlay">
+    <div class="modal-card" style="max-width:360px;">
+        <h3 style="color:#5856d6;">📸 連続ジャンプ解析キャプチャ</h3>
+        <p style="font-size:11px; color:#aaa;">画像を長押しして「写真に追加」で保存できます</p>
+        <img id="snapshot-img" src="" alt="Screenshot">
+        <div class="modal-btn-row">
+            <button style="background:#444; color:#fff;" onclick="closeSnapshotModal()">閉じる</button>
+        </div>
+    </div>
+</div>
+
+<!-- file:// 対応: ES Modules ではなく通常の script タグ。読み込み順を守ること -->
+<script src="js/math.js"></script>
+<script src="js/render.js"></script>
+<script src="js/app.js"></script>
+<script src="js/mediapipe.js"></script>
+</body>
+</html>

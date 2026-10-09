@@ -1,236 +1,85 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<link rel="apple-touch-icon" href="icon.png.JPG">
-<link rel="icon" type="image/jpeg" href="icon.png.JPG">
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="動作分析Pro">
-<title>動作分析 Pro - ポータル</title>
-
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
-  
-  html {
-    width: 100%;
-    height: 100%;
-    background: #000;
-  }
-
-  body { 
-    width: 100%; 
-    min-height: 100dvh; 
-    background: #000; 
-    color: #fff; 
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-    display: flex; 
-    flex-direction: column; 
-    justify-content: space-between;
-    padding: calc(14px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .header-area {
-    text-align: center;
-    margin-top: 2px;
-    flex-shrink: 0;
-  }
-  .app-badge {
-    display: inline-block;
-    background: rgba(0, 255, 204, 0.15);
-    color: #00ffcc;
-    border: 1px solid #00ffcc;
-    font-size: 11px;
-    font-weight: bold;
-    padding: 3px 12px;
-    border-radius: 20px;
-    margin-bottom: 4px;
-  }
-  h1 {
-    font-size: 22px;
-    font-weight: 800;
-    letter-spacing: 0.5px;
-    background: linear-gradient(135deg, #fff 40%, #aaa 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  .subtitle {
-    font-size: 11px;
-    color: #888;
-    margin-top: 2px;
-  }
-
-  .menu-grid {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-evenly;
-    gap: 10px;
-    max-width: 480px;
-    width: 100%;
-    margin: 12px auto;
-    flex: 1;
-  }
-
-  .menu-card {
-    background: #1c1c1e;
-    border: 1px solid #333;
-    border-radius: 12px;
-    padding: 12px 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    text-decoration: none;
-    color: #fff;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
-    transition: transform 0.15s ease, background 0.15s ease;
-    flex-shrink: 0;
-  }
-  .menu-card:active {
-    transform: scale(0.97);
-    background: #262629;
-  }
-  .menu-card.card-basic {
-    border-left: 5px solid #007aff;
-  }
-  .menu-card.card-observation {
-    border-left: 5px solid #00ffcc;
-  }
-  .menu-card.card-bio {
-    border-left: 5px solid #ffd60a;
-  }
-  .menu-card.card-jump {
-    border-left: 5px solid #af52de;
-  }
-  .menu-card.card-pitch {
-    border-left: 5px solid #ff375f;
-  }
-
-  .card-content {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .card-tag {
-    font-size: 9.5px;
-    font-weight: bold;
-    letter-spacing: 0.5px;
-  }
-  .tag-basic { color: #007aff; }
-  .tag-observation { color: #00ffcc; }
-  .tag-bio { color: #ffd60a; }
-  .tag-jump { color: #af52de; }
-  .tag-pitch { color: #ff375f; }
-
-  .card-title {
-    font-size: 14.5px;
-    font-weight: bold;
-  }
-  .card-desc {
-    font-size: 10.5px;
-    color: #999;
-    line-height: 1.3;
-  }
-
-  .card-arrow {
-    font-size: 15px;
-    color: #555;
-    padding-left: 6px;
-  }
-
-  .footer-area {
-    text-align: center;
-    font-size: 9.5px;
-    color: #555;
-    margin-top: 8px;
-    margin-bottom: 2px;
-    flex-shrink: 0;
-  }
-
-  @media (orientation: landscape) and (max-height: 500px) {
-    body {
-      justify-content: flex-start;
-      padding-top: calc(8px + env(safe-area-inset-top));
-      padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="動作分析スイート">
+  <link rel="apple-touch-icon" href="icon.png.JPG">
+  <link rel="icon" type="image/jpeg" href="icon.png.JPG">
+  <title>動作分析スイート · 総合ポータル</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: {
+              950: '#070b14',
+              900: '#0b1220',
+              800: '#121a2b',
+              700: '#1a2740'
+            }
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif']
+          }
+        }
+      }
     }
-    .header-area {
-      margin-bottom: 6px;
-    }
-    .menu-grid {
-      margin: 6px auto;
-      gap: 8px;
-    }
-    .menu-card {
-      padding: 10px 12px;
-    }
-  }
-</style>
+  </script>
 </head>
-<body>
+<body class="min-h-dvh bg-navy-950 text-slate-100 font-sans antialiased">
+  <div class="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(14,116,144,0.18),_transparent_55%),radial-gradient(ellipse_at_bottom_right,_rgba(30,64,175,0.16),_transparent_45%)]"></div>
 
-  <div class="header-area">
-    <div class="app-badge">AI MOTION ANALYSIS</div>
-    <h1>動作分析 Pro</h1>
-    <p class="subtitle">解析対象の動作モジュールを選択してください</p>
+  <div class="relative mx-auto flex min-h-dvh max-w-6xl flex-col px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+    <header class="mb-8 text-center sm:mb-10">
+      <p class="mb-3 inline-flex items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 px-3 py-1 text-[11px] font-bold tracking-wide text-cyan-300">MED / SPORTS TECH</p>
+      <h1 class="text-2xl font-extrabold tracking-tight text-white sm:text-3xl lg:text-4xl">動作分析スイート</h1>
+      <p class="mx-auto mt-2 max-w-xl text-sm text-slate-400 sm:text-base">臨床・競技現場向けバイオメカニクス解析ハブ。用途に合わせてモジュールを選んでください。</p>
+    </header>
+
+    <main class="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">
+      <a href="./gait-3d-analysis/index.html" class="group flex flex-col rounded-2xl border border-slate-700/80 bg-navy-800/80 p-5 shadow-lg shadow-black/30 ring-1 ring-white/5 transition hover:-translate-y-0.5 hover:border-sky-400/50 hover:bg-navy-700/90 hover:ring-sky-400/20">
+        <span class="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/15 text-lg text-sky-300">①</span>
+        <h2 class="text-base font-bold text-white sm:text-lg">動作観察 &amp; 3Dバイオメカニクス解析</h2>
+        <p class="mt-2 flex-1 text-sm leading-relaxed text-slate-400">2画面比較（術前術後・正常比較）や動的BOS・体幹捻れの可視化</p>
+        <span class="mt-4 text-xs font-semibold text-sky-300 group-hover:underline">開く →</span>
+      </a>
+
+      <a href="./motion-pro/index.html" class="group flex flex-col rounded-2xl border border-slate-700/80 bg-navy-800/80 p-5 shadow-lg shadow-black/30 ring-1 ring-white/5 transition hover:-translate-y-0.5 hover:border-cyan-400/50 hover:bg-navy-700/90 hover:ring-cyan-400/20">
+        <span class="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/15 text-lg text-cyan-300">②</span>
+        <h2 class="text-base font-bold text-white sm:text-lg">動作分析 Pro（基幹）</h2>
+        <p class="mt-2 flex-1 text-sm leading-relaxed text-slate-400">全身の汎用計測・角度算出・レポート作成ダッシュボード</p>
+        <span class="mt-4 text-xs font-semibold text-cyan-300 group-hover:underline">開く →</span>
+      </a>
+
+      <a href="./lower-limb-analysis/index.html" class="group flex flex-col rounded-2xl border border-slate-700/80 bg-navy-800/80 p-5 shadow-lg shadow-black/30 ring-1 ring-white/5 transition hover:-translate-y-0.5 hover:border-indigo-400/50 hover:bg-navy-700/90 hover:ring-indigo-400/20">
+        <span class="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/15 text-lg text-indigo-300">③</span>
+        <h2 class="text-base font-bold text-white sm:text-lg">下肢バイオメカニクス分析</h2>
+        <p class="mt-2 flex-1 text-sm leading-relaxed text-slate-400">歩行・スクワット・立ち上がり時の下肢関節（股・膝・足）特化分析</p>
+        <span class="mt-4 text-xs font-semibold text-indigo-300 group-hover:underline">開く →</span>
+      </a>
+
+      <a href="./jump-rebound-analysis/index.html" class="group flex flex-col rounded-2xl border border-slate-700/80 bg-navy-800/80 p-5 shadow-lg shadow-black/30 ring-1 ring-white/5 transition hover:-translate-y-0.5 hover:border-amber-400/50 hover:bg-navy-700/90 hover:ring-amber-400/20">
+        <span class="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-lg text-amber-300">④</span>
+        <h2 class="text-base font-bold text-white sm:text-lg">連続ジャンプ・リバウンド解析</h2>
+        <p class="mt-2 flex-1 text-sm leading-relaxed text-slate-400">リハビリ復帰判定・プライオメトリクス・接地時間・滞空時間の計測</p>
+        <span class="mt-4 text-xs font-semibold text-amber-300 group-hover:underline">開く →</span>
+      </a>
+
+      <a href="./pitching-analysis/index.html" class="group flex flex-col rounded-2xl border border-slate-700/80 bg-navy-800/80 p-5 shadow-lg shadow-black/30 ring-1 ring-white/5 transition hover:-translate-y-0.5 hover:border-rose-400/50 hover:bg-navy-700/90 hover:ring-rose-400/20 sm:col-span-2 lg:col-span-1">
+        <span class="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/15 text-lg text-rose-300">⑤</span>
+        <h2 class="text-base font-bold text-white sm:text-lg">投球バイオメカニクス解析</h2>
+        <p class="mt-2 flex-1 text-sm leading-relaxed text-slate-400">ピッチング動作・肩甲帯・肘関節負担・フォーム連鎖の分析</p>
+        <span class="mt-4 text-xs font-semibold text-rose-300 group-hover:underline">開く →</span>
+      </a>
+    </main>
+
+    <footer class="mt-10 pb-[env(safe-area-inset-bottom)] text-center text-[11px] text-slate-500">
+      動作分析 Pro · ローカル（file://）対応 · 各モジュールはオフラインでも利用できます
+    </footer>
   </div>
-
-  <div class="menu-grid">
-    <!-- MODULE 01: 基本動作分析 (index1.html) -->
-    <a href="index1.html" class="menu-card card-basic">
-      <div class="card-content">
-        <span class="card-tag tag-basic">MODULE 01 ｜ BASIC ANALYSIS</span>
-        <div class="card-title">📱 基本動作分析</div>
-        <div class="card-desc">動画再生・2点間距離・角度測定・コマ送り簡易計測</div>
-      </div>
-      <div class="card-arrow">❯</div>
-    </a>
-
-    <!-- MODULE 02: 動作観察 (index2.html) -->
-    <a href="index2.html" class="menu-card card-observation">
-      <div class="card-content">
-        <span class="card-tag tag-observation">MODULE 02 ｜ MOTION OBSERVATION</span>
-        <div class="card-title">👀 動作観察</div>
-        <div class="card-desc">AI関節自動追従、速度・加速度、垂直線比較、重心移動軌跡</div>
-      </div>
-      <div class="card-arrow">❯</div>
-    </a>
-
-    <!-- MODULE 03: 下肢バイオメカニクス (index3.html) -->
-    <a href="index3.html" class="menu-card card-bio">
-      <div class="card-content">
-        <span class="card-tag tag-bio">MODULE 03 ｜ STS & LOWER LIMBS</span>
-        <div class="card-title">🦵 下肢関節モーメント & 床反力</div>
-        <div class="card-desc">立ち上がり・スクワットの床反力ベクトル、股・膝・足関節トルク算出</div>
-      </div>
-      <div class="card-arrow">❯</div>
-    </a>
-
-    <!-- MODULE 04: 連続跳躍 & リバウンド解析 (index4.html) -->
-    <a href="index4.html" class="menu-card card-jump">
-      <div class="card-content">
-        <span class="card-tag tag-jump">MODULE 04 ｜ JUMP & REBOUND</span>
-        <div class="card-title">🚀 連続跳躍 & リバウンド解析</div>
-        <div class="card-desc">1回目・2回目跳躍高（4点重心実測）、接地時間（CT）、バネ指数（RSI）</div>
-      </div>
-      <div class="card-arrow">❯</div>
-    </a>
-
-    <!-- MODULE 05: 投手バイオメカニクス解析 (index5.html) -->
-    <a href="index5.html" class="menu-card card-pitch">
-      <div class="card-content">
-        <span class="card-tag tag-pitch">MODULE 05 ｜ PITCHING BIOMECHANICS</span>
-        <div class="card-title">⚾️ 投手バイオメカニクス解析</div>
-        <div class="card-desc">FC歩幅、MER肘屈曲角、BRリリース点、矢状面/前額面切り替え解析</div>
-      </div>
-      <div class="card-arrow">❯</div>
-    </a>
-  </div>
-
-  <div class="footer-area">
-    動作分析 Pro v2.2 ｜ Clinical & Sports Biomechanics
-  </div>
-
 </body>
 </html>

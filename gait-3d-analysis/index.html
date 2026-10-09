@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>動作観察 & 3Dバイオメカニクス解析</title>
+  <!-- MediaPipe Pose CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <div class="compare-viewport mode-split" id="mainViewport">
+    <div class="video-pane" id="paneA">
+      <div class="pane-tag tag-a">動画 A</div>
+      <video id="videoA" playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
+      <canvas id="canvasA"></canvas>
+    </div>
+    <div class="video-pane" id="paneB">
+      <div class="pane-tag tag-b">動画 B</div>
+      <video id="videoB" playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
+      <canvas id="canvasB"></canvas>
+    </div>
+  </div>
+
+  <a class="portal-back" href="../index.html">← 総合ポータルへ</a>
+
+  <div class="data-panel collapsed" id="dataPanel">
+    <div class="panel-header" id="togglePanelBtn">
+      <span>📊 全関節運動 & アライメント数値 (動画A)</span>
+      <span id="collapseIcon">▲ タップで開く</span>
+    </div>
+    <div class="grid-data">
+      <div class="data-group-title">体幹 (Trunk)</div>
+      <div class="item"><span>屈曲/伸展:</span><span id="trunk_fe" class="val">--°</span></div>
+      <div class="item"><span>側屈(右/左):</span><span id="trunk_lb" class="val">--°</span></div>
+      <div class="item"><span>回旋(右/左):</span><span id="trunk_rot" class="val">--°</span></div>
+
+      <div class="data-group-title">上肢 (Upper Extremities)</div>
+      <div class="item"><span>右肘 屈曲:</span><span id="r_elbow_fe" class="val">--°</span></div>
+      <div class="item"><span>左肘 屈曲:</span><span id="l_elbow_fe" class="val">--°</span></div>
+      <div class="item"><span>右肩 屈伸/外内転:</span><span id="r_sho_fe_aa" class="val">--° / --°</span></div>
+      <div class="item"><span>左肩 屈伸/外内転:</span><span id="l_sho_fe_aa" class="val">--° / --°</span></div>
+      <div class="item"><span>右肩 水平内/外転:</span><span id="r_sho_ha" class="val">--°</span></div>
+      <div class="item"><span>左肩 水平内/外転:</span><span id="l_sho_ha" class="val">--°</span></div>
+      <div class="item"><span>右肩 内旋/外旋:</span><span id="r_sho_rot" class="val">--°</span></div>
+      <div class="item"><span>左肩 内旋/外旋:</span><span id="l_sho_rot" class="val">--°</span></div>
+
+      <div class="data-group-title">下肢 (Lower Extremities)</div>
+      <div class="item"><span>右股 屈伸/外内転:</span><span id="r_hip_fe_aa" class="val">--° / --°</span></div>
+      <div class="item"><span>左股 屈伸/外内転:</span><span id="l_hip_fe_aa" class="val">--° / --°</span></div>
+      <div class="item"><span>右股 内旋/外旋:</span><span id="r_hip_rot" class="val">--°</span></div>
+      <div class="item"><span>左股 内旋/外旋:</span><span id="l_hip_rot" class="val">--°</span></div>
+      <div class="item"><span>右膝 屈曲:</span><span id="r_knee_fe" class="val">--°</span></div>
+      <div class="item"><span>左膝 屈曲:</span><span id="l_knee_fe" class="val">--°</span></div>
+      <div class="item"><span>右足 背屈/底屈:</span><span id="r_ank_df" class="val">--°</span></div>
+      <div class="item"><span>左足 背屈/底屈:</span><span id="l_ank_df" class="val">--°</span></div>
+    </div>
+  </div>
+
+  <div class="controls-overlay">
+    <div class="mode-bar">
+      <button class="mode-btn" id="btnModeSingle">動画Aのみ</button>
+      <button class="mode-btn active" id="btnModeSplit">2画面並列</button>
+      <button class="mode-btn" id="btnModeOverlay">重ね合わせ</button>
+    </div>
+
+    <!-- 操作モード切り替え -->
+    <div class="touch-mode-bar">
+      <button class="touch-mode-btn active" id="btnTouchModeZoom">🔍 ズーム / 移動</button>
+      <button class="touch-mode-btn" id="btnTouchModeEdit">✏️ 点調整</button>
+      <button class="touch-mode-btn target-mode" id="btnTouchModeTarget">🎯 対象選手を指定</button>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tabAngle">📐 角度ピン留め</button>
+      <button class="tab-btn" id="tabTrail">✨ 軌跡ポイント選択</button>
+    </div>
+
+    <div class="chip-scroll-row" id="angleChipsRow">
+      <span class="chip chip-angle" data-joint="trunk_fe">体幹 屈伸</span>
+      <span class="chip chip-angle" data-joint="trunk_lb">体幹 側屈</span>
+      <span class="chip chip-angle" data-joint="trunk_rot">体幹 回旋</span>
+      <span class="chip chip-angle active" data-joint="r_knee">右膝 屈曲</span>
+      <span class="chip chip-angle" data-joint="l_knee">左膝 屈曲</span>
+      <span class="chip chip-angle" data-joint="r_hip">右股 屈伸</span>
+      <span class="chip chip-angle" data-joint="l_hip">左股 屈伸</span>
+      <span class="chip chip-angle" data-joint="r_elbow">右肘 屈曲</span>
+      <span class="chip chip-angle" data-joint="l_elbow">左肘 屈曲</span>
+      <span class="chip chip-angle" data-joint="r_sho">右肩 屈伸</span>
+      <span class="chip chip-angle" data-joint="l_sho">左肩 屈伸</span>
+      <span class="chip chip-angle" data-joint="r_ank">右足 背底屈</span>
+      <span class="chip chip-angle" data-joint="l_ank">左足 背底屈</span>
+    </div>
+
+    <div class="chip-scroll-row" id="trailChipsRow" style="display: none;">
+      <span class="chip chip-trail active" data-trail="headTop"><span class="chip-dot" style="background:#00f0ff;"></span>頭頂部</span>
+      <span class="chip chip-trail active" data-trail="chin"><span class="chip-dot" style="background:#ff3399;"></span>顎先</span>
+      <span class="chip chip-trail active" data-trail="trunkCenter"><span class="chip-dot" style="background:#51cf66;"></span>体幹中心</span>
+      <span class="chip chip-trail" data-trail="rShoulder"><span class="chip-dot" style="background:#ff6b6b;"></span>右肩</span>
+      <span class="chip chip-trail" data-trail="lShoulder"><span class="chip-dot" style="background:#339af0;"></span>左肩</span>
+      <span class="chip chip-trail" data-trail="rElbow"><span class="chip-dot" style="background:#f76707;"></span>右肘</span>
+      <span class="chip chip-trail" data-trail="lElbow"><span class="chip-dot" style="background:#22b8cf;"></span>左肘</span>
+      <span class="chip chip-trail" data-trail="rWrist"><span class="chip-dot" style="background:#ff922b;"></span>右手首</span>
+      <span class="chip chip-trail" data-trail="lWrist"><span class="chip-dot" style="background:#20c997;"></span>左手首</span>
+      <span class="chip chip-trail" data-trail="rHip"><span class="chip-dot" style="background:#e8590c;"></span>右股</span>
+      <span class="chip chip-trail" data-trail="lHip"><span class="chip-dot" style="background:#4263eb;"></span>左股</span>
+      <span class="chip chip-trail" data-trail="rKnee"><span class="chip-dot" style="background:#fcc419;"></span>右膝</span>
+      <span class="chip chip-trail" data-trail="lKnee"><span class="chip-dot" style="background:#748ffc;"></span>左膝</span>
+      <span class="chip chip-trail" data-trail="rAnkle"><span class="chip-dot" style="background:#ffd43b;"></span>右足首</span>
+      <span class="chip chip-trail" data-trail="lAnkle"><span class="chip-dot" style="background:#94d82d;"></span>左足首</span>
+    </div>
+
+    <div class="seek-row" id="rowSeekA">
+      <span class="seek-label lbl-a">A コマ送り</span>
+      <button id="btnPrevA" style="flex:0 0 28px; padding:2px;">◀</button>
+      <input type="range" id="seekBarA" value="0" min="0" step="0.033" disabled>
+      <button id="btnNextA" style="flex:0 0 28px; padding:2px;">▶</button>
+      <span id="timeDisplayA" class="time-txt">0.00s</span>
+    </div>
+
+    <div class="seek-row" id="rowSeekB">
+      <span class="seek-label lbl-b">B コマ送り</span>
+      <button id="btnPrevB" style="flex:0 0 28px; padding:2px;">◀</button>
+      <input type="range" id="seekBarB" value="0" min="0" step="0.033" disabled>
+      <button id="btnNextB" style="flex:0 0 28px; padding:2px;">▶</button>
+      <span id="timeDisplayB" class="time-txt">0.00s</span>
+    </div>
+
+    <div class="btn-grid">
+      <label class="btn btn-a" style="flex: 1;">
+        📁 動画A
+        <input type="file" id="uploaderA" accept="video/*">
+      </label>
+      <label class="btn btn-b" style="flex: 1;" id="btnUploadBLabel">
+        📁 動画B
+        <input type="file" id="uploaderB" accept="video/*">
+      </label>
+      <button id="btnSyncPlay" class="btn btn-sync" style="flex: 1.2;" disabled>▶ 再生</button>
+      <button id="btnResetAdjust" style="flex: 0.9;">点リセット</button>
+      <button id="btnClearTrail" style="flex: 0.8;">軌跡消去</button>
+    </div>
+  </div>
+
+  <!-- file:// 対応: ES Modules ではなく通常の script タグ。読み込み順を守ること -->
+  <script src="js/math.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/mediapipe.js"></script>
+</body>
+</html>
