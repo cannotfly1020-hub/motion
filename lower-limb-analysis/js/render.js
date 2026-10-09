@@ -52,44 +52,45 @@ function redrawSkeletons() {
  const lm = lastLandmarks;
 
  outCtx.save();
- outCtx.strokeStyle = '#00e5ff';
  outCtx.lineWidth = 3.5 / zoomScale;
- outCtx.beginPath();
- outCtx.moveTo(lm[24].x * outputCanvas.width, lm[24].y * outputCanvas.height);
- outCtx.lineTo(lm[26].x * outputCanvas.width, lm[26].y * outputCanvas.height);
- outCtx.lineTo(lm[28].x * outputCanvas.width, lm[28].y * outputCanvas.height);
- outCtx.lineTo(lm[32].x * outputCanvas.width, lm[32].y * outputCanvas.height);
- outCtx.stroke();
+ const drawSeg = (a, b, color) => {
+  if (!isJointConfident(lm[a]) || !isJointConfident(lm[b])) return;
+  outCtx.strokeStyle = color;
+  outCtx.beginPath();
+  outCtx.moveTo(lm[a].x * outputCanvas.width, lm[a].y * outputCanvas.height);
+  outCtx.lineTo(lm[b].x * outputCanvas.width, lm[b].y * outputCanvas.height);
+  outCtx.stroke();
+ };
+ drawSeg(24, 26, '#00e5ff');
+ drawSeg(26, 28, '#00e5ff');
+ drawSeg(28, 32, '#00e5ff');
+ drawSeg(23, 25, '#ffd60a');
+ drawSeg(25, 27, '#ffd60a');
+ drawSeg(27, 31, '#ffd60a');
 
- outCtx.strokeStyle = '#ffd60a';
- outCtx.lineWidth = 3.5 / zoomScale;
- outCtx.beginPath();
- outCtx.moveTo(lm[23].x * outputCanvas.width, lm[23].y * outputCanvas.height);
- outCtx.lineTo(lm[25].x * outputCanvas.width, lm[25].y * outputCanvas.height);
- outCtx.lineTo(lm[27].x * outputCanvas.width, lm[27].y * outputCanvas.height);
- outCtx.lineTo(lm[31].x * outputCanvas.width, lm[31].y * outputCanvas.height);
- outCtx.stroke();
+ const drawDot = (idx, color) => {
+  if (isJointHidden(lm[idx])) return;
+  outCtx.globalAlpha = isJointWarn(lm[idx]) ? 0.38 : 1;
+  outCtx.fillStyle = color;
+  outCtx.beginPath();
+  outCtx.arc(lm[idx].x * outputCanvas.width, lm[idx].y * outputCanvas.height, 4.5 / zoomScale, 0, Math.PI * 2);
+  outCtx.fill();
+  outCtx.globalAlpha = 1;
+ };
+ [24, 26, 28, 32].forEach(idx => drawDot(idx, '#00e5ff'));
+ [23, 25, 27, 31].forEach(idx => drawDot(idx, '#ffd60a'));
 
- [24, 26, 28, 32].forEach(idx => {
- outCtx.fillStyle = '#00e5ff';
- outCtx.beginPath();
- outCtx.arc(lm[idx].x * outputCanvas.width, lm[idx].y * outputCanvas.height, 4.5 / zoomScale, 0, Math.PI * 2);
- outCtx.fill();
- });
- [23, 25, 27, 31].forEach(idx => {
- outCtx.fillStyle = '#ffd60a';
- outCtx.beginPath();
- outCtx.arc(lm[idx].x * outputCanvas.width, lm[idx].y * outputCanvas.height, 4.5 / zoomScale, 0, Math.PI * 2);
- outCtx.fill();
- });
+ if (!isJointHidden(lm[28]) && !isJointHidden(lm[32]) && lastMagR > 25) {
+  const rCopPxX = (lm[28].x + lm[32].x) * 0.5 * outputCanvas.width;
+  const rCopPxY = (lm[28].y + lm[32].y) * 0.5 * outputCanvas.height;
+  drawDynamicForceArrow(rCopPxX, rCopPxY, lastGrfR.x, lastGrfR.y, lastMagR);
+ }
 
- const rCopPxX = (lm[28].x + lm[32].x) * 0.5 * outputCanvas.width;
- const rCopPxY = (lm[28].y + lm[32].y) * 0.5 * outputCanvas.height;
- if (lastMagR > 25) drawDynamicForceArrow(rCopPxX, rCopPxY, lastGrfR.x, lastGrfR.y, lastMagR);
-
- const lCopPxX = (lm[27].x + lm[31].x) * 0.5 * outputCanvas.width;
- const lCopPxY = (lm[27].y + lm[31].y) * 0.5 * outputCanvas.height;
- if (lastMagL > 25) drawDynamicForceArrow(lCopPxX, lCopPxY, lastGrfL.x, lastGrfL.y, lastMagL);
+ if (!isJointHidden(lm[27]) && !isJointHidden(lm[31]) && lastMagL > 25) {
+  const lCopPxX = (lm[27].x + lm[31].x) * 0.5 * outputCanvas.width;
+  const lCopPxY = (lm[27].y + lm[31].y) * 0.5 * outputCanvas.height;
+  drawDynamicForceArrow(lCopPxX, lCopPxY, lastGrfL.x, lastGrfL.y, lastMagL);
+ }
 
  outCtx.restore();
 }

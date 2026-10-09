@@ -2,6 +2,8 @@ const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@med
 pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
 pose.onResults(onResults);
 
+const holdStore = { pts: [] };
+
 function onResults(results) {
     if (!results.poseLandmarks) {
         currentLandmarks = null; currentCoM = null; currentFeetCenter = null;
@@ -15,12 +17,12 @@ function onResults(results) {
         return p;
     });
 
-    currentLandmarks = lm;
+    currentLandmarks = stabilizeLandmarks(lm, holdStore);
     const w = outputCanvas.width, h = outputCanvas.height;
 
-    updateBodyCenters(lm, w, h);
+    updateBodyCenters(currentLandmarks, w, h);
 
-    drawSkeleton(lm, w, h);
+    drawSkeleton(currentLandmarks, w, h);
     redrawJumpVisuals();
 }
 

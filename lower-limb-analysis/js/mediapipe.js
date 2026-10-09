@@ -9,6 +9,8 @@ pose.setOptions({
 });
 pose.onResults(onResults);
 
+const holdStore = { pts: [] };
+
 function onResults(results) {
  if (!results.poseLandmarks) {
  lastLandmarks = null;
@@ -17,16 +19,17 @@ function onResults(results) {
  }
 
  const rawLm = results.poseLandmarks;
- const lm = rawLm.map(p => {
+ const lm = stabilizeLandmarks(rawLm.map(p => {
  if (isRoiEnabled && roiNorm.w > 0.05 && roiNorm.h > 0.05) {
  return {
  x: roiNorm.x + p.x * roiNorm.w,
  y: roiNorm.y + p.y * roiNorm.h,
- z: p.z
+ z: p.z,
+ visibility: p.visibility
  };
  }
  return p;
- });
+ }), holdStore);
 
  lastLandmarks = lm;
 

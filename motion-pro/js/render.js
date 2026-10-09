@@ -37,51 +37,41 @@ function redraw() {
 
         if (currentMode === 'ai') {
             if (item.idx === 1) {
-                if (s.limbsLandmarks) {
-                    const lm = s.limbsLandmarks;
+                refreshManualOffsets(s.manualOffsets, s.manualKeyframes, video1);
+                const lm = applyLandmarkOffsets(s.limbsLandmarks, s.manualOffsets);
+                const offsets = s.manualOffsets || {};
+                if (lm) {
+                    s.aiJoints = [lm[11], lm[12], lm[23], lm[24]].filter(Boolean);
                     const leftConnections = [[11, 13], [13, 15], [23, 25], [25, 27], [27, 29], [29, 31]];
                     item.ctx.save();
-                    item.ctx.strokeStyle = 'rgba(0, 255, 204, 0.55)';
                     item.ctx.lineWidth = 3;
-                    leftConnections.forEach(([i, j]) => {
-                        if (lm[i] && lm[j]) {
+                    const drawConn = (pairs, color) => {
+                        pairs.forEach(([i, j]) => {
+                            if (!canDrawBone(lm[i], lm[j], offsets, i, j)) return;
+                            item.ctx.strokeStyle = color;
                             item.ctx.beginPath();
                             item.ctx.moveTo(lm[i].x, lm[i].y);
                             item.ctx.lineTo(lm[j].x, lm[j].y);
                             item.ctx.stroke();
-                        }
-                    });
-
+                        });
+                    };
+                    drawConn(leftConnections, 'rgba(0, 255, 204, 0.55)');
                     const rightConnections = [[12, 14], [14, 16], [24, 26], [26, 28], [28, 30], [30, 32]];
-                    item.ctx.strokeStyle = 'rgba(255, 214, 10, 0.65)';
-                    rightConnections.forEach(([i, j]) => {
-                        if (lm[i] && lm[j]) {
-                            item.ctx.beginPath();
-                            item.ctx.moveTo(lm[i].x, lm[i].y);
-                            item.ctx.lineTo(lm[j].x, lm[j].y);
-                            item.ctx.stroke();
-                        }
-                    });
+                    drawConn(rightConnections, 'rgba(255, 214, 10, 0.65)');
 
-                    const leftJoints = [13, 15, 25, 27, 29, 31];
-                    item.ctx.fillStyle = '#00ffcc';
-                    leftJoints.forEach(idx => {
-                        if (lm[idx]) {
+                    const drawDots = (indices, color) => {
+                        indices.forEach(idx => {
+                            if (!canDrawJoint(lm[idx], idx, offsets)) return;
+                            item.ctx.globalAlpha = (offsets[idx] || isJointConfident(lm[idx])) ? 1 : 0.38;
+                            item.ctx.fillStyle = color;
                             item.ctx.beginPath();
                             item.ctx.arc(lm[idx].x, lm[idx].y, 4, 0, Math.PI * 2);
                             item.ctx.fill();
-                        }
-                    });
-
-                    const rightJoints = [14, 16, 26, 28, 30, 32];
-                    item.ctx.fillStyle = '#ffd60a';
-                    rightJoints.forEach(idx => {
-                        if (lm[idx]) {
-                            item.ctx.beginPath();
-                            item.ctx.arc(lm[idx].x, lm[idx].y, 4, 0, Math.PI * 2);
-                            item.ctx.fill();
-                        }
-                    });
+                            item.ctx.globalAlpha = 1;
+                        });
+                    };
+                    drawDots([13, 15, 25, 27, 29, 31], '#00ffcc');
+                    drawDots([14, 16, 26, 28, 30, 32], '#ffd60a');
                     item.ctx.restore();
                 }
 
@@ -89,48 +79,59 @@ function redraw() {
                     const [shoulderL, shoulderR, hipL, hipR] = s.aiJoints;
                     const midThorax = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
                     const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
+                    const frame = getVideoFrameFromTime(video1);
+                    const hasExact = s.manualKeyframes && s.manualKeyframes[frame];
+                    const hasOff = offsets[11] || offsets[12] || offsets[23] || offsets[24];
 
-                    const currentFrame = Math.round(video1.currentTime * currentFPS);
-                    const overrideData = getInterpolatedAiPoints(currentFrame);
+                    if (canDrawBone(shoulderL, shoulderR, offsets, 11, 12)) {
+                        item.ctx.beginPath();
+                        item.ctx.moveTo(shoulderL.x, shoulderL.y);
+                        item.ctx.lineTo(shoulderR.x, shoulderR.y);
+                        item.ctx.strokeStyle = '#ff375f';
+                        item.ctx.lineWidth = 4;
+                        item.ctx.stroke();
+                    }
 
-                    item.ctx.beginPath();
-                    item.ctx.moveTo(shoulderL.x, shoulderL.y);
-                    item.ctx.lineTo(shoulderR.x, shoulderR.y);
-                    item.ctx.strokeStyle = '#ff375f';
-                    item.ctx.lineWidth = 4;
-                    item.ctx.stroke();
-
-                    item.ctx.beginPath();
-                    item.ctx.moveTo(hipL.x, hipL.y);
-                    item.ctx.lineTo(hipR.x, hipR.y);
-                    item.ctx.strokeStyle = '#007aff';
-                    item.ctx.lineWidth = 4;
-                    item.ctx.stroke();
+                    if (canDrawBone(hipL, hipR, offsets, 23, 24)) {
+                        item.ctx.beginPath();
+                        item.ctx.moveTo(hipL.x, hipL.y);
+                        item.ctx.lineTo(hipR.x, hipR.y);
+                        item.ctx.strokeStyle = '#007aff';
+                        item.ctx.lineWidth = 4;
+                        item.ctx.stroke();
+                    }
 
                     let lineColor = '#00ffcc';
-                    if (overrideData && overrideData.type === 'manual') lineColor = '#ff9500';
-                    else if (overrideData && overrideData.type === 'interpolated') lineColor = '#ffcc00';
+                    if (hasExact) lineColor = '#ff9500';
+                    else if (hasOff) lineColor = '#ffcc00';
 
-                    item.ctx.beginPath();
-                    item.ctx.moveTo(midHip.x, midHip.y);
-                    item.ctx.lineTo(midThorax.x, midThorax.y);
-                    item.ctx.strokeStyle = lineColor;
-                    item.ctx.lineWidth = 4;
-                    item.ctx.stroke();
+                    if (canDrawBone(shoulderL, hipL, offsets, 11, 23) && canDrawBone(shoulderR, hipR, offsets, 12, 24)) {
+                        item.ctx.beginPath();
+                        item.ctx.moveTo(midHip.x, midHip.y);
+                        item.ctx.lineTo(midThorax.x, midThorax.y);
+                        item.ctx.strokeStyle = lineColor;
+                        item.ctx.lineWidth = 4;
+                        item.ctx.stroke();
+                    }
 
                     [
-                        { pt: shoulderL, color: '#00ffcc' },
-                        { pt: shoulderR, color: '#ffd60a' },
-                        { pt: hipL, color: '#00ffcc' },
-                        { pt: hipR, color: '#ffd60a' }
-                    ].forEach(({ pt, color }) => {
+                        { pt: shoulderL, idx: 11, color: '#00ffcc' },
+                        { pt: shoulderR, idx: 12, color: '#ffd60a' },
+                        { pt: hipL, idx: 23, color: '#00ffcc' },
+                        { pt: hipR, idx: 24, color: '#ffd60a' }
+                    ].forEach(({ pt, idx, color }) => {
+                        if (!canDrawJoint(pt, idx, offsets)) return;
+                        item.ctx.globalAlpha = (offsets[idx] || isJointConfident(pt)) ? 1 : 0.38;
                         item.ctx.fillStyle = color;
                         item.ctx.beginPath();
                         item.ctx.arc(pt.x, pt.y, 8, 0, Math.PI * 2);
                         item.ctx.fill();
-                        item.ctx.strokeStyle = '#fff';
-                        item.ctx.lineWidth = 2;
-                        item.ctx.stroke();
+                        if (offsets[idx] || isJointConfident(pt)) {
+                            item.ctx.strokeStyle = '#fff';
+                            item.ctx.lineWidth = 2;
+                            item.ctx.stroke();
+                        }
+                        item.ctx.globalAlpha = 1;
                     });
                 }
             }

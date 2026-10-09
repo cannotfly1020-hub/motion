@@ -1,8 +1,47 @@
+const VIS_HIDDEN = 0.50;
+const VIS_CONFIDENT = 0.65;
+
+function jointVis(pt) {
+  return pt && pt.visibility != null ? pt.visibility : 0;
+}
+function isJointHidden(pt) {
+  return !pt || jointVis(pt) < VIS_HIDDEN;
+}
+function isJointWarn(pt) {
+  const v = jointVis(pt);
+  return pt && v >= VIS_HIDDEN && v < VIS_CONFIDENT;
+}
+function isJointConfident(pt) {
+  return pt && jointVis(pt) >= VIS_CONFIDENT;
+}
+function isJointUsable(pt) {
+  return pt && (jointVis(pt) >= VIS_HIDDEN || pt._held);
+}
+function stabilizeLandmarks(lm, holdStore) {
+  if (!lm) return null;
+  if (!holdStore.pts) holdStore.pts = [];
+  return lm.map((pt, i) => {
+    const vis = jointVis(pt);
+    if (vis >= VIS_CONFIDENT) {
+      holdStore.pts[i] = { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis };
+      return { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+    }
+    if (vis >= VIS_HIDDEN) {
+      return { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+    }
+    const held = holdStore.pts[i];
+    if (held) {
+      return { x: held.x, y: held.y, z: held.z, visibility: vis, _held: true };
+    }
+    return { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+  });
+}
+
 function calcCurrentLeadKneeAngle(lm, box) {
     if (!lm) return null;
     const toPx = (p) => ({ x: box.x + p.x * box.w, y: box.y + p.y * box.h });
     const hipL = lm[23], hipR = lm[24], kneeL = lm[25], kneeR = lm[26], ankL = lm[27], ankR = lm[28];
-    if (!hipL || !hipR || !kneeL || !kneeR || !ankL || !ankR) return null;
+    if (![hipL, hipR, kneeL, kneeR, ankL, ankR].every(isJointUsable)) return null;
 
     const cur = planeData.sagittal;
     let useLeft = (cur.leadLegSide === 'left');

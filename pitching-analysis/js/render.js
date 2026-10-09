@@ -121,7 +121,7 @@ function drawPitchingBiomechanics(lm) {
 
     const shL = lm[11], shR = lm[12], hipL = lm[23], hipR = lm[24];
 
-    if (shL && shR && hipL && hipR) {
+    if (isJointUsable(shL) && isJointUsable(shR) && isJointUsable(hipL) && isJointUsable(hipR)) {
         const pShL = toPx(shL), pShR = toPx(shR), pHipL = toPx(hipL), pHipR = toPx(hipR);
 
         if (currentPlane === 'sagittal') {
@@ -137,12 +137,16 @@ function drawPitchingBiomechanics(lm) {
             }
         }
 
-        outCtx.strokeStyle = '#00ffcc'; outCtx.beginPath(); outCtx.moveTo(pShL.x, pShL.y); outCtx.lineTo(pShR.x, pShR.y); outCtx.stroke();
-        outCtx.strokeStyle = '#ffd60a'; outCtx.beginPath(); outCtx.moveTo(pHipL.x, pHipL.y); outCtx.lineTo(pHipR.x, pHipR.y); outCtx.stroke();
+        if (isJointConfident(shL) && isJointConfident(shR)) {
+            outCtx.strokeStyle = '#00ffcc'; outCtx.beginPath(); outCtx.moveTo(pShL.x, pShL.y); outCtx.lineTo(pShR.x, pShR.y); outCtx.stroke();
+        }
+        if (isJointConfident(hipL) && isJointConfident(hipR)) {
+            outCtx.strokeStyle = '#ffd60a'; outCtx.beginPath(); outCtx.moveTo(pHipL.x, pHipL.y); outCtx.lineTo(pHipR.x, pHipR.y); outCtx.stroke();
+        }
     }
 
     const drawL = (p1, p2, color) => {
-        if (lm[p1] && lm[p2] && (lm[p1].visibility === undefined || lm[p1].visibility > 0.2) && (lm[p2].visibility === undefined || lm[p2].visibility > 0.2)) {
+        if (isJointConfident(lm[p1]) && isJointConfident(lm[p2])) {
             const pt1 = toPx(lm[p1]), pt2 = toPx(lm[p2]);
             outCtx.strokeStyle = color; outCtx.beginPath(); outCtx.moveTo(pt1.x, pt1.y); outCtx.lineTo(pt2.x, pt2.y); outCtx.stroke();
         }
@@ -151,6 +155,17 @@ function drawPitchingBiomechanics(lm) {
     drawL(11, 13, '#00ffcc'); drawL(13, 15, '#00ffcc');
     drawL(24, 26, '#ffd60a'); drawL(26, 28, '#ffd60a');
     drawL(23, 25, '#ffd60a'); drawL(25, 27, '#ffd60a');
+
+    [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28].forEach(idx => {
+        if (isJointHidden(lm[idx])) return;
+        const pt = toPx(lm[idx]);
+        outCtx.globalAlpha = isJointWarn(lm[idx]) ? 0.38 : 1;
+        outCtx.fillStyle = '#ffffff';
+        outCtx.beginPath();
+        outCtx.arc(pt.x, pt.y, 3.5 / zoomScale, 0, Math.PI * 2);
+        outCtx.fill();
+        outCtx.globalAlpha = 1;
+    });
 
     outCtx.restore();
 }

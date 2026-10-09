@@ -75,16 +75,25 @@ function drawSkeleton(lm, w, h) {
     outCtx.save();
     outCtx.lineWidth = 3 / zoomScale;
 
-    if(lm[11] && lm[12] && lm[23] && lm[24]) {
+    if ([11, 12, 23, 24].every(i => isJointConfident(lm[i]))) {
         outCtx.strokeStyle = 'rgba(0, 255, 204, 0.7)';
         outCtx.beginPath(); outCtx.moveTo(lm[11].x*w, lm[11].y*h); outCtx.lineTo(lm[12].x*w, lm[12].y*h);
         outCtx.lineTo(lm[24].x*w, lm[24].y*h); outCtx.lineTo(lm[23].x*w, lm[23].y*h); outCtx.closePath(); outCtx.stroke();
     }
     const drawLine = (p1, p2, color) => {
-        if(lm[p1] && lm[p2]) { outCtx.strokeStyle = color; outCtx.beginPath(); outCtx.moveTo(lm[p1].x*w, lm[p1].y*h); outCtx.lineTo(lm[p2].x*w, lm[p2].y*h); outCtx.stroke(); }
-    }
+        if (isJointConfident(lm[p1]) && isJointConfident(lm[p2])) {
+            outCtx.strokeStyle = color; outCtx.beginPath(); outCtx.moveTo(lm[p1].x*w, lm[p1].y*h); outCtx.lineTo(lm[p2].x*w, lm[p2].y*h); outCtx.stroke();
+        }
+    };
     drawLine(24, 26, '#ffd60a'); drawLine(26, 28, '#ffd60a'); drawLine(28, 32, '#ffd60a');
     drawLine(23, 25, '#00ffcc'); drawLine(25, 27, '#00ffcc'); drawLine(27, 31, '#00ffcc');
+    [24, 26, 28, 32, 23, 25, 27, 31].forEach(idx => {
+        if (isJointHidden(lm[idx])) return;
+        outCtx.globalAlpha = isJointWarn(lm[idx]) ? 0.38 : 1;
+        outCtx.fillStyle = idx % 2 === 0 ? '#ffd60a' : '#00ffcc';
+        outCtx.beginPath(); outCtx.arc(lm[idx].x*w, lm[idx].y*h, 4/zoomScale, 0, Math.PI*2); outCtx.fill();
+        outCtx.globalAlpha = 1;
+    });
 
     if(currentCoM) {
         outCtx.fillStyle = '#ff375f'; outCtx.beginPath(); outCtx.arc(currentCoM.x, currentCoM.y, 6/zoomScale, 0, Math.PI*2); outCtx.fill();

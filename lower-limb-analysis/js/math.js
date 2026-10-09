@@ -1,3 +1,42 @@
+const VIS_HIDDEN = 0.50;
+const VIS_CONFIDENT = 0.65;
+
+function jointVis(pt) {
+  return pt && pt.visibility != null ? pt.visibility : 0;
+}
+function isJointHidden(pt) {
+  return !pt || jointVis(pt) < VIS_HIDDEN;
+}
+function isJointWarn(pt) {
+  const v = jointVis(pt);
+  return pt && v >= VIS_HIDDEN && v < VIS_CONFIDENT;
+}
+function isJointConfident(pt) {
+  return pt && jointVis(pt) >= VIS_CONFIDENT;
+}
+function isJointUsable(pt) {
+  return pt && (jointVis(pt) >= VIS_HIDDEN || pt._held);
+}
+function stabilizeLandmarks(lm, holdStore) {
+  if (!lm) return null;
+  if (!holdStore.pts) holdStore.pts = [];
+  return lm.map((pt, i) => {
+    const vis = jointVis(pt);
+    if (vis >= VIS_CONFIDENT) {
+      holdStore.pts[i] = { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis };
+      return { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+    }
+    if (vis >= VIS_HIDDEN) {
+      return { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+    }
+    const held = holdStore.pts[i];
+    if (held) {
+      return { x: held.x, y: held.y, z: held.z, visibility: vis, _held: true };
+    }
+    return { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+  });
+}
+
 // 力学計算用の変数と定数
 const BSIP = { trunk: 0.678, thigh: 0.100, shank: 0.046, foot: 0.014 };
 let prevCoM = null, prevVelCoM = null;
@@ -19,6 +58,7 @@ function resetPhysics() {
 }
 
 function processPoseMechanics(lm) {
+ if (!lm || ![11, 12, 23, 24, 25, 26, 27, 28, 31, 32].every(i => isJointUsable(lm[i]))) return;
  const mass = parseFloat(inputMass.value) || 47;
  const heightM = (parseFloat(inputHeight.value) || 140) / 100.0;
 

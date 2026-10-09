@@ -18,6 +18,10 @@ const trailsB = createTrailBuffer();
 
 const manualOffsetsA = {};
 const manualOffsetsB = {};
+const manualKeyframesA = {};
+const manualKeyframesB = {};
+const holdStoreA = { pts: [] };
+const holdStoreB = { pts: [] };
 
 let lastLandmarksA = null;
 let lastLandmarksB = null;
@@ -123,7 +127,7 @@ function getNormalizedVideoCoord(clientX, clientY, pane, canvas, scale, panX, pa
   };
 }
 
-function setupInteractions(pane, canvas, offsets, getLmFunc, drawCallback, isPaneA) {
+function setupInteractions(pane, canvas, offsets, getLmFunc, drawCallback, isPaneA, getVideo) {
   let scale = 1.0;
   let panX = 0, panY = 0;
   let startDist = 0;
@@ -178,7 +182,7 @@ function setupInteractions(pane, canvas, offsets, getLmFunc, drawCallback, isPan
         let closestDist = minD;
 
         for (let i = 0; i < lm.length; i++) {
-          if (!lm[i] || lm[i].visibility < 0.2) continue;
+          if (!lm[i] || (isJointHidden(lm[i]) && !offsets[i])) continue;
           const off = offsets[i] || { x: 0, y: 0 };
           const curX = lm[i].x + off.x;
           const curY = lm[i].y + off.y;
@@ -240,6 +244,9 @@ function setupInteractions(pane, canvas, offsets, getLmFunc, drawCallback, isPan
           x: normX - orig.x,
           y: normY - orig.y
         };
+        const video = getVideo ? getVideo() : null;
+        const kfs = isPaneA ? manualKeyframesA : manualKeyframesB;
+        setManualKeyframe(kfs, getVideoFrame(video), draggingLandmarkIdx, offsets[draggingLandmarkIdx]);
         drawCallback();
       }
       return;
@@ -271,11 +278,11 @@ function setupInteractions(pane, canvas, offsets, getLmFunc, drawCallback, isPan
 
 setupInteractions(paneA, canvasA, manualOffsetsA, () => lastLandmarksA, () => {
   drawFrame(canvasA, ctxA, videoA, lastLandmarksA, trailsA, "#00e5ff", "A", manualOffsetsA, targetRoiA);
-}, true);
+}, true, () => videoA);
 
 setupInteractions(paneB, canvasB, manualOffsetsB, () => lastLandmarksB, () => {
   drawFrame(canvasB, ctxB, videoB, lastLandmarksB, trailsB, currentMode === 'overlay' ? "#ff922b" : "#00e5ff", "B", manualOffsetsB, targetRoiB);
-}, false);
+}, false, () => videoB);
 
 togglePanelBtn.addEventListener('click', () => {
   dataPanel.classList.toggle('collapsed');
@@ -338,6 +345,10 @@ document.querySelectorAll('.chip-trail').forEach(chip => {
 btnResetAdjust.addEventListener('click', () => {
   Object.keys(manualOffsetsA).forEach(k => delete manualOffsetsA[k]);
   Object.keys(manualOffsetsB).forEach(k => delete manualOffsetsB[k]);
+  clearKeyframeMap(manualKeyframesA);
+  clearKeyframeMap(manualKeyframesB);
+  holdStoreA.pts = [];
+  holdStoreB.pts = [];
   targetRoiA = null;
   targetRoiB = null;
   renderSafe();
@@ -391,6 +402,8 @@ uploaderA.addEventListener('change', (e) => {
 
   Object.keys(trailsA).forEach(k => trailsA[k].length = 0);
   Object.keys(manualOffsetsA).forEach(k => delete manualOffsetsA[k]);
+  clearKeyframeMap(manualKeyframesA);
+  holdStoreA.pts = [];
   targetRoiA = null;
   lastLandmarksA = null;
 
@@ -415,6 +428,8 @@ uploaderB.addEventListener('change', (e) => {
 
   Object.keys(trailsB).forEach(k => trailsB[k].length = 0);
   Object.keys(manualOffsetsB).forEach(k => delete manualOffsetsB[k]);
+  clearKeyframeMap(manualKeyframesB);
+  holdStoreB.pts = [];
   targetRoiB = null;
   lastLandmarksB = null;
 

@@ -1,3 +1,42 @@
+const VIS_HIDDEN = 0.50;
+const VIS_CONFIDENT = 0.65;
+
+function jointVis(pt) {
+  return pt && pt.visibility != null ? pt.visibility : 0;
+}
+function isJointHidden(pt) {
+  return !pt || jointVis(pt) < VIS_HIDDEN;
+}
+function isJointWarn(pt) {
+  const v = jointVis(pt);
+  return pt && v >= VIS_HIDDEN && v < VIS_CONFIDENT;
+}
+function isJointConfident(pt) {
+  return pt && jointVis(pt) >= VIS_CONFIDENT;
+}
+function isJointUsable(pt) {
+  return pt && (jointVis(pt) >= VIS_HIDDEN || pt._held);
+}
+function stabilizeLandmarks(lm, holdStore) {
+  if (!lm) return null;
+  if (!holdStore.pts) holdStore.pts = [];
+  return lm.map((pt, i) => {
+    const vis = jointVis(pt);
+    if (vis >= VIS_CONFIDENT) {
+      holdStore.pts[i] = { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis };
+      return { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+    }
+    if (vis >= VIS_HIDDEN) {
+      return { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+    }
+    const held = holdStore.pts[i];
+    if (held) {
+      return { x: held.x, y: held.y, z: held.z, visibility: vis, _held: true };
+    }
+    return { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+  });
+}
+
 // Jump Data (1回目 & 2回目)
 const jumps = {
     j1: { takeoff: null, peak: null, landing: null },
@@ -13,16 +52,18 @@ function updateBodyCenters(lm, w, h) {
     const shL = lm[11], shR = lm[12], hipL = lm[23], hipR = lm[24];
     const ankleL = lm[27], ankleR = lm[28];
 
-    if (shL && shR && hipL && hipR) {
+    if ([shL, shR, hipL, hipR].every(isJointUsable)) {
         currentCoM = {
             x: (shL.x + shR.x + hipL.x + hipR.x) * 0.25 * w,
             y: (shL.y + shR.y + hipL.y + hipR.y) * 0.25 * h
         };
-    } else if (hipL && hipR) {
+    } else if (isJointUsable(hipL) && isJointUsable(hipR)) {
         currentCoM = { x: (hipL.x + hipR.x) * 0.5 * w, y: (hipL.y + hipR.y) * 0.5 * h };
     }
 
-    if (ankleL && ankleR) currentFeetCenter = { x: (ankleL.x + ankleR.x) * 0.5 * w, y: (ankleL.y + ankleR.y) * 0.5 * h };
+    if (isJointUsable(ankleL) && isJointUsable(ankleR)) {
+        currentFeetCenter = { x: (ankleL.x + ankleR.x) * 0.5 * w, y: (ankleL.y + ankleR.y) * 0.5 * h };
+    }
 }
 
 function calculateMetrics() {

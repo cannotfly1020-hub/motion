@@ -1,3 +1,122 @@
+const VIS_HIDDEN = 0.50;
+const VIS_CONFIDENT = 0.65;
+const OFFSET_FALLOFF_FRAMES = 10;
+
+function jointVis(pt) {
+  return pt && pt.visibility != null ? pt.visibility : 0;
+}
+function isJointHidden(pt) {
+  return !pt || jointVis(pt) < VIS_HIDDEN;
+}
+function isJointWarn(pt) {
+  const v = jointVis(pt);
+  return pt && v >= VIS_HIDDEN && v < VIS_CONFIDENT;
+}
+function isJointConfident(pt) {
+  return pt && jointVis(pt) >= VIS_CONFIDENT;
+}
+function isJointUsable(pt) {
+  return pt && (jointVis(pt) >= VIS_HIDDEN || pt._held);
+}
+function stabilizeLandmarksMap(lm, holdStore) {
+  if (!lm) return null;
+  if (!holdStore.pts) holdStore.pts = {};
+  const out = {};
+  const keys = Object.keys(lm);
+  keys.forEach(i => {
+    const pt = lm[i];
+    const vis = jointVis(pt);
+    if (vis >= VIS_CONFIDENT) {
+      holdStore.pts[i] = { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis };
+      out[i] = { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+    } else if (vis >= VIS_HIDDEN) {
+      out[i] = { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+    } else if (holdStore.pts[i]) {
+      const held = holdStore.pts[i];
+      out[i] = { x: held.x, y: held.y, z: held.z, visibility: vis, _held: true };
+    } else {
+      out[i] = { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+    }
+  });
+  return out;
+}
+
+function getVideoFrameFromTime(video) {
+  return Math.round((video && video.currentTime ? video.currentTime : 0) * (typeof currentFPS === 'number' ? currentFPS : 30));
+}
+
+function setManualKeyframe(keyframes, frame, idx, offset) {
+  if (!keyframes[frame]) keyframes[frame] = {};
+  keyframes[frame][idx] = { x: offset.x, y: offset.y };
+}
+
+function clearKeyframeMap(keyframes) {
+  Object.keys(keyframes).forEach(k => delete keyframes[k]);
+}
+
+function interpolateOffset(keyframes, idx, frame) {
+  const frames = Object.keys(keyframes)
+    .map(Number)
+    .filter(f => keyframes[f] && keyframes[f][idx])
+    .sort((a, b) => a - b);
+  if (frames.length === 0) return { x: 0, y: 0 };
+  if (keyframes[frame] && keyframes[frame][idx]) {
+    return { x: keyframes[frame][idx].x, y: keyframes[frame][idx].y };
+  }
+  let prev = -1;
+  let next = -1;
+  for (let i = 0; i < frames.length; i++) {
+    if (frames[i] <= frame) prev = frames[i];
+    if (frames[i] >= frame && next === -1) next = frames[i];
+  }
+  if (prev !== -1 && next !== -1 && prev !== next) {
+    const t = (frame - prev) / (next - prev);
+    const a = keyframes[prev][idx];
+    const b = keyframes[next][idx];
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+  }
+  const kf = prev !== -1 ? prev : next;
+  const off = keyframes[kf][idx];
+  const w = Math.exp(-Math.abs(frame - kf) / OFFSET_FALLOFF_FRAMES);
+  return { x: off.x * w, y: off.y * w };
+}
+
+function refreshManualOffsets(target, keyframes, video) {
+  Object.keys(target).forEach(k => delete target[k]);
+  if (!keyframes) return;
+  const frame = getVideoFrameFromTime(video);
+  const idxSet = {};
+  Object.keys(keyframes).forEach(f => {
+    Object.keys(keyframes[f]).forEach(idx => { idxSet[idx] = true; });
+  });
+  Object.keys(idxSet).forEach(idx => {
+    const off = interpolateOffset(keyframes, idx, frame);
+    if (Math.abs(off.x) > 1e-5 || Math.abs(off.y) > 1e-5) target[idx] = off;
+  });
+}
+
+function applyLandmarkOffsets(lm, offsets) {
+  if (!lm) return lm;
+  const out = {};
+  Object.keys(lm).forEach(k => {
+    const off = offsets[k] || { x: 0, y: 0 };
+    out[k] = { ...lm[k], x: lm[k].x + off.x, y: lm[k].y + off.y };
+  });
+  return out;
+}
+
+function canDrawBone(a, b, offsets, ia, ib) {
+  const aOk = (offsets && offsets[ia]) || isJointConfident(a);
+  const bOk = (offsets && offsets[ib]) || isJointConfident(b);
+  return aOk && bOk;
+}
+
+function canDrawJoint(pt, idx, offsets) {
+  if (!pt) return false;
+  if (offsets && offsets[idx]) return true;
+  return !isJointHidden(pt);
+}
+
 function simulateJointAngle(p2, p3, deltaDeg) {
     const rad = deltaDeg * (Math.PI / 180);
     const dx = p3.x - p2.x;
@@ -120,10 +239,13 @@ function calcResults(s, mode) {
     }
 }
 
+let lastAiResultHtml = null;
+
 function calcAiResults(type = 'ai') {
     const s = state[1];
     if (s.aiJoints && s.aiJoints.length === 4) {
         const [shoulderL, shoulderR, hipL, hipR] = s.aiJoints;
+        if (![shoulderL, shoulderR, hipL, hipR].every(isJointUsable)) return;
         const midThorax = { x: (shoulderL.x + shoulderR.x) / 2, y: (shoulderL.y + shoulderR.y) / 2 };
         const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
 
@@ -141,7 +263,8 @@ function calcAiResults(type = 'ai') {
         else if (type === 'interpolated') { typeLabel = "✨ 補間"; color = "#ffcc00"; }
 
         const torsionText = `<span class="highlight-speed" style="font-size:13px;">${Math.abs(currentTorsionAngle).toFixed(1)}°</span>`;
-        mainResult.innerHTML = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差(X-Factor): ${torsionText}`;
+        lastAiResultHtml = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差(X-Factor): ${torsionText}`;
+        mainResult.innerHTML = lastAiResultHtml;
         subResult.innerHTML = `<span style="color:#00ffcc;">左半身:水色</span> / <span style="color:#ffd60a;">右半身:黄色</span> ｜ 端点ドラッグで修正可能`;
     }
 }
@@ -158,12 +281,12 @@ function formatDelta(px, pxPerCm) {
     return `${cm > 0 ? '+' : ''}${cm.toFixed(1)} cm`;
 }
 
-function getInterpolatedAiPoints(currentFrame) {
+function getInterpolatedAiPoints(currentFrame, liveJoints) {
     const s = state[1];
     if (s.aiOverrides[currentFrame]) return { joints: s.aiOverrides[currentFrame], type: 'manual' };
 
     const frames = Object.keys(s.aiOverrides).map(Number).sort((a, b) => a - b);
-    if (frames.length < 2) return null;
+    if (frames.length === 0) return null;
 
     let prev = -1, next = -1;
     for (let i = 0; i < frames.length; i++) {
@@ -171,7 +294,7 @@ function getInterpolatedAiPoints(currentFrame) {
         if (frames[i] > currentFrame && next === -1) next = frames[i];
     }
 
-    if (prev !== -1 && next !== -1 && (next - prev) <= 120) {
+    if (prev !== -1 && next !== -1) {
         const ratio = (currentFrame - prev) / (next - prev);
         const joints = [];
         for (let j = 0; j < 4; j++) {
@@ -183,5 +306,16 @@ function getInterpolatedAiPoints(currentFrame) {
         }
         return { joints, type: 'interpolated' };
     }
-    return null;
+
+    const kf = prev !== -1 ? prev : next;
+    if (kf === -1 || !liveJoints || liveJoints.length < 4) return null;
+    const w = Math.exp(-Math.abs(currentFrame - kf) / OFFSET_FALLOFF_FRAMES);
+    if (w < 0.02) return null;
+    const src = s.aiOverrides[kf];
+    const joints = liveJoints.map((live, j) => ({
+        x: live.x + (src[j].x - live.x) * w,
+        y: live.y + (src[j].y - live.y) * w,
+        z: (live.z || 0) + ((src[j].z || 0) - (live.z || 0)) * w
+    }));
+    return { joints, type: 'interpolated' };
 }

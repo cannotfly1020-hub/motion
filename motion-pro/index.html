@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="動作分析Pro">
+<title>動作分析 Pro（基幹）</title>
+
+<link rel="stylesheet" href="css/style.css">
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+<div id="header">
+    <div class="header-top-row">
+        <div class="btn-group-header">
+            <a class="hdr-btn secondary" href="../index.html">← 総合ポータルへ</a>
+            <button class="hdr-btn" onclick="triggerPickVideo(1)">①動画</button>
+            <input type="file" id="file-input-1" accept="video/*" style="display:none;">
+            <button class="hdr-btn secondary" id="btn-pick2" onclick="triggerPickVideo(2)" style="display:none;">②動画</button>
+            <input type="file" id="file-input-2" accept="video/*" style="display:none;">
+            <button class="hdr-btn" id="btn-toggle-compare" onclick="toggleCompareMode()">1画面のみ</button>
+            <button class="hdr-btn fps-badge" id="btn-fps" onclick="toggleFPS()">30fps</button>
+            <button class="hdr-btn" style="background:#5856d6;" onclick="captureSnapshot()">📸 静止画</button>
+            <button class="hdr-btn rec-btn" id="btn-record" onclick="toggleRecording()">🎥 録画開始</button>
+        </div>
+        <span id="scale-info-text">物差し: ①未設定</span>
+    </div>
+    <div id="result-box">
+        <div class="result-text-area">
+            <div id="main-result">測定したい点をタップしてください</div>
+            <div id="sub-result">角度・距離・加速度・AI体幹を切り替えて解析できます</div>
+        </div>
+        <button id="btn-confirm-scale" onclick="openScaleModal()">📏長さ確定</button>
+    </div>
+</div>
+
+<div id="stage">
+    <div class="video-pane" id="pane1">
+        <div class="zoom-target" id="zoom-target-1">
+            <video id="video1" playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
+            <canvas id="canvas1"></canvas>
+        </div>
+    </div>
+    <div class="video-pane" id="pane2">
+        <div class="zoom-target" id="zoom-target-2">
+            <video id="video2" playsinline webkit-playsinline muted preload="auto" crossorigin="anonymous"></video>
+            <canvas id="canvas2"></canvas>
+        </div>
+    </div>
+</div>
+
+<div id="controls">
+    <div class="seek-container">
+        <div class="seek-row">
+            <span class="seek-label">①</span>
+            <input type="range" id="seekbar1" min="0" max="1" value="0" step="0.001">
+        </div>
+        <div class="seek-row" id="seek-row-2" style="display:none;">
+            <span class="seek-label v2">②</span>
+            <input type="range" id="seekbar2" min="0" max="1" value="0" step="0.001">
+        </div>
+    </div>
+
+    <div class="mode-grid">
+        <button class="ctrl-btn mode-active" id="btn-mode-angle" onclick="setMode('angle')">📐 角度</button>
+        <button class="ctrl-btn" id="btn-mode-dist" onclick="setMode('distance')">↔️ 距離</button>
+        <button class="ctrl-btn" id="btn-mode-acc" onclick="setMode('accel')">⚡ 加速度</button>
+        <button class="ctrl-btn" id="btn-mode-sim" onclick="setMode('sim')">🔮 予測</button>
+        <button class="ctrl-btn" id="btn-mode-scale" onclick="setMode('scale')">📏 物差し</button>
+        <button class="ctrl-btn" id="btn-mode-perp" onclick="setMode('perp')">⊥ 垂直線</button>
+        <button class="ctrl-btn" id="btn-mode-cog" onclick="setMode('cog')">● 重心</button>
+        <button class="ctrl-btn" id="btn-mode-zoom" onclick="setMode('zoom')">🔍 ズーム</button>
+    </div>
+    <div class="mode-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+        <button class="ctrl-btn" id="btn-mode-ai" onclick="setMode('ai')">🤖 AI体幹</button>
+        <button class="ctrl-btn" onclick="resetZoom()">1x 表示</button>
+        <button class="ctrl-btn" id="btn-clear" onclick="clearCurrentPoints()">点消去</button>
+    </div>
+
+    <div id="zoom-controls" style="display:none; width:100%; align-items:center; gap:8px;">
+        <span style="font-size:11px; font-weight:bold; color:#007aff;">倍率 <span id="zoom-target-label">①</span></span>
+        <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1">
+    </div>
+
+    <div id="perp-controls" style="display:none; width:100%; align-items:center; gap:8px;">
+        <span style="font-size:11px; font-weight:bold; color:#ff2d55;">垂直線</span>
+        <input type="range" id="perp-slider" min="0" max="100" step="1" value="50">
+    </div>
+
+    <div id="sim-controls" style="display:none; width:100%; align-items:center; gap:8px;">
+        <span style="font-size:11px; font-weight:bold; color:#30d158;">改善角 <span id="sim-deg-val">0°</span></span>
+        <input type="range" id="sim-slider" min="-40" max="40" step="1" value="0">
+    </div>
+
+    <div class="playback-row">
+        <button class="ctrl-btn" onclick="stepFrame(-1)">◀ -1</button>
+        <button class="ctrl-btn" id="btn-play" onclick="togglePlay()">▶ 再生</button>
+        <button class="ctrl-btn" onclick="stepFrame(1)">+1 ▶</button>
+        <button class="ctrl-btn" id="btn-speed" onclick="togglePlaybackRate()">1.0x</button>
+        <button class="ctrl-btn" style="background:#555;" onclick="fitCanvases()">🔄 更新</button>
+    </div>
+</div>
+
+<div id="scale-modal-overlay" class="modal-overlay">
+    <div class="modal-card">
+        <h3 id="scale-modal-title">基準物の長さ設定</h3>
+        <p>指定した2点間の実際の長さを入力</p>
+        <div class="modal-input-row">
+            <input type="number" id="scale-input-value" inputmode="decimal" placeholder="100" value="100">
+            <span style="font-weight:bold; font-size:15px;">cm</span>
+        </div>
+        <div class="modal-btn-row">
+            <button style="background:#444; color:#fff;" onclick="closeScaleModal()">キャンセル</button>
+            <button style="background:#ff9500; color:#000;" onclick="submitScaleModal()">確定</button>
+        </div>
+    </div>
+</div>
+
+<div id="snapshot-modal-overlay" class="modal-overlay">
+    <div class="modal-card" style="max-width:360px;">
+        <h3 style="color:#5856d6;">📸 動作分析キャプチャ</h3>
+        <p style="font-size:11px; color:#aaa;">画像を長押しして「写真に追加」で保存できます</p>
+        <img id="snapshot-img" src="" alt="Screenshot">
+        <div class="modal-btn-row">
+            <button style="background:#444; color:#fff;" onclick="closeSnapshotModal()">閉じる</button>
+        </div>
+    </div>
+</div>
+
+<script src="js/math.js"></script>
+<script src="js/render.js"></script>
+<script src="js/app.js"></script>
+<script src="js/mediapipe.js"></script>
+</body>
+</html>

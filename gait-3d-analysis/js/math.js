@@ -1,4 +1,130 @@
 const MAX_TRAIL_LENGTH = 120;
+const VIS_HIDDEN = 0.50;
+const VIS_CONFIDENT = 0.65;
+const FRAME_DT = 0.033;
+const OFFSET_FALLOFF_FRAMES = 10;
+
+function jointVis(pt) {
+  return pt && pt.visibility != null ? pt.visibility : 0;
+}
+
+function isJointHidden(pt) {
+  return !pt || jointVis(pt) < VIS_HIDDEN;
+}
+
+function isJointWarn(pt) {
+  const v = jointVis(pt);
+  return pt && v >= VIS_HIDDEN && v < VIS_CONFIDENT;
+}
+
+function isJointConfident(pt) {
+  return pt && jointVis(pt) >= VIS_CONFIDENT;
+}
+
+function isJointUsable(pt) {
+  return pt && (jointVis(pt) >= VIS_HIDDEN || pt._held);
+}
+
+function getVideoFrame(video) {
+  if (!video) return 0;
+  return Math.round((video.currentTime || 0) / FRAME_DT);
+}
+
+function setManualKeyframe(keyframes, frame, idx, offset) {
+  if (!keyframes[frame]) keyframes[frame] = {};
+  keyframes[frame][idx] = { x: offset.x, y: offset.y };
+}
+
+function clearKeyframeMap(keyframes) {
+  Object.keys(keyframes).forEach(k => delete keyframes[k]);
+}
+
+function interpolateOffset(keyframes, idx, frame) {
+  const frames = Object.keys(keyframes)
+    .map(Number)
+    .filter(f => keyframes[f] && keyframes[f][idx])
+    .sort((a, b) => a - b);
+  if (frames.length === 0) return { x: 0, y: 0 };
+
+  if (keyframes[frame] && keyframes[frame][idx]) {
+    return { x: keyframes[frame][idx].x, y: keyframes[frame][idx].y };
+  }
+
+  let prev = -1;
+  let next = -1;
+  for (let i = 0; i < frames.length; i++) {
+    if (frames[i] <= frame) prev = frames[i];
+    if (frames[i] >= frame && next === -1) next = frames[i];
+  }
+
+  if (prev !== -1 && next !== -1 && prev !== next) {
+    const t = (frame - prev) / (next - prev);
+    const a = keyframes[prev][idx];
+    const b = keyframes[next][idx];
+    return {
+      x: a.x + (b.x - a.x) * t,
+      y: a.y + (b.y - a.y) * t
+    };
+  }
+
+  const kf = prev !== -1 ? prev : next;
+  const off = keyframes[kf][idx];
+  const dist = Math.abs(frame - kf);
+  const w = Math.exp(-dist / OFFSET_FALLOFF_FRAMES);
+  return { x: off.x * w, y: off.y * w };
+}
+
+function refreshManualOffsets(target, keyframes, video) {
+  Object.keys(target).forEach(k => delete target[k]);
+  if (!keyframes) return;
+  const frame = getVideoFrame(video);
+  const idxSet = {};
+  Object.keys(keyframes).forEach(f => {
+    Object.keys(keyframes[f]).forEach(idx => { idxSet[idx] = true; });
+  });
+  Object.keys(idxSet).forEach(idx => {
+    const off = interpolateOffset(keyframes, idx, frame);
+    if (Math.abs(off.x) > 1e-5 || Math.abs(off.y) > 1e-5) {
+      target[idx] = off;
+    }
+  });
+}
+
+function stabilizeLandmarks(lm, holdStore) {
+  if (!lm) return null;
+  if (!holdStore.pts) holdStore.pts = [];
+  return lm.map((pt, i) => {
+    const vis = jointVis(pt);
+    if (vis >= VIS_CONFIDENT) {
+      holdStore.pts[i] = { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis };
+      return { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+    }
+    if (vis >= VIS_HIDDEN) {
+      return { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+    }
+    const held = holdStore.pts[i];
+    if (held) {
+      return { x: held.x, y: held.y, z: held.z, visibility: vis, _held: true };
+    }
+    return { x: pt.x, y: pt.y, z: pt.z || 0, visibility: vis, _held: false };
+  });
+}
+
+function colorWithAlpha(color, alpha) {
+  if (!color) return `rgba(0, 229, 255, ${alpha})`;
+  if (color.startsWith('rgba')) {
+    return color.replace(/rgba\(([^)]+)\)/, (_, inner) => {
+      const parts = inner.split(',').map(s => s.trim());
+      return `rgba(${parts[0]}, ${parts[1]}, ${parts[2]}, ${alpha})`;
+    });
+  }
+  const hex = color.replace('#', '');
+  const n = parseInt(hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 const VCalc = {
   sub: (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: (a.z || 0) - (b.z || 0) }),

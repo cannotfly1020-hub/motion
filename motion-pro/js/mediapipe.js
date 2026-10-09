@@ -9,6 +9,8 @@ pose.setOptions({
     minTrackingConfidence: 0.6
 });
 
+const holdStore = { pts: {} };
+
 pose.onResults((results) => {
     if (currentMode !== 'ai') return;
 
@@ -26,25 +28,25 @@ pose.onResults((results) => {
     const getPos = (lm) => ({
         x: rect.x + lm.x * rect.width,
         y: rect.y + lm.y * rect.height,
-        z: (lm.z || 0) * rect.width
+        z: (lm.z || 0) * rect.width,
+        visibility: lm.visibility
     });
 
     const mappedLandmarks = {};
     for (let i = 0; i < landmarks.length; i++) {
         mappedLandmarks[i] = getPos(landmarks[i]);
     }
-    state[1].limbsLandmarks = mappedLandmarks;
+    state[1].limbsLandmarks = stabilizeLandmarksMap(mappedLandmarks, holdStore);
 
-    const overrideData = getInterpolatedAiPoints(currentFrame);
-    if (overrideData) {
-        state[1].aiJoints = overrideData.joints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
-        calcAiResults(overrideData.type);
-        redraw();
-        return;
-    }
+    if (!state[1].manualOffsets) state[1].manualOffsets = {};
+    if (!state[1].manualKeyframes) state[1].manualKeyframes = {};
+    refreshManualOffsets(state[1].manualOffsets, state[1].manualKeyframes, video1);
+    const displayLm = applyLandmarkOffsets(state[1].limbsLandmarks, state[1].manualOffsets);
+    state[1].aiJoints = [displayLm[11], displayLm[12], displayLm[23], displayLm[24]];
 
-    state[1].aiJoints = [mappedLandmarks[11], mappedLandmarks[12], mappedLandmarks[23], mappedLandmarks[24]];
-    calcAiResults('ai');
+    const hasExact = state[1].manualKeyframes[currentFrame];
+    const hasOff = Object.keys(state[1].manualOffsets).length > 0;
+    calcAiResults(hasExact ? 'manual' : (hasOff ? 'interpolated' : 'ai'));
     redraw();
 });
 

@@ -9,18 +9,21 @@ poseA.onResults(results => {
   isPoseA_Busy = false;
   if (results.poseLandmarks) {
     const roiBox = getRoiBox(targetRoiA, videoA.videoWidth, videoA.videoHeight);
-    lastLandmarksA = results.poseLandmarks.map(pt => ({
+    lastLandmarksA = stabilizeLandmarks(results.poseLandmarks.map(pt => ({
       x: roiBox.normX + pt.x * roiBox.normW,
       y: roiBox.normY + pt.y * roiBox.normH,
       z: pt.z,
       visibility: pt.visibility
-    }));
+    })), holdStoreA);
 
-    if (targetRoiA && lastLandmarksA[11] && lastLandmarksA[12] && lastLandmarksA[23] && lastLandmarksA[24]) {
-      const cx = (lastLandmarksA[11].x + lastLandmarksA[12].x + lastLandmarksA[23].x + lastLandmarksA[24].x) / 4;
-      const cy = (lastLandmarksA[11].y + lastLandmarksA[12].y + lastLandmarksA[23].y + lastLandmarksA[24].y) / 4;
-      targetRoiA.cx = targetRoiA.cx * 0.7 + cx * 0.3;
-      targetRoiA.cy = targetRoiA.cy * 0.7 + cy * 0.3;
+    if (targetRoiA) {
+      const roiPts = [11, 12, 23, 24].map(i => lastLandmarksA[i]).filter(isJointUsable);
+      if (roiPts.length >= 2) {
+        const cx = roiPts.reduce((s, p) => s + p.x, 0) / roiPts.length;
+        const cy = roiPts.reduce((s, p) => s + p.y, 0) / roiPts.length;
+        targetRoiA.cx = targetRoiA.cx * 0.7 + cx * 0.3;
+        targetRoiA.cy = targetRoiA.cy * 0.7 + cy * 0.3;
+      }
     }
   }
   drawFrame(canvasA, ctxA, videoA, lastLandmarksA, trailsA, "#00e5ff", "A", manualOffsetsA, targetRoiA);
@@ -32,18 +35,21 @@ poseB.onResults(results => {
   isPoseB_Busy = false;
   if (results.poseLandmarks) {
     const roiBox = getRoiBox(targetRoiB, videoB.videoWidth, videoB.videoHeight);
-    lastLandmarksB = results.poseLandmarks.map(pt => ({
+    lastLandmarksB = stabilizeLandmarks(results.poseLandmarks.map(pt => ({
       x: roiBox.normX + pt.x * roiBox.normW,
       y: roiBox.normY + pt.y * roiBox.normH,
       z: pt.z,
       visibility: pt.visibility
-    }));
+    })), holdStoreB);
 
-    if (targetRoiB && lastLandmarksB[11] && lastLandmarksB[12] && lastLandmarksB[23] && lastLandmarksB[24]) {
-      const cx = (lastLandmarksB[11].x + lastLandmarksB[12].x + lastLandmarksB[23].x + lastLandmarksB[24].x) / 4;
-      const cy = (lastLandmarksB[11].y + lastLandmarksB[12].y + lastLandmarksB[23].y + lastLandmarksB[24].y) / 4;
-      targetRoiB.cx = targetRoiB.cx * 0.7 + cx * 0.3;
-      targetRoiB.cy = targetRoiB.cy * 0.7 + cy * 0.3;
+    if (targetRoiB) {
+      const roiPts = [11, 12, 23, 24].map(i => lastLandmarksB[i]).filter(isJointUsable);
+      if (roiPts.length >= 2) {
+        const cx = roiPts.reduce((s, p) => s + p.x, 0) / roiPts.length;
+        const cy = roiPts.reduce((s, p) => s + p.y, 0) / roiPts.length;
+        targetRoiB.cx = targetRoiB.cx * 0.7 + cx * 0.3;
+        targetRoiB.cy = targetRoiB.cy * 0.7 + cy * 0.3;
+      }
     }
   }
   drawFrame(canvasB, ctxB, videoB, lastLandmarksB, trailsB, currentMode === 'overlay' ? "#ff922b" : "#00e5ff", "B", manualOffsetsB, targetRoiB);

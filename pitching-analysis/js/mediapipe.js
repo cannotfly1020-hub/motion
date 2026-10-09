@@ -2,12 +2,14 @@ const pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@med
 pose.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
 pose.onResults(onResults);
 
+const holdStore = { pts: [] };
+
 function onResults(results) {
     if (!results.poseLandmarks) {
         outCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
         return;
     }
-    latestLandmarks = results.poseLandmarks;
+    latestLandmarks = stabilizeLandmarks(results.poseLandmarks, holdStore);
     drawPitchingBiomechanics(latestLandmarks);
 }
 

@@ -51,9 +51,15 @@ let recordAnimId = null;
 
 let isAiDetecting = false;
 
+function createPaneState(withAi) {
+    const base = { points: [], scalePoints: [], perpPoints: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" };
+    if (!withAi) return base;
+    return { ...base, aiJoints: [], limbsLandmarks: null, aiOverrides: {}, manualOffsets: {}, manualKeyframes: {} };
+}
+
 const state = {
-    1: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" },
-    2: { points: [], scalePoints: [], perpPoints: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" }
+    1: createPaneState(true),
+    2: createPaneState(false)
 };
 
 const viewState = {
@@ -106,7 +112,7 @@ simSlider.addEventListener('input', e => {
 window.addEventListener('resize', fitCanvases);
 
 function resetState(idx) {
-    state[idx] = { points: [], scalePoints: [], perpPoints: [], cogPoints: [], aiJoints: [], limbsLandmarks: null, aiOverrides: {}, pxPerCm: null, resultMain: "", resultSub: "" };
+    state[idx] = createPaneState(idx === 1);
     if (idx === 1) currentTorsionAngle = 0;
     updateScaleInfoText();
     updateDisplayResult();
@@ -273,6 +279,8 @@ function clearCurrentPoints() {
     if (currentMode === 'zoom') return;
     if (currentMode === 'ai') {
         state[1].aiOverrides = {};
+        state[1].manualOffsets = {};
+        state[1].manualKeyframes = {};
         currentTorsionAngle = 0;
         if (video1.readyState >= 2) pose.send({image: video1});
         return;
@@ -345,7 +353,10 @@ function findHitPoint(s, pos, mode) {
     const HIT_RADIUS = 26;
     if (mode === 'ai') {
         if (s.aiJoints && s.aiJoints.length === 4) {
+            const jointMap = [11, 12, 23, 24];
             for (let i = 0; i < s.aiJoints.length; i++) {
+                const idx = jointMap[i];
+                if (isJointHidden(s.aiJoints[i]) && !(s.manualOffsets && s.manualOffsets[idx])) continue;
                 if (Math.hypot(s.aiJoints[i].x - pos.x, s.aiJoints[i].y - pos.y) <= HIT_RADIUS) {
                     return { arrayName: 'aiJoints', index: i };
                 }
@@ -417,15 +428,15 @@ function handlePointerMove(e, cvs, targetIdx) {
         pt.x = pos.x; pt.y = pos.y;
         if (currentMode === 'ai') {
             const currentFrame = Math.round(video1.currentTime * currentFPS);
-            s.aiOverrides[currentFrame] = s.aiJoints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
-            if (s.limbsLandmarks) {
-                const jointMap = [11, 12, 23, 24];
-                const landmarkIdx = jointMap[draggingPoint.index];
-                if (s.limbsLandmarks[landmarkIdx]) {
-                    s.limbsLandmarks[landmarkIdx].x = pos.x;
-                    s.limbsLandmarks[landmarkIdx].y = pos.y;
-                }
+            const jointMap = [11, 12, 23, 24];
+            const landmarkIdx = jointMap[draggingPoint.index];
+            const raw = s.limbsLandmarks && s.limbsLandmarks[landmarkIdx];
+            if (raw) {
+                const off = { x: pos.x - raw.x, y: pos.y - raw.y };
+                s.manualOffsets[landmarkIdx] = off;
+                setManualKeyframe(s.manualKeyframes, currentFrame, landmarkIdx, off);
             }
+            s.aiOverrides[currentFrame] = s.aiJoints.map(j => ({ x: j.x, y: j.y, z: j.z || 0 }));
             calcAiResults('manual');
         } else if (currentMode !== 'scale') {
             calcResults(s, currentMode); updateDisplayResult();
