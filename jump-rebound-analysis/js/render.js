@@ -12,33 +12,35 @@ function applyZoom() { zoomTarget.style.transform = `translate(${panOffsetX}px, 
 function redrawOverlay() {
     intCtx.clearRect(0, 0, interactionCanvas.width, interactionCanvas.height);
 
+    const box = getVideoDrawRect(interactionCanvas, video);
+
     if (userFloorY !== null) {
-        const fy = userFloorY * interactionCanvas.height;
+        const fy = box.drawY + userFloorY * box.drawH;
         intCtx.save();
         intCtx.strokeStyle = isFloorMode ? '#00ffcc' : 'rgba(0, 255, 204, 0.7)';
         intCtx.lineWidth = (isFloorMode ? 3.5 : 2.5) / zoomScale;
         intCtx.setLineDash(isFloorMode ? [] : [6 / zoomScale, 4 / zoomScale]);
         intCtx.beginPath();
-        intCtx.moveTo(0, fy);
-        intCtx.lineTo(interactionCanvas.width, fy);
+        intCtx.moveTo(box.drawX, fy);
+        intCtx.lineTo(box.drawX + box.drawW, fy);
         intCtx.stroke();
 
         if (isFloorMode) {
             intCtx.fillStyle = '#00ffcc';
             intCtx.beginPath();
-            intCtx.arc(interactionCanvas.width / 2, fy, 8 / zoomScale, 0, Math.PI * 2);
+            intCtx.arc(box.drawX + box.drawW / 2, fy, 8 / zoomScale, 0, Math.PI * 2);
             intCtx.fill();
         }
 
         intCtx.fillStyle = '#00ffcc';
         intCtx.font = `bold ${Math.max(10, 11/zoomScale)}px sans-serif`;
-        intCtx.fillText(isFloorMode ? "↕️ 地面ライン (ドラッグして移動)" : "🟦 地面基準ライン", 10/zoomScale, fy - 8/zoomScale);
+        intCtx.fillText(isFloorMode ? "↕️ 地面ライン (ドラッグして移動)" : "🟦 地面基準ライン", box.drawX + 10/zoomScale, fy - 8/zoomScale);
         intCtx.restore();
     }
 
     if (isRoiEnabled && roiNorm.w > 0.05) {
-        const rx = roiNorm.x * interactionCanvas.width, ry = roiNorm.y * interactionCanvas.height;
-        const rw = roiNorm.w * interactionCanvas.width, rh = roiNorm.h * interactionCanvas.height;
+        const rx = box.drawX + roiNorm.x * box.drawW, ry = box.drawY + roiNorm.y * box.drawH;
+        const rw = roiNorm.w * box.drawW, rh = roiNorm.h * box.drawH;
         intCtx.save();
         intCtx.fillStyle = 'rgba(0, 0, 0, 0.35)'; intCtx.fillRect(0, 0, interactionCanvas.width, interactionCanvas.height);
         intCtx.clearRect(rx, ry, rw, rh);
@@ -72,26 +74,36 @@ function redrawOverlay() {
 
 function drawSkeleton(lm, w, h) {
     outCtx.clearRect(0, 0, w, h);
+    if (!lm) return;
+    const box = getVideoDrawRect(outputCanvas, video);
+    const pt = (idx) => landmarkToCanvas(lm[idx], box);
     outCtx.save();
     outCtx.lineWidth = 3 / zoomScale;
 
-    if ([11, 12, 23, 24].every(i => isJointConfident(lm[i]))) {
-        outCtx.strokeStyle = 'rgba(0, 255, 204, 0.7)';
-        outCtx.beginPath(); outCtx.moveTo(lm[11].x*w, lm[11].y*h); outCtx.lineTo(lm[12].x*w, lm[12].y*h);
-        outCtx.lineTo(lm[24].x*w, lm[24].y*h); outCtx.lineTo(lm[23].x*w, lm[23].y*h); outCtx.closePath(); outCtx.stroke();
-    }
     const drawLine = (p1, p2, color) => {
-        if (isJointConfident(lm[p1]) && isJointConfident(lm[p2])) {
-            outCtx.strokeStyle = color; outCtx.beginPath(); outCtx.moveTo(lm[p1].x*w, lm[p1].y*h); outCtx.lineTo(lm[p2].x*w, lm[p2].y*h); outCtx.stroke();
-        }
+        if (!isJointDrawable(lm[p1]) || !isJointDrawable(lm[p2])) return;
+        const a = pt(p1), b = pt(p2);
+        outCtx.strokeStyle = color;
+        outCtx.beginPath();
+        outCtx.moveTo(a.x, a.y);
+        outCtx.lineTo(b.x, b.y);
+        outCtx.stroke();
     };
-    drawLine(24, 26, '#ffd60a'); drawLine(26, 28, '#ffd60a'); drawLine(28, 32, '#ffd60a');
-    drawLine(23, 25, '#00ffcc'); drawLine(25, 27, '#00ffcc'); drawLine(27, 31, '#00ffcc');
-    [24, 26, 28, 32, 23, 25, 27, 31].forEach(idx => {
-        if (isJointHidden(lm[idx])) return;
+    const trunk = 'rgba(0, 255, 204, 0.7)';
+    drawLine(11, 12, trunk);
+    drawLine(11, 23, trunk);
+    drawLine(12, 24, trunk);
+    drawLine(23, 24, trunk);
+    drawLine(23, 25, '#00ffcc'); drawLine(25, 27, '#00ffcc');
+    drawLine(27, 29, '#00ffcc'); drawLine(29, 31, '#00ffcc'); drawLine(27, 31, '#00ffcc');
+    drawLine(24, 26, '#ffd60a'); drawLine(26, 28, '#ffd60a');
+    drawLine(28, 30, '#ffd60a'); drawLine(30, 32, '#ffd60a'); drawLine(28, 32, '#ffd60a');
+    [11, 23, 25, 27, 29, 31, 12, 24, 26, 28, 30, 32].forEach(idx => {
+        if (!isJointDrawable(lm[idx])) return;
+        const p = pt(idx);
         outCtx.globalAlpha = isJointWarn(lm[idx]) ? 0.38 : 1;
         outCtx.fillStyle = idx % 2 === 0 ? '#ffd60a' : '#00ffcc';
-        outCtx.beginPath(); outCtx.arc(lm[idx].x*w, lm[idx].y*h, 4/zoomScale, 0, Math.PI*2); outCtx.fill();
+        outCtx.beginPath(); outCtx.arc(p.x, p.y, 4/zoomScale, 0, Math.PI*2); outCtx.fill();
         outCtx.globalAlpha = 1;
     });
 

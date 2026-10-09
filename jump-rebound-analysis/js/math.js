@@ -17,6 +17,50 @@ function isJointConfident(pt) {
 function isJointUsable(pt) {
   return pt && (jointVis(pt) >= VIS_HIDDEN || pt._held);
 }
+const VIS_DRAW = 0.60;
+function isJointDrawable(pt) {
+  return pt && jointVis(pt) >= VIS_DRAW;
+}
+
+function getVideoDrawRect(canvas, vid) {
+  const cw = canvas.width || 0;
+  const ch = canvas.height || 0;
+  const vw = vid && vid.videoWidth;
+  const vh = vid && vid.videoHeight;
+  if (!cw || !ch || !vw || !vh) {
+    return { drawX: 0, drawY: 0, drawW: cw, drawH: ch };
+  }
+  const canvasRatio = cw / ch;
+  const videoRatio = vw / vh;
+  let drawW, drawH, drawX, drawY;
+  if (canvasRatio > videoRatio) {
+    drawH = ch;
+    drawW = drawH * videoRatio;
+    drawX = (cw - drawW) / 2;
+    drawY = 0;
+  } else {
+    drawW = cw;
+    drawH = drawW / videoRatio;
+    drawX = 0;
+    drawY = (ch - drawH) / 2;
+  }
+  return { drawX, drawY, drawW, drawH };
+}
+
+function landmarkToCanvas(pt, box) {
+  return {
+    x: box.drawX + pt.x * box.drawW,
+    y: box.drawY + pt.y * box.drawH
+  };
+}
+
+function canvasToVideoNorm(cvsX, cvsY, box) {
+  if (!box.drawW || !box.drawH) return { x: 0, y: 0 };
+  return {
+    x: Math.max(0, Math.min(1, (cvsX - box.drawX) / box.drawW)),
+    y: Math.max(0, Math.min(1, (cvsY - box.drawY) / box.drawH))
+  };
+}
 function stabilizeLandmarks(lm, holdStore) {
   if (!lm) return null;
   if (!holdStore.pts) holdStore.pts = [];
@@ -47,22 +91,24 @@ let currentLandmarks = null;
 let currentCoM = null;
 let currentFeetCenter = null;
 
-function updateBodyCenters(lm, w, h) {
-    // 4点（両肩・両股関節）中心モデル
+function updateBodyCenters(lm, w, h, originX = 0, originY = 0) {
+    // 4点（両肩・両股関節）中心モデル。w/h は動画描画領域サイズ。
     const shL = lm[11], shR = lm[12], hipL = lm[23], hipR = lm[24];
     const ankleL = lm[27], ankleR = lm[28];
+    const toX = (nx) => originX + nx * w;
+    const toY = (ny) => originY + ny * h;
 
     if ([shL, shR, hipL, hipR].every(isJointUsable)) {
         currentCoM = {
-            x: (shL.x + shR.x + hipL.x + hipR.x) * 0.25 * w,
-            y: (shL.y + shR.y + hipL.y + hipR.y) * 0.25 * h
+            x: toX((shL.x + shR.x + hipL.x + hipR.x) * 0.25),
+            y: toY((shL.y + shR.y + hipL.y + hipR.y) * 0.25)
         };
     } else if (isJointUsable(hipL) && isJointUsable(hipR)) {
-        currentCoM = { x: (hipL.x + hipR.x) * 0.5 * w, y: (hipL.y + hipR.y) * 0.5 * h };
+        currentCoM = { x: toX((hipL.x + hipR.x) * 0.5), y: toY((hipL.y + hipR.y) * 0.5) };
     }
 
     if (isJointUsable(ankleL) && isJointUsable(ankleR)) {
-        currentFeetCenter = { x: (ankleL.x + ankleR.x) * 0.5 * w, y: (ankleL.y + ankleR.y) * 0.5 * h };
+        currentFeetCenter = { x: toX((ankleL.x + ankleR.x) * 0.5), y: toY((ankleL.y + ankleR.y) * 0.5) };
     }
 }
 

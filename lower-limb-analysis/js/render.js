@@ -19,10 +19,11 @@ function redrawOverlay() {
  intCtx.clearRect(0, 0, interactionCanvas.width, interactionCanvas.height);
  if (!isRoiEnabled) return;
 
- const rx = roiNorm.x * interactionCanvas.width;
- const ry = roiNorm.y * interactionCanvas.height;
- const rw = roiNorm.w * interactionCanvas.width;
- const rh = roiNorm.h * interactionCanvas.height;
+ const box = getVideoDrawRect(interactionCanvas, video);
+ const rx = box.drawX + roiNorm.x * box.drawW;
+ const ry = box.drawY + roiNorm.y * box.drawH;
+ const rw = roiNorm.w * box.drawW;
+ const rh = roiNorm.h * box.drawH;
 
  if (rw < 5 || rh < 5) return;
 
@@ -50,46 +51,66 @@ function redrawSkeletons() {
  outCtx.clearRect(0, 0, outputCanvas.width, outputCanvas.height);
  if (!lastLandmarks) return;
  const lm = lastLandmarks;
+ const box = getVideoDrawRect(outputCanvas, video);
+ const pt = (idx) => landmarkToCanvas(lm[idx], box);
 
  outCtx.save();
  outCtx.lineWidth = 3.5 / zoomScale;
  const drawSeg = (a, b, color) => {
-  if (!isJointConfident(lm[a]) || !isJointConfident(lm[b])) return;
+  if (!isJointDrawable(lm[a]) || !isJointDrawable(lm[b])) return;
+  const pa = pt(a), pb = pt(b);
   outCtx.strokeStyle = color;
   outCtx.beginPath();
-  outCtx.moveTo(lm[a].x * outputCanvas.width, lm[a].y * outputCanvas.height);
-  outCtx.lineTo(lm[b].x * outputCanvas.width, lm[b].y * outputCanvas.height);
+  outCtx.moveTo(pa.x, pa.y);
+  outCtx.lineTo(pb.x, pb.y);
   outCtx.stroke();
  };
- drawSeg(24, 26, '#00e5ff');
- drawSeg(26, 28, '#00e5ff');
- drawSeg(28, 32, '#00e5ff');
+
+ const trunkColor = 'rgba(0, 229, 255, 0.55)';
+ drawSeg(11, 12, trunkColor);
+ drawSeg(11, 23, trunkColor);
+ drawSeg(12, 24, trunkColor);
+ drawSeg(23, 24, trunkColor);
+
  drawSeg(23, 25, '#ffd60a');
  drawSeg(25, 27, '#ffd60a');
+ drawSeg(27, 29, '#ffd60a');
+ drawSeg(29, 31, '#ffd60a');
  drawSeg(27, 31, '#ffd60a');
 
+ drawSeg(24, 26, '#00e5ff');
+ drawSeg(26, 28, '#00e5ff');
+ drawSeg(28, 30, '#00e5ff');
+ drawSeg(30, 32, '#00e5ff');
+ drawSeg(28, 32, '#00e5ff');
+
  const drawDot = (idx, color) => {
-  if (isJointHidden(lm[idx])) return;
+  if (!isJointDrawable(lm[idx])) return;
+  const p = pt(idx);
   outCtx.globalAlpha = isJointWarn(lm[idx]) ? 0.38 : 1;
   outCtx.fillStyle = color;
   outCtx.beginPath();
-  outCtx.arc(lm[idx].x * outputCanvas.width, lm[idx].y * outputCanvas.height, 4.5 / zoomScale, 0, Math.PI * 2);
+  outCtx.arc(p.x, p.y, 4.5 / zoomScale, 0, Math.PI * 2);
   outCtx.fill();
   outCtx.globalAlpha = 1;
  };
- [24, 26, 28, 32].forEach(idx => drawDot(idx, '#00e5ff'));
- [23, 25, 27, 31].forEach(idx => drawDot(idx, '#ffd60a'));
+ [11, 23, 25, 27, 29, 31].forEach(idx => drawDot(idx, '#ffd60a'));
+ [12, 24, 26, 28, 30, 32].forEach(idx => drawDot(idx, '#00e5ff'));
 
- if (!isJointHidden(lm[28]) && !isJointHidden(lm[32]) && lastMagR > 25) {
-  const rCopPxX = (lm[28].x + lm[32].x) * 0.5 * outputCanvas.width;
-  const rCopPxY = (lm[28].y + lm[32].y) * 0.5 * outputCanvas.height;
-  drawDynamicForceArrow(rCopPxX, rCopPxY, lastGrfR.x, lastGrfR.y, lastMagR);
+ if (isJointDrawable(lm[28]) && isJointDrawable(lm[32]) && lastMagR > 25) {
+  const rCop = {
+   x: (pt(28).x + pt(32).x) * 0.5,
+   y: (pt(28).y + pt(32).y) * 0.5
+  };
+  drawDynamicForceArrow(rCop.x, rCop.y, lastGrfR.x, lastGrfR.y, lastMagR);
  }
 
- if (!isJointHidden(lm[27]) && !isJointHidden(lm[31]) && lastMagL > 25) {
-  const lCopPxX = (lm[27].x + lm[31].x) * 0.5 * outputCanvas.width;
-  const lCopPxY = (lm[27].y + lm[31].y) * 0.5 * outputCanvas.height;
-  drawDynamicForceArrow(lCopPxX, lCopPxY, lastGrfL.x, lastGrfL.y, lastMagL);
+ if (isJointDrawable(lm[27]) && isJointDrawable(lm[31]) && lastMagL > 25) {
+  const lCop = {
+   x: (pt(27).x + pt(31).x) * 0.5,
+   y: (pt(27).y + pt(31).y) * 0.5
+  };
+  drawDynamicForceArrow(lCop.x, lCop.y, lastGrfL.x, lastGrfL.y, lastMagL);
  }
 
  outCtx.restore();

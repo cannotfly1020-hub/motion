@@ -131,7 +131,8 @@ function getPointerNorm(e) {
     const clickRelX = e.clientX - (rect.left + rect.width / 2), clickRelY = e.clientY - (rect.top + rect.height / 2);
     const cvsX = (clickRelX - panOffsetX) / zoomScale + interactionCanvas.width / 2;
     const cvsY = (clickRelY - panOffsetY) / zoomScale + interactionCanvas.height / 2;
-    return { x: Math.max(0, Math.min(1.0, cvsX / interactionCanvas.width)), y: Math.max(0, Math.min(1.0, cvsY / interactionCanvas.height)) };
+    const box = getVideoDrawRect(interactionCanvas, video);
+    return canvasToVideoNorm(cvsX, cvsY, box);
 }
 
 interactionCanvas.addEventListener('pointerdown', (e) => {
@@ -150,7 +151,8 @@ interactionCanvas.addEventListener('pointerdown', (e) => {
     }
     if (isScaleMode) {
         const p = getPointerNorm(e);
-        scalePoints.push({ x: p.x * interactionCanvas.width, y: p.y * interactionCanvas.height });
+        const box = getVideoDrawRect(interactionCanvas, video);
+        scalePoints.push({ x: box.drawX + p.x * box.drawW, y: box.drawY + p.y * box.drawH });
         if (scalePoints.length === 2) {
             document.getElementById('scale-modal-overlay').style.display = 'flex';
             document.getElementById('scale-input-value').focus();

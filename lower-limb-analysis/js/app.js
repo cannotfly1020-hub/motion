@@ -141,11 +141,8 @@ function getPointerNorm(e) {
  const targetRelY = (clickRelY - panOffsetY) / zoomScale;
  const cvsX = targetRelX + interactionCanvas.width / 2;
  const cvsY = targetRelY + interactionCanvas.height / 2;
-
- return {
- x: Math.max(0, Math.min(1.0, cvsX / interactionCanvas.width)),
- y: Math.max(0, Math.min(1.0, cvsY / interactionCanvas.height))
- };
+ const box = getVideoDrawRect(interactionCanvas, video);
+ return canvasToVideoNorm(cvsX, cvsY, box);
 }
 
 interactionCanvas.addEventListener('pointerdown', (e) => {

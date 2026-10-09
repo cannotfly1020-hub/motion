@@ -17,6 +17,50 @@ function isJointConfident(pt) {
 function isJointUsable(pt) {
   return pt && (jointVis(pt) >= VIS_HIDDEN || pt._held);
 }
+const VIS_DRAW = 0.60;
+function isJointDrawable(pt) {
+  return pt && jointVis(pt) >= VIS_DRAW;
+}
+
+function getVideoDrawRect(canvas, vid) {
+  const cw = canvas.width || 0;
+  const ch = canvas.height || 0;
+  const vw = vid && vid.videoWidth;
+  const vh = vid && vid.videoHeight;
+  if (!cw || !ch || !vw || !vh) {
+    return { drawX: 0, drawY: 0, drawW: cw, drawH: ch };
+  }
+  const canvasRatio = cw / ch;
+  const videoRatio = vw / vh;
+  let drawW, drawH, drawX, drawY;
+  if (canvasRatio > videoRatio) {
+    drawH = ch;
+    drawW = drawH * videoRatio;
+    drawX = (cw - drawW) / 2;
+    drawY = 0;
+  } else {
+    drawW = cw;
+    drawH = drawW / videoRatio;
+    drawX = 0;
+    drawY = (ch - drawH) / 2;
+  }
+  return { drawX, drawY, drawW, drawH };
+}
+
+function landmarkToCanvas(pt, box) {
+  return {
+    x: box.drawX + pt.x * box.drawW,
+    y: box.drawY + pt.y * box.drawH
+  };
+}
+
+function canvasToVideoNorm(cvsX, cvsY, box) {
+  if (!box.drawW || !box.drawH) return { x: 0, y: 0 };
+  return {
+    x: Math.max(0, Math.min(1, (cvsX - box.drawX) / box.drawW)),
+    y: Math.max(0, Math.min(1, (cvsY - box.drawY) / box.drawH))
+  };
+}
 function stabilizeLandmarks(lm, holdStore) {
   if (!lm) return null;
   if (!holdStore.pts) holdStore.pts = [];

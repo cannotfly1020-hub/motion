@@ -18,11 +18,11 @@ function onResults(results) {
     });
 
     currentLandmarks = stabilizeLandmarks(lm, holdStore);
-    const w = outputCanvas.width, h = outputCanvas.height;
+    const box = getVideoDrawRect(outputCanvas, video);
 
-    updateBodyCenters(currentLandmarks, w, h);
+    updateBodyCenters(currentLandmarks, box.drawW, box.drawH, box.drawX, box.drawY);
 
-    drawSkeleton(currentLandmarks, w, h);
+    drawSkeleton(currentLandmarks, outputCanvas.width, outputCanvas.height);
     redrawJumpVisuals();
 }
 
