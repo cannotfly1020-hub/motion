@@ -31,7 +31,7 @@
     <div id="result-box">
         <div class="result-text-area">
             <div id="main-result">動画を読み込んで解析を始めましょう</div>
-            <div id="sub-result">下のタブから AI / 手動 / 校正 を選んでください</div>
+            <div id="sub-result">下のタブから「AI自動解析」「手動計測」「校正・設定」を選んでください</div>
         </div>
         <button id="btn-confirm-scale" onclick="openScaleModal()">長さ確定</button>
     </div>
@@ -52,9 +52,18 @@
     </div>
     <div id="hint-banner">①動画を選んでください</div>
     <div class="fab-stack">
-        <button class="fab-btn active" id="fab-debug" onclick="toggleAiDebugHud()" title="AI診断HUD (D / ダブルタップ)">D</button>
-        <button class="fab-btn" id="fab-zoom" onclick="toggleZoomUi()" title="ズーム">🔍</button>
-        <button class="fab-btn" id="fab-reset" onclick="resetZoom()" title="表示リセット">1x</button>
+        <button class="fab-btn fab-labeled active" id="fab-debug" onclick="toggleAiDebugHud()" aria-pressed="true" title="AI診断HUDの表示/非表示" data-tip="AI診断HUDの表示/非表示">
+            <span class="fab-ico" aria-hidden="true">📊</span>
+            <span class="fab-lab">診断</span>
+        </button>
+        <button class="fab-btn fab-labeled" id="fab-zoom" onclick="toggleZoomUi()" title="画面を拡大" data-tip="画面を拡大して細かく見る">
+            <span class="fab-ico" aria-hidden="true">🔍</span>
+            <span class="fab-lab">拡大</span>
+        </button>
+        <button class="fab-btn fab-labeled" id="fab-reset" onclick="resetZoom()" title="等倍に戻す" data-tip="等倍に戻す">
+            <span class="fab-ico" aria-hidden="true">1x</span>
+            <span class="fab-lab">等倍</span>
+        </button>
     </div>
     <div id="zoom-float-panel">
         <span>倍率 <span id="zoom-target-label">①</span></span>
@@ -65,25 +74,31 @@
 <div id="controls">
     <div id="chart-panel">
         <div class="chart-y-labels">
-            <span>+40°</span>
-            <span>0°</span>
-            <span>-40°</span>
+            <span title="胸が右先行（+）">+40°<small>右先行</small></span>
+            <span title="ねじれゼロ">0°<small>ゼロ</small></span>
+            <span title="胸が左先行（-）">-40°<small>左先行</small></span>
         </div>
-        <canvas id="chart-canvas"></canvas>
-        <div id="chart-current">--°</div>
+        <div class="chart-canvas-wrap">
+            <div class="chart-overlay-title">体幹捻転差（胸と腰のねじれ角度）</div>
+            <canvas id="chart-canvas"></canvas>
+        </div>
+        <div class="chart-current-wrap" title="いまの胸と腰のねじれ角度">
+            <span class="chart-cur-label">捻転差</span>
+            <div id="chart-current">--°</div>
+        </div>
     </div>
     <div class="seek-container">
         <div class="seek-row">
             <div class="seek-meta">
                 <span class="seek-label">①</span>
-                <span class="seek-readout" id="seek-readout-1">0 / 0 Frame · 0.00s</span>
+                <span class="seek-readout" id="seek-readout-1">0 / 0 コマ · 0.00秒</span>
             </div>
             <input type="range" id="seekbar1" min="0" max="1" value="0" step="0.001">
         </div>
         <div class="seek-row" id="seek-row-2" style="display:none;">
             <div class="seek-meta">
                 <span class="seek-label v2">②</span>
-                <span class="seek-readout" id="seek-readout-2">0 / 0 Frame · 0.00s</span>
+                <span class="seek-readout" id="seek-readout-2">0 / 0 コマ · 0.00秒</span>
             </div>
             <input type="range" id="seekbar2" min="0" max="1" value="0" step="0.001">
         </div>

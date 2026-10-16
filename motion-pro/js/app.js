@@ -77,7 +77,12 @@ const aiDebug = {
 function toggleAiDebugHud() {
     showAiDebugHud = !showAiDebugHud;
     const fab = document.getElementById('fab-debug');
-    if (fab) fab.classList.toggle('active', showAiDebugHud);
+    if (fab) {
+        fab.classList.toggle('active', showAiDebugHud);
+        fab.setAttribute('aria-pressed', showAiDebugHud ? 'true' : 'false');
+        fab.classList.add('show-tip');
+        setTimeout(() => fab.classList.remove('show-tip'), 1400);
+    }
     if (currentMode === 'ai') redraw();
 }
 
@@ -306,7 +311,7 @@ function formatSeekReadout(video) {
     const dur = video && video.duration ? video.duration : 0;
     const frame = Math.round(t * currentFPS);
     const total = Math.max(0, Math.round(dur * currentFPS));
-    return `${frame} / ${total} Frame · ${t.toFixed(2)}s`;
+    return `${frame} / ${total} コマ · ${t.toFixed(2)}秒`;
 }
 
 function updateSeekReadout() {
@@ -328,7 +333,7 @@ function setHint(text, tone) {
 function updateHintBanner() {
     const s = state[1];
     if (zoomArmed) {
-        setHint('ドラッグで移動 · 🔍 で終了', 'setup');
+        setHint('ドラッグで移動できます。終わったら「拡大」をオフ', 'setup');
         return;
     }
     if (!video1.duration) {
@@ -336,7 +341,7 @@ function updateHintBanner() {
         return;
     }
     if (currentMode === 'ai') {
-        setHint('再生またはコマ送りで解析。肩・股の点をドラッグして補正できます', 'ai');
+        setHint('再生またはコマ送りで測定。波形の山をタップすると最大ねじれへジャンプ', 'ai');
         return;
     }
     if (currentMode === 'angle') {
@@ -461,8 +466,8 @@ function setMode(mode) {
     if (mode === 'ai') {
         document.getElementById('btn-mode-ai').classList.add('mode-active');
         if (!state[1].aiJoints || state[1].aiJoints.length !== 4) {
-            mainResult.innerHTML = "AI自動解析";
-            subResult.innerHTML = "再生またはコマ送りすると骨格と捻転差が出ます";
+            mainResult.innerHTML = "🤖 AI自動計測中 ｜ 体幹のねじれ（捻転差）と傾きをリアルタイム測定中";
+            subResult.innerHTML = "波形の「山」をタップすると、最も体がねじれた瞬間にジャンプします";
         }
         if (typeof sendPoseFrame === 'function') sendPoseFrame();
         if (!video1.paused && !video1.ended && !isAiDetecting) {

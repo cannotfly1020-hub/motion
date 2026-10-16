@@ -83,7 +83,8 @@ pose.onResults((results) => {
 
     if (!results.poseLandmarks) {
         state[1].limbsLandmarks = null;
-        mainResult.innerHTML = `🤖 AI自動計測 ｜ 人物が検出できません`;
+        mainResult.innerHTML = `🤖 AI自動計測中 ｜ 人物を認識できません`;
+        subResult.innerHTML = `全身が映っているか確認し、再生またはコマ送りしてください`;
         redraw();
         return;
     }

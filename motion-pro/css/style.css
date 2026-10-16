@@ -73,15 +73,37 @@ video { width: 100%; height: 100%; object-fit: contain; display: block; }
 }
 .fab-btn {
   -webkit-appearance: none; appearance: none;
-  width: 40px; height: 40px; border: none; border-radius: 12px;
-  background: rgba(28, 28, 30, 0.88); color: #f5f5f7;
+  width: 44px; height: 44px; border: none; border-radius: 12px;
+  background: rgba(28, 28, 30, 0.55); color: #f5f5f7;
   font-size: 15px; font-weight: 700; cursor: pointer;
   backdrop-filter: blur(12px); box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  position: relative;
 }
-.fab-btn.active { background: #007aff; color: #fff; }
-#fab-debug.active { background: #bf5af2; color: #fff; }
+.fab-labeled {
+  width: 46px; height: 48px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+}
+.fab-ico { font-size: 14px; line-height: 1.1; }
+.fab-lab { font-size: 8px; font-weight: 700; letter-spacing: 0; line-height: 1; opacity: 0.92; }
+.fab-btn.active { background: #007aff; color: #fff; opacity: 1; }
+#fab-debug {
+  background: rgba(44, 44, 46, 0.55); color: #aeaeb2; opacity: 0.72;
+}
+#fab-debug.active { background: #30d158; color: #000; opacity: 1; }
+.fab-btn[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
+  background: rgba(28, 28, 30, 0.94); color: #f5f5f7;
+  font-size: 10px; font-weight: 650; white-space: nowrap;
+  padding: 6px 8px; border-radius: 8px;
+  opacity: 0; pointer-events: none; transition: opacity 0.12s ease;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.fab-btn[data-tip]:hover::after,
+.fab-btn[data-tip]:focus::after,
+.fab-btn[data-tip].show-tip::after { opacity: 1; }
 #zoom-float-panel {
-  display: none; position: absolute; top: 10px; right: 58px; z-index: 26;
+  display: none; position: absolute; top: 10px; right: 64px; z-index: 26;
   align-items: center; gap: 8px; min-width: 160px;
   background: rgba(28, 28, 30, 0.92); border-radius: 12px; padding: 8px 10px;
   backdrop-filter: blur(12px);
@@ -91,22 +113,38 @@ video { width: 100%; height: 100%; object-fit: contain; display: block; }
 #chart-panel {
   display: none; width: 100%; align-items: stretch; gap: 6px;
   background: #111214; border: 1px solid #3a3a3c; border-radius: 10px;
-  padding: 4px 6px; box-sizing: border-box;
+  padding: 6px; box-sizing: border-box;
 }
 #chart-panel.visible { display: flex; }
 .chart-y-labels {
   display: flex; flex-direction: column; justify-content: space-between;
   font-size: 8px; font-weight: 700; color: #8e8e93;
-  width: 28px; flex-shrink: 0; padding: 1px 0; line-height: 1;
+  width: 40px; flex-shrink: 0; padding: 1px 0; line-height: 1.05;
+}
+.chart-y-labels small {
+  display: block; font-size: 7px; font-weight: 650; color: #636366; margin-top: 1px;
+}
+.chart-canvas-wrap {
+  position: relative; flex: 1; min-width: 0;
+}
+.chart-overlay-title {
+  position: absolute; left: 6px; top: 3px; z-index: 2; pointer-events: none;
+  font-size: 9px; font-weight: 700; color: rgba(245, 245, 247, 0.42);
+  letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: calc(100% - 10px);
 }
 #chart-canvas {
-  position: relative !important; flex: 1; min-width: 0;
-  height: 45px; width: 100%; display: block; touch-action: none;
+  position: relative !important; width: 100%; height: 52px;
+  display: block; touch-action: none;
   background: #0b0b0d; border-radius: 6px;
 }
+.chart-current-wrap {
+  width: 56px; flex-shrink: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px;
+}
+.chart-cur-label { font-size: 8px; font-weight: 700; color: #8e8e93; }
 #chart-current {
-  width: 44px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 800; color: #ffd60a; font-variant-numeric: tabular-nums;
+  font-size: 12px; font-weight: 800; color: #ffd60a; font-variant-numeric: tabular-nums;
 }
 
 #controls {

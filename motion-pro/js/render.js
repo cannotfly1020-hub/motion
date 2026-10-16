@@ -214,9 +214,23 @@ function drawPointList(cContext, ptList, labels) {
 }
 
 function visHudColor(v) {
-    if (v >= 0.65) return '#30d158';
+    if (v >= 0.80) return '#30d158';
     if (v >= 0.50) return '#ffd60a';
     return '#ff3b30';
+}
+
+function visHudMark(v) {
+    if (v >= 0.80) return '◎';
+    if (v >= 0.50) return '○';
+    return '×隠';
+}
+
+function statusHudLabel(status) {
+    if (status === 'RUNNING') return '正常稼働中';
+    if (status === 'IDLE') return '待機中';
+    if (status === 'DROP') return '処理中';
+    if (status === 'ERROR') return '認識エラー';
+    return '待機中';
 }
 
 function statusHudColor(status) {
@@ -225,8 +239,9 @@ function statusHudColor(status) {
     return '#ff3b30';
 }
 
-function fmtVis(v) {
-    return (v == null ? 0 : v).toFixed(2);
+function fmtHudDeg(v) {
+    if (v == null || Number.isNaN(v)) return '--';
+    return `${v.toFixed(1)}°`;
 }
 
 function drawAiDebugHud(ctx, cvs) {
@@ -234,16 +249,16 @@ function drawAiDebugHud(ctx, cvs) {
     const d = aiDebug;
     const x = 8;
     const y = 8;
-    const w = Math.min(240, Math.max(168, cvs.clientWidth - 56));
+    const w = Math.min(260, Math.max(196, cvs.clientWidth - 62));
     const errLine = (d.status === 'ERROR' && d.lastError) ? 14 : 0;
-    const h = 130 + errLine;
+    const h = 148 + errLine;
     const visLSh = d.keyJointVis[11] || 0;
     const visRSh = d.keyJointVis[12] || 0;
     const visLHip = d.keyJointVis[23] || 0;
     const visRHip = d.keyJointVis[24] || 0;
     const worldOk = d.hasWorldLandmarks && d.worldLandmarkCount > 0;
-    const pelvis = d.pelvisYaw == null ? '--' : `${d.pelvisYaw >= 0 ? '+' : ''}${d.pelvisYaw.toFixed(1)}°`;
-    const thorax = d.thoraxYaw == null ? '--' : `${d.thoraxYaw >= 0 ? '+' : ''}${d.thoraxYaw.toFixed(1)}°`;
+    const nMark = worldOk ? (d.worldLandmarkCount || 33) : 0;
+    const xf = (typeof currentTorsionAngle === 'number') ? currentTorsionAngle : null;
 
     const sx = cvs.width / Math.max(1, cvs.clientWidth);
     const sy = cvs.height / Math.max(1, cvs.clientHeight);
@@ -255,7 +270,7 @@ function drawAiDebugHud(ctx, cvs) {
     if (ctx.roundRect) ctx.roundRect(x, y, w, h, 10);
     else ctx.rect(x, y, w, h);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(191, 90, 242, 0.45)';
+    ctx.strokeStyle = 'rgba(48, 209, 88, 0.35)';
     ctx.lineWidth = 1;
     ctx.stroke();
 
@@ -263,56 +278,58 @@ function drawAiDebugHud(ctx, cvs) {
     ctx.fillStyle = '#f5f5f7';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    let ty = y + 8;
-    ctx.fillText('🤖 AI Diagnostics', x + 10, ty);
+    let ty = y + 7;
+    ctx.fillText('🤖 AI認識ステータス', x + 10, ty);
     ty += 16;
 
     ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
     ctx.fillStyle = '#aeaeb2';
-    ctx.fillText('Status:', x + 10, ty);
+    ctx.fillText('状態:', x + 10, ty);
     ctx.fillStyle = statusHudColor(d.status);
     ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.fillText(d.status, x + 56, ty);
+    ctx.fillText(statusHudLabel(d.status), x + 40, ty);
     ty += 14;
 
     if (errLine) {
         ctx.font = '9px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.fillStyle = '#ff3b30';
-        const msg = String(d.lastError).slice(0, 36);
-        ctx.fillText(msg, x + 10, ty);
+        ctx.fillText(String(d.lastError).slice(0, 32), x + 10, ty);
         ty += 14;
     }
 
     ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
     ctx.fillStyle = '#f5f5f7';
-    const lat = `${Math.round(d.inferenceTimeMs)}ms`;
-    const rate = `${d.actualFps}fps`;
-    ctx.fillText(`Latency: ${lat}  |  AI Rate: ${rate}`, x + 10, ty);
+    ctx.fillText(`処理速度: ${Math.round(d.inferenceTimeMs)}ms (${d.actualFps}コマ/秒)`, x + 10, ty);
     ty += 14;
 
     ctx.fillStyle = '#aeaeb2';
-    ctx.fillText('3D World:', x + 10, ty);
+    ctx.fillText('3D空間認識:', x + 10, ty);
     ctx.fillStyle = worldOk ? '#30d158' : '#ff3b30';
     ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, sans-serif';
-    ctx.fillText(worldOk ? `OK (${d.worldLandmarkCount} landmarks)` : 'NG (none)', x + 72, ty);
+    ctx.fillText(worldOk ? `良好 (全身${nMark}箇所)` : '未取得', x + 88, ty);
     ty += 14;
 
     ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
     ctx.fillStyle = '#aeaeb2';
-    ctx.fillText('Vis:', x + 10, ty);
+    ctx.fillText('視認性:', x + 10, ty);
     ctx.fillStyle = visHudColor(visLSh);
-    ctx.fillText(`L-Sh:${fmtVis(visLSh)}`, x + 36, ty);
+    ctx.fillText(`左肩:${visHudMark(visLSh)}`, x + 48, ty);
     ctx.fillStyle = visHudColor(visRSh);
-    ctx.fillText(`R-Sh:${fmtVis(visRSh)}`, x + 118, ty);
+    ctx.fillText(`右肩:${visHudMark(visRSh)}`, x + 128, ty);
     ty += 13;
     ctx.fillStyle = visHudColor(visLHip);
-    ctx.fillText(`L-Hip:${fmtVis(visLHip)}`, x + 36, ty);
+    ctx.fillText(`左腰:${visHudMark(visLHip)}`, x + 48, ty);
     ctx.fillStyle = visHudColor(visRHip);
-    ctx.fillText(`R-Hip:${fmtVis(visRHip)}`, x + 118, ty);
+    ctx.fillText(`右腰:${visHudMark(visRHip)}`, x + 128, ty);
     ty += 14;
 
     ctx.fillStyle = '#f5f5f7';
-    ctx.fillText(`Pelvis Yaw: ${pelvis}  Thorax: ${thorax}`, x + 10, ty);
+    ctx.fillText(`骨盤向: ${fmtHudDeg(d.pelvisYaw)}  胸郭向: ${fmtHudDeg(d.thoraxYaw)}`, x + 10, ty);
+    ty += 14;
+    ctx.fillStyle = '#ffd60a';
+    ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, sans-serif';
+    const xfText = xf == null ? '--' : `${xf >= 0 ? '+' : ''}${xf.toFixed(1)}°`;
+    ctx.fillText(`体幹捻転差(X-Factor): ${xfText}`, x + 10, ty);
     ctx.restore();
 }
 
@@ -327,7 +344,7 @@ function drawTorsionChart() {
     if (!cvs) return;
     const ctx = cvs.getContext('2d');
     const cssW = Math.max(1, cvs.clientWidth || cvs.parentElement.clientWidth || 300);
-    const cssH = Math.max(1, cvs.clientHeight || 45);
+    const cssH = Math.max(1, cvs.clientHeight || 52);
     const dpr = window.devicePixelRatio || 1;
     if (cvs.width !== Math.round(cssW * dpr) || cvs.height !== Math.round(cssH * dpr)) {
         cvs.width = Math.round(cssW * dpr);

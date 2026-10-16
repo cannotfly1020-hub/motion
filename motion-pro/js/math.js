@@ -317,15 +317,15 @@ function calcAiResults(type = 'ai') {
             motionTimeline.torsion[frame] = torsionDiff;
         }
 
-        let typeLabel = "🤖 AI", color = "#00ffcc";
-        if (type === 'manual') { typeLabel = "✋ 手動"; color = "#ff9500"; }
-        else if (type === 'interpolated') { typeLabel = "✨ 補間"; color = "#ffcc00"; }
+        let typeLabel = "🤖 AI自動計測中", color = "#00ffcc";
+        if (type === 'manual') { typeLabel = "✋ 位置を手で補正中"; color = "#ff9500"; }
+        else if (type === 'interpolated') { typeLabel = "✨ 補正を補間中"; color = "#ffcc00"; }
 
         const signed = `${currentTorsionAngle >= 0 ? '+' : ''}${currentTorsionAngle.toFixed(1)}°`;
         const torsionText = `<span class="highlight-speed" style="font-size:13px;">${signed}</span>`;
-        lastAiResultHtml = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差(X-Factor): ${torsionText}`;
+        lastAiResultHtml = `${typeLabel} ｜ 体幹の傾き <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差 ${torsionText}`;
         mainResult.innerHTML = lastAiResultHtml;
-        subResult.innerHTML = `<span style="color:#00ffcc;">左半身:水色</span> / <span style="color:#ffd60a;">右半身:黄色</span> ｜ 3D world landmarks（水平面）｜ 端点ドラッグで修正可能`;
+        subResult.innerHTML = `波形の「山」をタップすると、最も体がねじれた瞬間にジャンプします`;
         const chartCur = document.getElementById('chart-current');
         if (chartCur) chartCur.textContent = signed;
     }
