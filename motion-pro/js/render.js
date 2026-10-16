@@ -195,6 +195,7 @@ function redraw() {
             }
         }
     });
+    if (currentMode === 'ai') drawTorsionChart();
 }
 
 function drawPointList(cContext, ptList, labels) {
@@ -209,4 +210,70 @@ function drawPointList(cContext, ptList, labels) {
             if (text) { cContext.fillStyle = '#fff'; cContext.font = 'bold 10px sans-serif'; cContext.fillText(text, ptList[i].x + 7, ptList[i].y - 5); cContext.fillStyle = cContext.strokeStyle; }
         }
     }
+}
+
+function torsionToChartY(deg, h) {
+    const clamped = Math.max(-40, Math.min(40, deg));
+    const pad = 4;
+    return pad + (1 - (clamped + 40) / 80) * (h - pad * 2);
+}
+
+function drawTorsionChart() {
+    const cvs = document.getElementById('chart-canvas');
+    if (!cvs) return;
+    const ctx = cvs.getContext('2d');
+    const cssW = Math.max(1, cvs.clientWidth || cvs.parentElement.clientWidth || 300);
+    const cssH = Math.max(1, cvs.clientHeight || 56);
+    const dpr = window.devicePixelRatio || 1;
+    if (cvs.width !== Math.round(cssW * dpr) || cvs.height !== Math.round(cssH * dpr)) {
+        cvs.width = Math.round(cssW * dpr);
+        cvs.height = Math.round(cssH * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const w = cssW;
+    const h = cssH;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#0b0b0d';
+    ctx.fillRect(0, 0, w, h);
+
+    const zeroY = torsionToChartY(0, h);
+    const p40 = torsionToChartY(40, h);
+    const m40 = torsionToChartY(-40, h);
+    ctx.strokeStyle = 'rgba(142, 142, 147, 0.35)';
+    ctx.lineWidth = 1;
+    [p40, zeroY, m40].forEach(y => {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+    });
+
+    const duration = video1 && video1.duration ? video1.duration : 0;
+    const totalFrames = Math.max(1, Math.round(duration * currentFPS));
+    const log = (typeof motionTimeline !== 'undefined' && motionTimeline.torsion) ? motionTimeline.torsion : {};
+    const frames = Object.keys(log).map(Number).sort((a, b) => a - b);
+
+    if (frames.length > 0) {
+        ctx.beginPath();
+        ctx.strokeStyle = '#ffd60a';
+        ctx.lineWidth = 1.6;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        frames.forEach((f, i) => {
+            const x = (f / totalFrames) * w;
+            const y = torsionToChartY(log[f], h);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+    }
+
+    const curFrame = getVideoFrameFromTime(video1);
+    const headX = Math.max(0, Math.min(w, (curFrame / totalFrames) * w));
+    ctx.strokeStyle = '#ff375f';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(headX, 0);
+    ctx.lineTo(headX, h);
+    ctx.stroke();
 }

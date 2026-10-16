@@ -51,10 +51,19 @@ let recordAnimId = null;
 
 let isAiDetecting = false;
 
+const motionTimeline = { torsion: {} };
+
+function resetMotionTimeline() {
+    motionTimeline.torsion = {};
+    const chartCur = document.getElementById('chart-current');
+    if (chartCur) chartCur.textContent = '--°';
+    if (typeof drawTorsionChart === 'function') drawTorsionChart();
+}
+
 function createPaneState(withAi) {
     const base = { points: [], scalePoints: [], perpPoints: [], cogPoints: [], pxPerCm: null, resultMain: "", resultSub: "" };
     if (!withAi) return base;
-    return { ...base, aiJoints: [], limbsLandmarks: null, aiOverrides: {}, manualOffsets: {}, manualKeyframes: {} };
+    return { ...base, aiJoints: [], limbsLandmarks: null, worldLandmarks: null, aiOverrides: {}, manualOffsets: {}, manualKeyframes: {} };
 }
 
 const state = {
@@ -113,7 +122,12 @@ window.addEventListener('resize', fitCanvases);
 
 function resetState(idx) {
     state[idx] = createPaneState(idx === 1);
-    if (idx === 1) currentTorsionAngle = 0;
+    if (idx === 1) {
+        currentTorsionAngle = 0;
+        resetMotionTimeline();
+        if (typeof holdStore !== 'undefined') holdStore.pts = {};
+        if (typeof holdStoreWorld !== 'undefined') holdStoreWorld.pts = {};
+    }
     updateScaleInfoText();
     updateDisplayResult();
     redraw();
@@ -194,14 +208,43 @@ function togglePlaybackRate() {
 }
 
 let seeking1 = false;
-seekbar1.addEventListener('input', () => { seeking1 = true; video1.currentTime = seekbar1.value; });
+seekbar1.addEventListener('input', () => {
+    seeking1 = true;
+    video1.currentTime = seekbar1.value;
+    if (currentMode === 'ai') drawTorsionChart();
+});
 seekbar1.addEventListener('change', () => { seeking1 = false; redraw(); });
-video1.addEventListener('timeupdate', () => { if (!seeking1) seekbar1.value = video1.currentTime; });
+video1.addEventListener('timeupdate', () => {
+    if (!seeking1) seekbar1.value = video1.currentTime;
+    if (currentMode === 'ai') drawTorsionChart();
+});
 
 let seeking2 = false;
 seekbar2.addEventListener('input', () => { seeking2 = true; video2.currentTime = seekbar2.value; });
 seekbar2.addEventListener('change', () => { seeking2 = false; redraw(); });
 video2.addEventListener('timeupdate', () => { if (!seeking2) seekbar2.value = video2.currentTime; });
+
+(function setupChartSeek() {
+    const chartCvs = document.getElementById('chart-canvas');
+    if (!chartCvs) return;
+    const seekFromEvent = (e) => {
+        if (currentMode !== 'ai' || !video1.duration) return;
+        const rect = chartCvs.getBoundingClientRect();
+        const t = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const totalFrames = Math.max(1, Math.round(video1.duration * currentFPS));
+        const frame = Math.round(t * totalFrames);
+        video1.currentTime = Math.min(video1.duration, frame / currentFPS);
+        drawTorsionChart();
+    };
+    chartCvs.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        seekFromEvent(e);
+        try { chartCvs.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    chartCvs.addEventListener('pointermove', (e) => {
+        if (e.buttons) seekFromEvent(e);
+    });
+})();
 
 function stepFrame(dir) {
     const stepSec = dir / currentFPS;
@@ -249,6 +292,8 @@ function setMode(mode) {
     document.getElementById('zoom-controls').style.display = (mode === 'zoom') ? 'flex' : 'none';
     document.getElementById('perp-controls').style.display = (mode === 'perp' || mode === 'cog' || state[1].perpPoints.length === 2 || state[2].perpPoints.length === 2) ? 'flex' : 'none';
     document.getElementById('sim-controls').style.display = (mode === 'sim') ? 'flex' : 'none';
+    const chartPanel = document.getElementById('chart-panel');
+    if (chartPanel) chartPanel.classList.toggle('visible', mode === 'ai');
 
     if (mode === 'zoom') {
         document.getElementById('btn-mode-zoom').classList.add('mode-active');
@@ -282,6 +327,7 @@ function clearCurrentPoints() {
         state[1].manualOffsets = {};
         state[1].manualKeyframes = {};
         currentTorsionAngle = 0;
+        resetMotionTimeline();
         if (video1.readyState >= 2) pose.send({image: video1});
         return;
     }

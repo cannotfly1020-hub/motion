@@ -105,6 +105,58 @@ function applyLandmarkOffsets(lm, offsets) {
   return out;
 }
 
+function wrapDeg180(deg) {
+  let d = deg;
+  while (d > 180) d -= 360;
+  while (d < -180) d += 360;
+  return d;
+}
+
+function metersPerPixelFromPair(worldLm, screenLm, a, b) {
+  if (!worldLm || !screenLm || !worldLm[a] || !worldLm[b] || !screenLm[a] || !screenLm[b]) return 0;
+  const span2d = Math.hypot(screenLm[b].x - screenLm[a].x, screenLm[b].y - screenLm[a].y);
+  const span3d = Math.hypot(worldLm[b].x - worldLm[a].x, worldLm[b].z - worldLm[a].z);
+  if (span2d < 1e-3) return 0;
+  return span3d / span2d;
+}
+
+function applyWorldManualOffsets(worldLm, rawScreenLm, offsets) {
+  if (!worldLm) return null;
+  const out = {};
+  Object.keys(worldLm).forEach(k => {
+    out[k] = { x: worldLm[k].x, y: worldLm[k].y, z: worldLm[k].z, visibility: worldLm[k].visibility, _held: worldLm[k]._held };
+  });
+  if (!offsets || !rawScreenLm) return out;
+  const mPerPxSho = metersPerPixelFromPair(worldLm, rawScreenLm, 11, 12);
+  const mPerPxHip = metersPerPixelFromPair(worldLm, rawScreenLm, 23, 24);
+  const scaleOf = (idx) => (idx === 11 || idx === 12) ? mPerPxSho : mPerPxHip;
+  [11, 12, 23, 24].forEach(idx => {
+    const off = offsets[idx];
+    if (!off || !out[idx]) return;
+    const s = scaleOf(idx);
+    if (!s) return;
+    out[idx].x += off.x * s;
+    out[idx].z += off.y * s * 0.15;
+  });
+  return out;
+}
+
+function calcXFactorFromWorld(worldLm) {
+  if (!worldLm || !worldLm[11] || !worldLm[12] || !worldLm[23] || !worldLm[24]) return null;
+  if (![11, 12, 23, 24].every(i => isJointUsable(worldLm[i]))) return null;
+  const vThorax = {
+    x: worldLm[12].x - worldLm[11].x,
+    z: worldLm[12].z - worldLm[11].z
+  };
+  const vPelvis = {
+    x: worldLm[24].x - worldLm[23].x,
+    z: worldLm[24].z - worldLm[23].z
+  };
+  const thetaThorax = Math.atan2(vThorax.z, vThorax.x) * (180 / Math.PI);
+  const thetaPelvis = Math.atan2(vPelvis.z, vPelvis.x) * (180 / Math.PI);
+  return wrapDeg180(thetaThorax - thetaPelvis);
+}
+
 function canDrawBone(a, b, offsets, ia, ib) {
   const aOk = (offsets && offsets[ia]) || isJointConfident(a);
   const bOk = (offsets && offsets[ib]) || isJointConfident(b);
@@ -250,22 +302,32 @@ function calcAiResults(type = 'ai') {
         const midHip = { x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2 };
 
         const angleDeg = Math.atan2(midThorax.x - midHip.x, -(midThorax.y - midHip.y)) * (180 / Math.PI);
-        const pelvisAngleDeg = Math.atan2((hipR.z || 0) - (hipL.z || 0), hipR.x - hipL.x) * (180 / Math.PI);
-        const thoraxAngleDeg = Math.atan2((shoulderR.z || 0) - (shoulderL.z || 0), shoulderR.x - shoulderL.x) * (180 / Math.PI);
 
-        let torsionDiff = thoraxAngleDeg - pelvisAngleDeg;
-        if (torsionDiff > 180) torsionDiff -= 360;
-        if (torsionDiff < -180) torsionDiff += 360;
+        const worldAdj = applyWorldManualOffsets(s.worldLandmarks, s.limbsLandmarks, s.manualOffsets);
+        let torsionDiff = calcXFactorFromWorld(worldAdj);
+        if (torsionDiff == null) {
+            const pelvisAngleDeg = Math.atan2((hipR.z || 0) - (hipL.z || 0), hipR.x - hipL.x) * (180 / Math.PI);
+            const thoraxAngleDeg = Math.atan2((shoulderR.z || 0) - (shoulderL.z || 0), shoulderR.x - shoulderL.x) * (180 / Math.PI);
+            torsionDiff = wrapDeg180(thoraxAngleDeg - pelvisAngleDeg);
+        }
         currentTorsionAngle = torsionDiff;
+
+        if (typeof motionTimeline !== 'undefined' && motionTimeline.torsion) {
+            const frame = getVideoFrameFromTime(video1);
+            motionTimeline.torsion[frame] = torsionDiff;
+        }
 
         let typeLabel = "🤖 AI", color = "#00ffcc";
         if (type === 'manual') { typeLabel = "✋ 手動"; color = "#ff9500"; }
         else if (type === 'interpolated') { typeLabel = "✨ 補間"; color = "#ffcc00"; }
 
-        const torsionText = `<span class="highlight-speed" style="font-size:13px;">${Math.abs(currentTorsionAngle).toFixed(1)}°</span>`;
+        const signed = `${currentTorsionAngle >= 0 ? '+' : ''}${currentTorsionAngle.toFixed(1)}°`;
+        const torsionText = `<span class="highlight-speed" style="font-size:13px;">${signed}</span>`;
         lastAiResultHtml = `${typeLabel} ｜ 体幹傾斜: <span style="color:${color}; font-size:13px;">${angleDeg.toFixed(1)}°</span> ｜ 捻転差(X-Factor): ${torsionText}`;
         mainResult.innerHTML = lastAiResultHtml;
-        subResult.innerHTML = `<span style="color:#00ffcc;">左半身:水色</span> / <span style="color:#ffd60a;">右半身:黄色</span> ｜ 端点ドラッグで修正可能`;
+        subResult.innerHTML = `<span style="color:#00ffcc;">左半身:水色</span> / <span style="color:#ffd60a;">右半身:黄色</span> ｜ 3D world landmarks（水平面）｜ 端点ドラッグで修正可能`;
+        const chartCur = document.getElementById('chart-current');
+        if (chartCur) chartCur.textContent = signed;
     }
 }
 

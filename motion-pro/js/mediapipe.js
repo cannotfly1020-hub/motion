@@ -10,6 +10,7 @@ pose.setOptions({
 });
 
 const holdStore = { pts: {} };
+const holdStoreWorld = { pts: {} };
 
 pose.onResults((results) => {
     if (currentMode !== 'ai') return;
@@ -37,6 +38,18 @@ pose.onResults((results) => {
         mappedLandmarks[i] = getPos(landmarks[i]);
     }
     state[1].limbsLandmarks = stabilizeLandmarksMap(mappedLandmarks, holdStore);
+
+    const worldSrc = results.poseWorldLandmarks || [];
+    const mappedWorld = {};
+    for (let i = 0; i < worldSrc.length; i++) {
+        mappedWorld[i] = {
+            x: worldSrc[i].x,
+            y: worldSrc[i].y,
+            z: worldSrc[i].z,
+            visibility: landmarks[i] ? landmarks[i].visibility : 1
+        };
+    }
+    state[1].worldLandmarks = worldSrc.length ? stabilizeLandmarksMap(mappedWorld, holdStoreWorld) : null;
 
     if (!state[1].manualOffsets) state[1].manualOffsets = {};
     if (!state[1].manualKeyframes) state[1].manualKeyframes = {};
