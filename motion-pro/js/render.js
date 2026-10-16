@@ -134,6 +134,7 @@ function redraw() {
                         item.ctx.globalAlpha = 1;
                     });
                 }
+                drawAiDebugHud(item.ctx, item.c);
             }
             return;
         }
@@ -210,6 +211,109 @@ function drawPointList(cContext, ptList, labels) {
             if (text) { cContext.fillStyle = '#fff'; cContext.font = 'bold 10px sans-serif'; cContext.fillText(text, ptList[i].x + 7, ptList[i].y - 5); cContext.fillStyle = cContext.strokeStyle; }
         }
     }
+}
+
+function visHudColor(v) {
+    if (v >= 0.65) return '#30d158';
+    if (v >= 0.50) return '#ffd60a';
+    return '#ff3b30';
+}
+
+function statusHudColor(status) {
+    if (status === 'RUNNING') return '#30d158';
+    if (status === 'IDLE') return '#ffd60a';
+    return '#ff3b30';
+}
+
+function fmtVis(v) {
+    return (v == null ? 0 : v).toFixed(2);
+}
+
+function drawAiDebugHud(ctx, cvs) {
+    if (!showAiDebugHud || typeof aiDebug === 'undefined') return;
+    const d = aiDebug;
+    const x = 8;
+    const y = 8;
+    const w = Math.min(240, Math.max(168, cvs.clientWidth - 56));
+    const errLine = (d.status === 'ERROR' && d.lastError) ? 14 : 0;
+    const h = 130 + errLine;
+    const visLSh = d.keyJointVis[11] || 0;
+    const visRSh = d.keyJointVis[12] || 0;
+    const visLHip = d.keyJointVis[23] || 0;
+    const visRHip = d.keyJointVis[24] || 0;
+    const worldOk = d.hasWorldLandmarks && d.worldLandmarkCount > 0;
+    const pelvis = d.pelvisYaw == null ? '--' : `${d.pelvisYaw >= 0 ? '+' : ''}${d.pelvisYaw.toFixed(1)}°`;
+    const thorax = d.thoraxYaw == null ? '--' : `${d.thoraxYaw >= 0 ? '+' : ''}${d.thoraxYaw.toFixed(1)}°`;
+
+    const sx = cvs.width / Math.max(1, cvs.clientWidth);
+    const sy = cvs.height / Math.max(1, cvs.clientHeight);
+    ctx.save();
+    ctx.setTransform(sx, 0, 0, sy, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, 10);
+    else ctx.rect(x, y, w, h);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(191, 90, 242, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillStyle = '#f5f5f7';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    let ty = y + 8;
+    ctx.fillText('🤖 AI Diagnostics', x + 10, ty);
+    ty += 16;
+
+    ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillStyle = '#aeaeb2';
+    ctx.fillText('Status:', x + 10, ty);
+    ctx.fillStyle = statusHudColor(d.status);
+    ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillText(d.status, x + 56, ty);
+    ty += 14;
+
+    if (errLine) {
+        ctx.font = '9px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.fillStyle = '#ff3b30';
+        const msg = String(d.lastError).slice(0, 36);
+        ctx.fillText(msg, x + 10, ty);
+        ty += 14;
+    }
+
+    ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillStyle = '#f5f5f7';
+    const lat = `${Math.round(d.inferenceTimeMs)}ms`;
+    const rate = `${d.actualFps}fps`;
+    ctx.fillText(`Latency: ${lat}  |  AI Rate: ${rate}`, x + 10, ty);
+    ty += 14;
+
+    ctx.fillStyle = '#aeaeb2';
+    ctx.fillText('3D World:', x + 10, ty);
+    ctx.fillStyle = worldOk ? '#30d158' : '#ff3b30';
+    ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillText(worldOk ? `OK (${d.worldLandmarkCount} landmarks)` : 'NG (none)', x + 72, ty);
+    ty += 14;
+
+    ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+    ctx.fillStyle = '#aeaeb2';
+    ctx.fillText('Vis:', x + 10, ty);
+    ctx.fillStyle = visHudColor(visLSh);
+    ctx.fillText(`L-Sh:${fmtVis(visLSh)}`, x + 36, ty);
+    ctx.fillStyle = visHudColor(visRSh);
+    ctx.fillText(`R-Sh:${fmtVis(visRSh)}`, x + 118, ty);
+    ty += 13;
+    ctx.fillStyle = visHudColor(visLHip);
+    ctx.fillText(`L-Hip:${fmtVis(visLHip)}`, x + 36, ty);
+    ctx.fillStyle = visHudColor(visRHip);
+    ctx.fillText(`R-Hip:${fmtVis(visRHip)}`, x + 118, ty);
+    ty += 14;
+
+    ctx.fillStyle = '#f5f5f7';
+    ctx.fillText(`Pelvis Yaw: ${pelvis}  Thorax: ${thorax}`, x + 10, ty);
+    ctx.restore();
 }
 
 function torsionToChartY(deg, h) {

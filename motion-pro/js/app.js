@@ -54,6 +54,36 @@ let recordCtx = null;
 let recordAnimId = null;
 
 let isAiDetecting = false;
+let showAiDebugHud = true;
+let lastCanvasTap = { t: 0, x: 0, y: 0 };
+
+const aiDebug = {
+    status: 'IDLE',
+    inferenceTimeMs: 0,
+    actualFps: 0,
+    hasPoseLandmarks: false,
+    hasWorldLandmarks: false,
+    worldLandmarkCount: 0,
+    keyJointVis: { 11: 0, 12: 0, 23: 0, 24: 0 },
+    current3DCoords: { 11: null, 12: null, 23: null, 24: null },
+    pelvisYaw: null,
+    thoraxYaw: null,
+    lastError: '',
+    sendStartedAt: 0,
+    inferTimes: [],
+    lastResultAt: 0
+};
+
+function toggleAiDebugHud() {
+    showAiDebugHud = !showAiDebugHud;
+    const fab = document.getElementById('fab-debug');
+    if (fab) fab.classList.toggle('active', showAiDebugHud);
+    if (currentMode === 'ai') redraw();
+}
+
+function videoFrameReady(vid) {
+    return !!(vid && vid.readyState >= 2 && vid.videoWidth > 0 && vid.videoHeight > 0 && !vid.seeking);
+}
 
 const motionTimeline = { torsion: {} };
 
@@ -434,7 +464,11 @@ function setMode(mode) {
             mainResult.innerHTML = "AI自動解析";
             subResult.innerHTML = "再生またはコマ送りすると骨格と捻転差が出ます";
         }
-        if (video1.readyState >= 2) pose.send({image: video1});
+        if (typeof sendPoseFrame === 'function') sendPoseFrame();
+        if (!video1.paused && !video1.ended && !isAiDetecting) {
+            isAiDetecting = true;
+            if (typeof detectFrame === 'function') detectFrame();
+        }
         redraw();
     } else {
         const btnMap = { 'angle': 'btn-mode-angle', 'distance': 'btn-mode-dist', 'accel': 'btn-mode-acc', 'scale': 'btn-mode-scale', 'perp': 'btn-mode-perp', 'sim': 'btn-mode-sim', 'cog': 'btn-mode-cog' };
@@ -461,7 +495,7 @@ function clearCurrentPoints() {
         state[1].manualKeyframes = {};
         currentTorsionAngle = 0;
         resetMotionTimeline();
-        if (video1.readyState >= 2) pose.send({image: video1});
+        if (typeof sendPoseFrame === 'function') sendPoseFrame();
         return;
     }
     if (currentMode === 'scale') {
@@ -642,8 +676,26 @@ function handlePointerMove(e, cvs, targetIdx) {
 
 function handlePointerUp(e, cvs) {
     isPanningCanvas = false;
+    const wasDragging = !!draggingPoint;
     if (draggingPoint) { try { cvs.releasePointerCapture(e.pointerId); } catch(err){} draggingPoint = null; }
+    if (wasDragging || zoomArmed || currentMode !== 'ai' || cvs !== canvas1) return;
+    const now = performance.now();
+    const dist = Math.hypot(e.clientX - lastCanvasTap.x, e.clientY - lastCanvasTap.y);
+    if (now - lastCanvasTap.t < 320 && dist < 28) {
+        toggleAiDebugHud();
+        lastCanvasTap.t = 0;
+    } else {
+        lastCanvasTap = { t: now, x: e.clientX, y: e.clientY };
+    }
 }
+
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'd' && e.key !== 'D') return;
+    const tag = (e.target && e.target.tagName) ? e.target.tagName : '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    e.preventDefault();
+    toggleAiDebugHud();
+});
 
 function openScaleModal() {
     const s = state[scaleTarget];
@@ -823,3 +875,6 @@ function exportRecordedVideo() {
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
+
+window.addEventListener('load', fitCanvases);
+fitCanvases();
