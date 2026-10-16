@@ -35,6 +35,10 @@ const scaleInputValue = document.getElementById('scale-input-value');
 let compareMode = 0;
 let currentMode = 'angle';
 let lastMeasureMode = 'angle';
+let lastSetupMode = 'scale';
+let workspaceTab = 'manual';
+let zoomArmed = false;
+let isPanningCanvas = false;
 
 let currentFPS = 30.0;
 const fpsList = [30, 60, 120, 240];
@@ -95,6 +99,7 @@ function toggleFPS() {
         calcResults(s, lastMeasureMode);
     });
     updateDisplayResult();
+    updateSeekReadout();
 }
 
 let isPlaying = false;
@@ -105,6 +110,7 @@ function resetZoom() {
     viewState[lastActiveTarget] = { scale: 1, x: 0, y: 0 };
     document.getElementById('zoom-slider').value = 1;
     applyZoom(lastActiveTarget);
+    updateHintBanner();
 }
 document.getElementById('zoom-slider').addEventListener('input', e => {
     viewState[lastActiveTarget].scale = parseFloat(e.target.value);
@@ -145,8 +151,8 @@ function loadVideoFile(file, vidElem, idx) {
 fileInput1.addEventListener('change', e => loadVideoFile(e.target.files[0], video1, 1));
 fileInput2.addEventListener('change', e => loadVideoFile(e.target.files[0], video2, 2));
 
-video1.addEventListener('loadedmetadata', () => { fitCanvases(); seekbar1.max = video1.duration; seekbar1.value = 0; setMode(currentMode); });
-video2.addEventListener('loadedmetadata', () => { fitCanvases(); seekbar2.max = video2.duration; seekbar2.value = 0; });
+video1.addEventListener('loadedmetadata', () => { fitCanvases(); seekbar1.max = video1.duration; seekbar1.value = 0; setMode(currentMode); updateSeekReadout(); updateHintBanner(); });
+video2.addEventListener('loadedmetadata', () => { fitCanvases(); seekbar2.max = video2.duration; seekbar2.value = 0; updateSeekReadout(); });
 
 video1.addEventListener('ended', () => {
     if (isRecording) stopRecording();
@@ -169,15 +175,15 @@ function toggleCompareMode() {
     if (compareMode === 1) {
         pane2.style.display = 'flex';
         btnPick2.style.display = 'inline-block'; seekRow2.style.display = 'flex';
-        btnToggleCompare.classList.add('compare-parallel'); btnToggleCompare.innerText = '並列表示';
+        btnToggleCompare.classList.add('compare-parallel'); btnToggleCompare.innerText = '並列';
     } else if (compareMode === 2) {
         pane2.style.display = 'flex'; pane2.style.position = 'absolute'; pane2.style.top = '0'; pane2.style.left = '0';
         pane2.style.opacity = '0.5'; pane2.style.borderLeft = 'none'; pane2.style.pointerEvents = 'none';
         btnPick2.style.display = 'inline-block'; seekRow2.style.display = 'flex';
-        btnToggleCompare.classList.add('compare-overlay'); btnToggleCompare.innerText = '重ね透かし';
+        btnToggleCompare.classList.add('compare-overlay'); btnToggleCompare.innerText = '重ね';
     } else {
         pane2.style.display = 'none';
-        btnPick2.style.display = 'none'; seekRow2.style.display = 'none'; btnToggleCompare.innerText = '1画面のみ';
+        btnPick2.style.display = 'none'; seekRow2.style.display = 'none'; btnToggleCompare.innerText = '1画面';
         if (video2) video2.pause();
     }
     updateScaleInfoText(); updateDisplayResult(); setTimeout(fitCanvases, 50);
@@ -193,11 +199,15 @@ async function togglePlay() {
             if (compareMode > 0 && video2.duration) playPromises.push(video2.play());
             await Promise.all(playPromises);
         } catch (err) {}
-        btnPlay.innerText = '⏸ 停止'; btnPlay.style.background = '#ff9500';
+        btnPlay.innerText = '⏸ 停止';
+        btnPlay.classList.add('is-paused');
+        btnPlay.style.background = '';
     } else {
         if (video1.duration) video1.pause();
         if (compareMode > 0 && video2.duration) video2.pause();
-        btnPlay.innerText = '▶ 再生'; btnPlay.style.background = '#34c759';
+        btnPlay.innerText = '▶ 再生';
+        btnPlay.classList.remove('is-paused');
+        btnPlay.style.background = '';
     }
 }
 
@@ -212,17 +222,19 @@ seekbar1.addEventListener('input', () => {
     seeking1 = true;
     video1.currentTime = seekbar1.value;
     if (currentMode === 'ai') drawTorsionChart();
+    updateSeekReadout();
 });
 seekbar1.addEventListener('change', () => { seeking1 = false; redraw(); });
 video1.addEventListener('timeupdate', () => {
     if (!seeking1) seekbar1.value = video1.currentTime;
     if (currentMode === 'ai') drawTorsionChart();
+    updateSeekReadout();
 });
 
 let seeking2 = false;
-seekbar2.addEventListener('input', () => { seeking2 = true; video2.currentTime = seekbar2.value; });
+seekbar2.addEventListener('input', () => { seeking2 = true; video2.currentTime = seekbar2.value; updateSeekReadout(); });
 seekbar2.addEventListener('change', () => { seeking2 = false; redraw(); });
-video2.addEventListener('timeupdate', () => { if (!seeking2) seekbar2.value = video2.currentTime; });
+video2.addEventListener('timeupdate', () => { if (!seeking2) seekbar2.value = video2.currentTime; updateSeekReadout(); });
 
 (function setupChartSeek() {
     const chartCvs = document.getElementById('chart-canvas');
@@ -235,6 +247,7 @@ video2.addEventListener('timeupdate', () => { if (!seeking2) seekbar2.value = vi
         const frame = Math.round(t * totalFrames);
         video1.currentTime = Math.min(video1.duration, frame / currentFPS);
         drawTorsionChart();
+        updateSeekReadout();
     };
     chartCvs.addEventListener('pointerdown', (e) => {
         e.preventDefault();
@@ -255,6 +268,111 @@ function stepFrame(dir) {
         video2.currentTime = Math.max(0, Math.min(video2.duration, video2.currentTime + stepSec));
     }
     redraw();
+    updateSeekReadout();
+}
+
+function formatSeekReadout(video) {
+    const t = video && video.currentTime ? video.currentTime : 0;
+    const dur = video && video.duration ? video.duration : 0;
+    const frame = Math.round(t * currentFPS);
+    const total = Math.max(0, Math.round(dur * currentFPS));
+    return `${frame} / ${total} Frame · ${t.toFixed(2)}s`;
+}
+
+function updateSeekReadout() {
+    const a = document.getElementById('seek-readout-1');
+    const b = document.getElementById('seek-readout-2');
+    if (a) a.textContent = formatSeekReadout(video1);
+    if (b) b.textContent = formatSeekReadout(video2);
+}
+
+function setHint(text, tone) {
+    const el = document.getElementById('hint-banner');
+    if (!el) return;
+    el.textContent = text;
+    el.className = '';
+    el.id = 'hint-banner';
+    if (tone) el.classList.add('tone-' + tone);
+}
+
+function updateHintBanner() {
+    const s = state[1];
+    if (zoomArmed) {
+        setHint('ドラッグで移動 · 🔍 で終了', 'setup');
+        return;
+    }
+    if (!video1.duration) {
+        setHint('①動画を選んでください', 'setup');
+        return;
+    }
+    if (currentMode === 'ai') {
+        setHint('再生またはコマ送りで解析。肩・股の点をドラッグして補正できます', 'ai');
+        return;
+    }
+    if (currentMode === 'angle') {
+        const n = s.points.length;
+        setHint(n === 0 ? '1点目をタップ' : n === 1 ? '関節中心（頂点）をタップ' : n === 2 ? '3点目をタップ' : '3点測定中。点をドラッグして微調整できます', 'manual');
+        return;
+    }
+    if (currentMode === 'distance') {
+        const n = s.points.length;
+        setHint(n === 0 ? '始点をタップ' : n === 1 ? 'コマ送りして2点目をタップ' : '距離・速度を表示中。点をドラッグして微調整できます', 'manual');
+        return;
+    }
+    if (currentMode === 'accel') {
+        const n = s.points.length;
+        setHint(n === 0 ? '1点目（始点）をタップ' : n === 1 ? 'コマ送りして中間点をタップ' : n === 2 ? 'コマ送りして終点をタップ' : '加速度を表示中', 'manual');
+        return;
+    }
+    if (currentMode === 'cog') {
+        if (s.perpPoints.length < 2) setHint('先に「校正・設定」で垂直線を2点タップしてください', 'warn');
+        else setHint('コマ送りしながら重心の点をタップ（何点でも可）', 'manual');
+        return;
+    }
+    if (currentMode === 'scale') {
+        const n = s.scalePoints.length;
+        setHint(n === 0 ? '物差しの1点目をタップ' : n === 1 ? '2点目をタップ' : '位置を微調整したら「長さ確定」', 'setup');
+        return;
+    }
+    if (currentMode === 'perp') {
+        const n = s.perpPoints.length;
+        setHint(n === 0 ? '垂直線の1点目をタップ' : n === 1 ? '2点目をタップ' : 'スライダーで垂直線を動かせます', 'setup');
+        return;
+    }
+    if (currentMode === 'sim') {
+        const n = s.points.length;
+        setHint(n === 0 ? '根元をタップ' : n === 1 ? '関節中心をタップ' : n === 2 ? '先端をタップ' : 'スライダーで改善角度を予測', 'manual');
+        return;
+    }
+    setHint('下のタブから操作を選んでください', 'setup');
+}
+
+function setMainTab(tab) {
+    workspaceTab = tab;
+    document.getElementById('tab-ai').className = 'main-tab' + (tab === 'ai' ? ' active-ai' : '');
+    document.getElementById('tab-manual').className = 'main-tab' + (tab === 'manual' ? ' active-manual' : '');
+    document.getElementById('tab-setup').className = 'main-tab' + (tab === 'setup' ? ' active-setup' : '');
+    document.getElementById('manual-sub').classList.toggle('visible', tab === 'manual');
+    document.getElementById('setup-sub').classList.toggle('visible', tab === 'setup');
+    if (tab === 'ai') setMode('ai');
+    else if (tab === 'manual') {
+        const m = ['angle', 'distance', 'accel', 'cog'].includes(lastMeasureMode) ? lastMeasureMode : 'angle';
+        setMode(m);
+    } else {
+        const m = ['scale', 'perp', 'sim'].includes(lastSetupMode) ? lastSetupMode : 'scale';
+        setMode(m);
+    }
+}
+
+function toggleZoomUi() {
+    zoomArmed = !zoomArmed;
+    const fab = document.getElementById('fab-zoom');
+    const panel = document.getElementById('zoom-float-panel');
+    if (fab) fab.classList.toggle('active', zoomArmed);
+    if (panel) panel.style.display = zoomArmed ? 'flex' : 'none';
+    document.getElementById('zoom-target-label').innerText = lastActiveTarget === 1 ? '①' : '②';
+    document.getElementById('zoom-slider').value = viewState[lastActiveTarget].scale;
+    updateHintBanner();
 }
 
 function updateDisplayResult() {
@@ -262,8 +380,8 @@ function updateDisplayResult() {
         const s = state[scaleTarget];
         btnConfirmScale.style.display = (currentMode === 'scale' && s && s.scalePoints.length === 2) ? 'inline-block' : 'none';
     }
-
-    if (currentMode === 'zoom' || currentMode === 'ai') return;
+    updateHintBanner();
+    if (currentMode === 'ai') return;
 
     if (compareMode === 0) {
         mainResult.innerHTML = state[1].resultMain || "測定したい点をタップしてください"; subResult.innerHTML = state[1].resultSub || "";
@@ -282,27 +400,40 @@ function updateScaleInfoText() {
 }
 
 function setMode(mode) {
+    if (mode === 'zoom') {
+        if (!zoomArmed) toggleZoomUi();
+        else updateHintBanner();
+        return;
+    }
     const mainModes = ['angle', 'distance', 'accel', 'sim', 'cog'];
     if (mainModes.includes(mode) && mode !== lastMeasureMode) { state[1].points = []; state[2].points = []; }
 
-    if (mode !== 'zoom' && mode !== 'ai') { if (mainModes.includes(mode)) lastMeasureMode = mode; currentMode = mode; }
+    if (mode !== 'ai') { if (mainModes.includes(mode)) lastMeasureMode = mode; currentMode = mode; }
     else { currentMode = mode; }
+    if (mode === 'scale' || mode === 'perp' || mode === 'sim') lastSetupMode = mode;
 
-    document.querySelectorAll('.mode-active').forEach(b => b.classList.remove('mode-active'));
-    document.getElementById('zoom-controls').style.display = (mode === 'zoom') ? 'flex' : 'none';
-    document.getElementById('perp-controls').style.display = (mode === 'perp' || mode === 'cog' || state[1].perpPoints.length === 2 || state[2].perpPoints.length === 2) ? 'flex' : 'none';
-    document.getElementById('sim-controls').style.display = (mode === 'sim') ? 'flex' : 'none';
+    if (['angle', 'distance', 'accel', 'cog'].includes(mode)) workspaceTab = 'manual';
+    else if (['scale', 'perp', 'sim'].includes(mode)) workspaceTab = 'setup';
+    else if (mode === 'ai') workspaceTab = 'ai';
+
+    document.getElementById('tab-ai').className = 'main-tab' + (workspaceTab === 'ai' ? ' active-ai' : '');
+    document.getElementById('tab-manual').className = 'main-tab' + (workspaceTab === 'manual' ? ' active-manual' : '');
+    document.getElementById('tab-setup').className = 'main-tab' + (workspaceTab === 'setup' ? ' active-setup' : '');
+    document.getElementById('manual-sub').classList.toggle('visible', workspaceTab === 'manual');
+    document.getElementById('setup-sub').classList.toggle('visible', workspaceTab === 'setup');
+
+    document.querySelectorAll('.ctrl-btn.mode-active').forEach(b => b.classList.remove('mode-active'));
+    document.getElementById('perp-controls').classList.toggle('visible', mode === 'perp' || mode === 'cog' || state[1].perpPoints.length === 2 || state[2].perpPoints.length === 2);
+    document.getElementById('sim-controls').classList.toggle('visible', mode === 'sim');
     const chartPanel = document.getElementById('chart-panel');
     if (chartPanel) chartPanel.classList.toggle('visible', mode === 'ai');
 
-    if (mode === 'zoom') {
-        document.getElementById('btn-mode-zoom').classList.add('mode-active');
-        document.getElementById('zoom-target-label').innerText = lastActiveTarget === 1 ? '①' : '②';
-        document.getElementById('zoom-slider').value = viewState[lastActiveTarget].scale;
-    } else if (mode === 'ai') {
+    if (mode === 'ai') {
         document.getElementById('btn-mode-ai').classList.add('mode-active');
-        mainResult.innerHTML = "🤖 AI読込中..."; subResult.innerHTML = "動画を再生するかコマ送りして解析を開始してください";
-        currentTorsionAngle = 0;
+        if (!state[1].aiJoints || state[1].aiJoints.length !== 4) {
+            mainResult.innerHTML = "AI自動解析";
+            subResult.innerHTML = "再生またはコマ送りすると骨格と捻転差が出ます";
+        }
         if (video1.readyState >= 2) pose.send({image: video1});
         redraw();
     } else {
@@ -312,12 +443,14 @@ function setMode(mode) {
 
     if (mode === 'scale') {
         state[1].scalePoints = []; state[2].scalePoints = [];
-        state[1].resultMain = "物差し設定: 基準物の両端（2点）をタップ"; state[1].resultSub = "タップ後、点をドラッグして微調整できます";
+        state[1].resultMain = "物差し: 基準物の両端をタップ"; state[1].resultSub = "2点のあと、点をドラッグして微調整できます";
         state[2].resultMain = ""; state[2].resultSub = "";
-    } else if (mode !== 'zoom' && mode !== 'ai') {
+    } else if (mode !== 'ai') {
         [1, 2].forEach(idx => calcResults(state[idx], mode));
     }
-    updateDisplayResult(); redraw();
+    updateDisplayResult();
+    updateHintBanner();
+    redraw();
 }
 
 function clearCurrentPoints() {
@@ -338,7 +471,7 @@ function clearCurrentPoints() {
     } else if (currentMode === 'perp') {
         state[1].perpPoints = []; state[2].perpPoints = [];
         perpSlider.value = 50;
-        document.getElementById('perp-controls').style.display = 'none';
+        document.getElementById('perp-controls').classList.remove('visible');
     } else if (currentMode === 'cog') {
         state[1].cogPoints = []; state[2].cogPoints = [];
     } else {
@@ -351,7 +484,7 @@ function clearCurrentPoints() {
 
 let isTouchPanning = false; let panStartX = 0, panStartY = 0, panStartOffsetX = 0, panStartOffsetY = 0, pinchInitialDist = 0, pinchInitialScale = 1, pinchTarget = 1;
 document.getElementById('stage').addEventListener('touchstart', e => {
-    if (currentMode !== 'zoom') return;
+    if (!zoomArmed) return;
     const targetIdx = e.target.closest('#pane2') ? 2 : 1; lastActiveTarget = targetIdx;
     document.getElementById('zoom-target-label').innerText = targetIdx === 1 ? '①' : '②'; document.getElementById('zoom-slider').value = viewState[targetIdx].scale;
     if (e.touches.length === 1) {
@@ -365,7 +498,7 @@ document.getElementById('stage').addEventListener('touchstart', e => {
 }, {passive: false});
 
 document.getElementById('stage').addEventListener('touchmove', e => {
-    if (currentMode !== 'zoom') return;
+    if (!zoomArmed) return;
     e.preventDefault();
     if (isTouchPanning && e.touches.length === 1) {
         const scale = viewState[lastActiveTarget].scale;
@@ -426,8 +559,17 @@ function findHitPoint(s, pos, mode) {
 }
 
 function handlePointerDown(e, cvs, vid, targetIdx) {
-    if (currentMode === 'zoom') return;
     lastActiveTarget = targetIdx;
+    if (zoomArmed) {
+        if (e.pointerType === 'touch') return;
+        isPanningCanvas = true;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        panStartOffsetX = viewState[targetIdx].x;
+        panStartOffsetY = viewState[targetIdx].y;
+        try { cvs.setPointerCapture(e.pointerId); } catch (err) {}
+        return;
+    }
     const s = state[targetIdx], pos = getCanvasCoords(e, cvs);
     const currentTime = vid.currentTime, currentFrame = Math.round(currentTime * currentFPS);
     const hit = findHitPoint(s, pos, currentMode);
@@ -452,7 +594,7 @@ function handlePointerDown(e, cvs, vid, targetIdx) {
     if (currentMode === 'perp') {
         if (s.perpPoints.length >= 2) s.perpPoints = [];
         s.perpPoints.push({ x: pos.x, y: pos.y }); calcResults(s, currentMode);
-        if (s.perpPoints.length === 2) document.getElementById('perp-controls').style.display = 'flex';
+        if (s.perpPoints.length === 2) document.getElementById('perp-controls').classList.add('visible');
         updateDisplayResult(); redraw(); return;
     }
     if (currentMode === 'cog') {
@@ -467,6 +609,13 @@ function handlePointerDown(e, cvs, vid, targetIdx) {
 }
 
 function handlePointerMove(e, cvs, targetIdx) {
+    if (zoomArmed && isPanningCanvas && draggingPoint === null) {
+        const scale = viewState[targetIdx].scale;
+        viewState[targetIdx].x = panStartOffsetX + (e.clientX - panStartX) / scale;
+        viewState[targetIdx].y = panStartOffsetY + (e.clientY - panStartY) / scale;
+        applyZoom(targetIdx);
+        return;
+    }
     if (!draggingPoint || draggingPoint.targetIdx !== targetIdx) return;
     const s = state[targetIdx], pos = getCanvasCoords(e, cvs);
     const pt = s[draggingPoint.arrayName][draggingPoint.index];
@@ -492,6 +641,7 @@ function handlePointerMove(e, cvs, targetIdx) {
 }
 
 function handlePointerUp(e, cvs) {
+    isPanningCanvas = false;
     if (draggingPoint) { try { cvs.releasePointerCapture(e.pointerId); } catch(err){} draggingPoint = null; }
 }
 
@@ -641,7 +791,7 @@ function startRecording() {
 
     mediaRecorder.start();
     isRecording = true;
-    btnRecord.innerText = '⏹ 録画停止';
+    btnRecord.innerText = '録画停止';
     btnRecord.classList.add('rec-active');
 
     drawRecordFrame();
@@ -653,7 +803,7 @@ function stopRecording() {
     isRecording = false;
     if (recordAnimId) cancelAnimationFrame(recordAnimId);
     mediaRecorder.stop();
-    btnRecord.innerText = '🎥 録画開始';
+    btnRecord.innerText = '録画';
     btnRecord.classList.remove('rec-active');
     if (!video1.paused) togglePlay();
 }

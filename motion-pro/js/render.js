@@ -223,7 +223,7 @@ function drawTorsionChart() {
     if (!cvs) return;
     const ctx = cvs.getContext('2d');
     const cssW = Math.max(1, cvs.clientWidth || cvs.parentElement.clientWidth || 300);
-    const cssH = Math.max(1, cvs.clientHeight || 56);
+    const cssH = Math.max(1, cvs.clientHeight || 45);
     const dpr = window.devicePixelRatio || 1;
     if (cvs.width !== Math.round(cssW * dpr) || cvs.height !== Math.round(cssH * dpr)) {
         cvs.width = Math.round(cssW * dpr);
@@ -255,8 +255,21 @@ function drawTorsionChart() {
 
     if (frames.length > 0) {
         ctx.beginPath();
+        frames.forEach((f, i) => {
+            const x = (f / totalFrames) * w;
+            const y = torsionToChartY(log[f], h);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.lineTo((frames[frames.length - 1] / totalFrames) * w, zeroY);
+        ctx.lineTo((frames[0] / totalFrames) * w, zeroY);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255, 214, 10, 0.14)';
+        ctx.fill();
+
+        ctx.beginPath();
         ctx.strokeStyle = '#ffd60a';
-        ctx.lineWidth = 1.6;
+        ctx.lineWidth = 1.8;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
         frames.forEach((f, i) => {
@@ -266,6 +279,16 @@ function drawTorsionChart() {
             else ctx.lineTo(x, y);
         });
         ctx.stroke();
+
+        for (let i = 1; i < frames.length - 1; i++) {
+            const a = log[frames[i - 1]], b = log[frames[i]], c = log[frames[i + 1]];
+            const isPeak = (b > a && b >= c) || (b < a && b <= c);
+            if (!isPeak || Math.abs(b) < 4) continue;
+            ctx.beginPath();
+            ctx.fillStyle = b >= 0 ? '#ffd60a' : '#bf5af2';
+            ctx.arc((frames[i] / totalFrames) * w, torsionToChartY(b, h), 2.8, 0, Math.PI * 2);
+            ctx.fill();
+        }
     }
 
     const curFrame = getVideoFrameFromTime(video1);
